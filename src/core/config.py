@@ -44,6 +44,7 @@ class Settings(BaseSettings):
         "http://localhost:5174",
         "http://localhost:5175",
         "http://schools.theinquisitive.in",
+        "https://schools.theinquisitive.in",
     ]
 
     # Email
