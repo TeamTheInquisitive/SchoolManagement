@@ -14,17 +14,17 @@ services:
       - ./uploads:/app/uploads
 
   db:
-    image: postgres:16
+    image: mysql:8.0
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: school_erp
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: school_erp
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - mysqldata:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -40,4 +40,4 @@ services:
       retries: 5
 
 volumes:
-  pgdata:
+  mysqldata:

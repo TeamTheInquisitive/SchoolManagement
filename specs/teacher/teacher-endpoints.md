@@ -5,7 +5,7 @@
 ```
 Teacher Portal API:
 ├── Runtime: Node.js / Python (Django/FastAPI)
-├── Database: PostgreSQL (shared with Admin module)
+├── Database: MySQL (shared with Admin module)
 ├── Auth: JWT (httpOnly cookies) + Refresh Token rotation
 ├── Multi-tenancy: X-School-Code header → DB schema/filter
 ├── API Style: RESTful, JSON

@@ -103,7 +103,7 @@ async def get_results_overview(
             Exam.status == "Published",
             Exam.is_active.is_(True),
         )
-        .order_by(Exam.date.asc().nullslast())
+        .order_by(Exam.date.asc())
     )
     exam_results = list(results_query.scalars().all())
 
@@ -347,7 +347,7 @@ async def get_exams_with_results(
             Exam.status == "Published",
             Exam.is_active.is_(True),
         )
-        .order_by(Exam.date.desc().nullslast())
+        .order_by(Exam.date.desc())
     )
     if exam_type:
         query = query.where(Exam.exam_type == exam_type)

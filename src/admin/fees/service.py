@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import AppException, NotFound
@@ -179,7 +179,7 @@ async def list_fee_records(
         func.coalesce(func.sum(FeeRecord.paid), 0).label("collected"),
         func.coalesce(func.sum(FeeRecord.pending), 0).label("pending_sum"),
         func.coalesce(func.sum(FeeRecord.total_late_fee), 0).label("late_fines_total"),
-        func.count().filter(FeeRecord.status == "Overdue").label("overdue_count"),
+        func.sum(case((FeeRecord.status == "Overdue", 1), else_=0)).label("overdue_count"),
     ).where(
         FeeRecord.school_id == school_id,
         FeeRecord.academic_year_id == ay.id,

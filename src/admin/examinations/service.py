@@ -184,7 +184,7 @@ async def list_exams(
     total = (await db.execute(count_query)).scalar() or 0
 
     # Paginate
-    query = query.order_by(Exam.date.desc().nullslast(), Exam.created_at.desc())
+    query = query.order_by(Exam.date.desc(), Exam.created_at.desc())
     query = query.offset(pagination.offset).limit(pagination.page_size)
     result = await db.execute(query)
     exams = list(result.scalars().all())
@@ -1115,7 +1115,7 @@ async def get_analytics(
     if subject:
         query = query.join(Subject, Exam.subject_id == Subject.id).where(Subject.name == subject)
 
-    exams_result = await db.execute(query.order_by(Exam.date.asc().nullslast()))
+    exams_result = await db.execute(query.order_by(Exam.date.asc()))
     exams = list(exams_result.scalars().all())
 
     # Subject performance
@@ -1373,7 +1373,7 @@ async def get_exam_schedule(
             Exam.is_active.is_(True),
             Exam.status.in_(["Scheduled", "In Progress", "Completed", "Published"]),
         )
-        .order_by(Exam.date.asc().nullslast())
+        .order_by(Exam.date.asc())
     )
     if term:
         query = query.where(Exam.term == term)

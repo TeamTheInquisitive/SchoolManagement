@@ -3,11 +3,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Index, String, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import ForeignKey, Index, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class Notification(BaseModel):
@@ -16,7 +15,7 @@ class Notification(BaseModel):
     __tablename__ = "notifications"
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    message: Mapped[str] = mapped_column(nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
     type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     target_type: Mapped[str] = mapped_column(String(30), nullable=False)
     target_class_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -31,7 +30,7 @@ class Notification(BaseModel):
     recipients_count: Mapped[int] = mapped_column(nullable=False, default=0)
     read_count: Mapped[int] = mapped_column(nullable=False, default=0)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        "created_by_user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+        "created_by_user_id", UUIDType, ForeignKey("users.id"), nullable=True
     )
 
     __table_args__ = (
@@ -55,12 +54,12 @@ class NotificationRecipient(BaseModel):
     __tablename__ = "notification_recipients"
 
     notification_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        UUIDType,
         ForeignKey("notifications.id", ondelete="CASCADE"),
         nullable=False,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+        UUIDType, ForeignKey("users.id"), nullable=False
     )
     is_read: Mapped[bool] = mapped_column(nullable=False, default=False)
     read_at: Mapped[datetime | None] = mapped_column(nullable=True)

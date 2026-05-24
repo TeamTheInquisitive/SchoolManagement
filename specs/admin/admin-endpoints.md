@@ -5,7 +5,7 @@
 ```
 Tech Stack (Recommended):
 ├── Runtime: Node.js / Python (Django/FastAPI)
-├── Database: PostgreSQL
+├── Database: MySQL
 ├── Auth: JWT (httpOnly cookies) + Refresh Token rotation
 ├── Multi-tenancy: School code in header → DB schema/filter
 ├── API Style: RESTful, JSON

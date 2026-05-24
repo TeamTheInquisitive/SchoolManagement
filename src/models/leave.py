@@ -7,6 +7,7 @@ from decimal import Decimal
 from sqlalchemy import (
     Boolean,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -15,10 +16,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class LeavePolicy(BaseModel):
@@ -36,7 +36,7 @@ class LeavePolicy(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     leave_type: Mapped[str] = mapped_column(String(50), nullable=False)
     code: Mapped[str | None] = mapped_column(String(10), default=None)
@@ -71,10 +71,10 @@ class LeaveApplication(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     staff_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False
+        UUIDType, ForeignKey("staff.id"), nullable=False
     )
     leave_type: Mapped[str] = mapped_column(String(50), nullable=False)
     from_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -84,26 +84,26 @@ class LeaveApplication(BaseModel):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="Pending", nullable=False)
     applied_on: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False
+        DateTime(timezone=True), nullable=False
     )
     approved_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), default=None
+        UUIDType, ForeignKey("users.id"), default=None
     )
     approved_on: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), default=None
+        DateTime(timezone=True), default=None
     )
     rejected_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), default=None
+        UUIDType, ForeignKey("users.id"), default=None
     )
     rejected_on: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), default=None
+        DateTime(timezone=True), default=None
     )
     remarks: Mapped[str | None] = mapped_column(Text, default=None)
     substitute_teacher_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), default=None
+        UUIDType, ForeignKey("staff.id"), default=None
     )
     cancelled_on: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), default=None
+        DateTime(timezone=True), default=None
     )
 
     # Relationships
@@ -138,10 +138,10 @@ class LeaveBalance(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     staff_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False
+        UUIDType, ForeignKey("staff.id"), nullable=False
     )
     leave_type: Mapped[str] = mapped_column(String(50), nullable=False)
     total_allocated: Mapped[int] = mapped_column(Integer, nullable=False)

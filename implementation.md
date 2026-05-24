@@ -6,7 +6,7 @@
 |-------|-----------|---------|-----|
 | Framework | FastAPI | 0.115+ | Async, type-safe, auto OpenAPI docs |
 | Python | Python | 3.12+ | Latest features, performance |
-| Database | PostgreSQL | 16+ | JSONB, UUID, robust |
+| Database | MySQL | 8.0+ | JSON, UUID via CHAR(36), robust |
 | ORM | SQLAlchemy (async) | 2.0+ | Mapped columns, async sessions |
 | Migrations | Alembic | 1.14+ | Autogenerate, reversible |
 | Auth | python-jose (JWT) + httpOnly cookies | — | Secure token-based auth |
@@ -14,13 +14,13 @@
 | Validation | Pydantic v2 | 2.7+ | Request/response schemas |
 | Config | pydantic-settings | 2.2+ | Type-safe env loading |
 | Password Hashing | passlib[bcrypt] | — | Industry standard |
-| Async DB Driver | asyncpg | — | Fastest PostgreSQL driver |
+| Async DB Driver | aiomysql | — | Async MySQL driver |
 | Async Redis | redis[hiredis] | — | Async Redis client |
 | CORS | FastAPI CORSMiddleware | — | Cross-origin |
 | Email | fastapi-mail | — | Async email |
 | File Storage | aiofiles + Local/S3 | — | Async file I/O |
 | Linting | ruff | — | Fast Python linter + formatter |
-| Containerization | Docker + docker-compose | — | App + Postgres + Redis |
+| Containerization | Docker + docker-compose | — | App + MySQL + Redis |
 
 ---
 
@@ -221,7 +221,7 @@ school-erp-backend/
 ├── alembic.ini
 ├── pyproject.toml                  # Project config + dependencies
 ├── Dockerfile
-├── docker-compose.yml              # App + PostgreSQL + Redis
+├── docker-compose.yml              # App + MySQL + Redis
 ├── implementation.md
 └── README.md
 ```
@@ -245,16 +245,16 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Database
-    POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "password"
-    POSTGRES_DB: str = "school_erp"
+    MYSQL_HOST: str = "localhost"
+    MYSQL_PORT: int = 3306
+    MYSQL_USER: str = "root"
+    MYSQL_PASSWORD: str = "password"
+    MYSQL_DB: str = "school_erp"
 
     @computed_field
     @property
     def DATABASE_URL(self) -> str:
-        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        return f"mysql+aiomysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DB}?charset=utf8mb4"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -331,7 +331,8 @@ async def list_students(
 
 ```python
 from sqlalchemy import MetaData, func
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import JSON
+from src.core.base_model import UUIDType
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from uuid import uuid4
 from datetime import datetime
@@ -642,11 +643,11 @@ ENVIRONMENT=local
 DEBUG=true
 
 # Database
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=password
-POSTGRES_DB=school_erp
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=password
+MYSQL_DB=school_erp
 
 # Redis
 REDIS_URL=redis://localhost:6379/0
@@ -687,13 +688,12 @@ services:
     volumes: ["./src:/app/src", "./uploads:/app/uploads"]
 
   db:
-    image: postgres:16
+    image: mysql:8.0
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: school_erp
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: school_erp
     ports: ["5432:5432"]
-    volumes: ["pgdata:/var/lib/postgresql/data"]
+    volumes: ["mysqldata:/var/lib/mysql"]
 
   redis:
     image: redis:7-alpine

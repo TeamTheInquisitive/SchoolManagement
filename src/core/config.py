@@ -15,18 +15,18 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Database
-    POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "password"
-    POSTGRES_DB: str = "school_erp"
+    MYSQL_HOST: str = "localhost"
+    MYSQL_PORT: int = 3306
+    MYSQL_USER: str = "root"
+    MYSQL_PASSWORD: str = "password"
+    MYSQL_DB: str = "school_erp"
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def DATABASE_URL(self) -> str:
         return (
-            f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+            f"mysql+aiomysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}"
+            f"@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DB}?charset=utf8mb4"
         )
 
     # Redis
@@ -60,8 +60,8 @@ class Settings(BaseSettings):
     def validate_non_default_secrets(self) -> Settings:
         if self.ENVIRONMENT != "local" and self.JWT_SECRET_KEY == "change-me-in-production":
             raise ValueError("JWT_SECRET_KEY must be changed in non-local environments")
-        if self.ENVIRONMENT != "local" and self.POSTGRES_PASSWORD == "password":
-            raise ValueError("POSTGRES_PASSWORD must be changed in non-local environments")
+        if self.ENVIRONMENT != "local" and self.MYSQL_PASSWORD == "password":
+            raise ValueError("MYSQL_PASSWORD must be changed in non-local environments")
         return self
 
 

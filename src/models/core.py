@@ -3,8 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import CheckConstraint, ForeignKey, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.base_model import (
@@ -13,6 +12,7 @@ from src.core.base_model import (
     BaseModel,
     SoftDeleteMixin,
     TimestampMixin,
+    UUIDType,
 )
 
 
@@ -22,11 +22,11 @@ class School(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
     __tablename__ = "schools"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        UUIDType, primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
-    logo_url: Mapped[str | None] = mapped_column(String, default=None)
+    logo_url: Mapped[str | None] = mapped_column(Text, default=None)
     address_line1: Mapped[str | None] = mapped_column(String(255), default=None)
     address_line2: Mapped[str | None] = mapped_column(String(255), default=None)
     city: Mapped[str | None] = mapped_column(String(100), default=None)
@@ -40,7 +40,7 @@ class School(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
     established_year: Mapped[int | None] = mapped_column(default=None)
     principal_name: Mapped[str | None] = mapped_column(String(255), default=None)
     metadata_: Mapped[dict] = mapped_column(
-        "metadata", JSONB, default=dict, server_default="{}"
+        "metadata", JSON, default=dict
     )
 
     # Relationships
@@ -56,17 +56,17 @@ class User(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        UUIDType, primary_key=True, default=uuid.uuid4
     )
     school_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("schools.id"), index=True
+        UUIDType, ForeignKey("schools.id"), index=True
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)  # admin, teacher, student, parent
     phone: Mapped[str | None] = mapped_column(String(20), default=None)
-    avatar_url: Mapped[str | None] = mapped_column(String, default=None)
+    avatar_url: Mapped[str | None] = mapped_column(Text, default=None)
     last_login_at: Mapped[datetime | None] = mapped_column(default=None)
     password_reset_token: Mapped[str | None] = mapped_column(String(255), default=None)
     password_reset_expires: Mapped[datetime | None] = mapped_column(default=None)
@@ -75,17 +75,17 @@ class User(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
 
     # Foreign keys to link user to staff/student/parent records
     staff_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), default=None
+        UUIDType, ForeignKey("staff.id", use_alter=True), default=None
     )
     student_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("students.id"), default=None
+        UUIDType, ForeignKey("students.id", use_alter=True), default=None
     )
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("parents.id"), default=None
+        UUIDType, ForeignKey("parents.id", use_alter=True), default=None
     )
 
     metadata_: Mapped[dict] = mapped_column(
-        "metadata", JSONB, default=dict, server_default="{}"
+        "metadata", JSON, default=dict
     )
 
     # Relationships
@@ -119,8 +119,8 @@ class Settings(BaseModel):
 
     category: Mapped[str] = mapped_column(String(100), nullable=False)
     key: Mapped[str] = mapped_column(String(100), nullable=False)
-    value: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    description: Mapped[str | None] = mapped_column(String, default=None)
+    value: Mapped[dict] = mapped_column(JSON, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 class EnumConfig(BaseModel):
@@ -137,4 +137,4 @@ class EnumConfig(BaseModel):
     value: Mapped[str] = mapped_column(String(100), nullable=False)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     sort_order: Mapped[int] = mapped_column(default=0)
-    config: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    config: Mapped[dict] = mapped_column(JSON, default=dict)

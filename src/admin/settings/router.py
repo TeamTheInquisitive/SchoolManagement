@@ -218,3 +218,28 @@ async def bulk_create_subjects(
         message=f"{created} subjects created",
         metadata={},
     )
+
+
+# ---------------------------------------------------------------------------
+# Class Sections Lookup
+# ---------------------------------------------------------------------------
+
+
+@router.get("/class-sections/")
+async def list_class_sections(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> list[dict]:
+    """List all class-section combinations with their UUIDs."""
+    return await service.list_class_sections(db, school.id)
+
+
+@router.get("/subjects/")
+async def list_subjects(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> list[dict]:
+    """List all subjects for dropdowns."""
+    return await service.list_subjects(db, school.id)

@@ -61,8 +61,8 @@ async def get_dashboard_stats(db: AsyncSession, school_id: uuid.UUID) -> dict:
     if ay:
         fee_stats = (await db.execute(
             select(
-                func.coalesce(func.sum(FeeRecord.paid_amount), 0),
-                func.coalesce(func.sum(FeeRecord.net_amount), 0),
+                func.coalesce(func.sum(FeeRecord.paid), 0),
+                func.coalesce(func.sum(FeeRecord.total_amount), 0),
             ).where(
                 FeeRecord.school_id == school_id,
                 FeeRecord.academic_year_id == ay.id,
@@ -177,8 +177,8 @@ async def get_student_distribution(db: AsyncSession, school_id: uuid.UUID) -> di
             StudentEnrollment.is_active.is_(True),
             Student.is_active.is_(True),
         )
-        .group_by(Class.name, Class.numeric_order)
-        .order_by(Class.numeric_order)
+        .group_by(Class.name, Class.sort_order)
+        .order_by(Class.sort_order)
     )
     rows = result.all()
 
@@ -244,8 +244,8 @@ async def get_leave_overview(db: AsyncSession, school_id: uuid.UUID) -> dict:
         select(func.count(LeaveApplication.id)).where(
             base_filter,
             LeaveApplication.status == "Approved",
-            LeaveApplication.start_date <= today,
-            LeaveApplication.end_date >= today,
+            LeaveApplication.from_date <= today,
+            LeaveApplication.to_date >= today,
         )
     )).scalar() or 0
 
@@ -254,7 +254,7 @@ async def get_leave_overview(db: AsyncSession, school_id: uuid.UUID) -> dict:
         select(func.count(LeaveApplication.id)).where(
             base_filter,
             LeaveApplication.status == "Approved",
-            LeaveApplication.start_date > today,
+            LeaveApplication.from_date > today,
         )
     )).scalar() or 0
 
@@ -264,13 +264,13 @@ async def get_leave_overview(db: AsyncSession, school_id: uuid.UUID) -> dict:
             LeaveApplication.id,
             Staff.full_name,
             LeaveApplication.leave_type,
-            LeaveApplication.total_days,
-            LeaveApplication.start_date,
-            LeaveApplication.end_date,
+            LeaveApplication.days,
+            LeaveApplication.from_date,
+            LeaveApplication.to_date,
         )
         .join(Staff, LeaveApplication.staff_id == Staff.id)
         .where(base_filter, LeaveApplication.status == "Pending")
-        .order_by(LeaveApplication.applied_at.desc())
+        .order_by(LeaveApplication.applied_on.desc())
         .limit(5)
     )
     pending_rows = pending_result.all()

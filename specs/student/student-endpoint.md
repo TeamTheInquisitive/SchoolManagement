@@ -5,7 +5,7 @@
 ```
 Student Portal API:
 ├── Runtime: Node.js / Python (Django/FastAPI)
-├── Database: PostgreSQL (shared with Admin & Teacher modules)
+├── Database: MySQL (shared with Admin & Teacher modules)
 ├── Auth: JWT (httpOnly cookies) + Refresh Token rotation
 ├── Multi-tenancy: X-School-Code header → DB schema/filter
 ├── API Style: RESTful, JSON

@@ -1,7 +1,7 @@
 from typing import Optional
 
 import uuid
-from datetime import date, datetime
+from datetime import date as date_type, datetime
 
 from pydantic import BaseModel, Field
 
@@ -17,7 +17,7 @@ class CreateExamRequest(BaseModel):
     class_name: str = Field(..., min_length=1)
     section: str = Field(..., min_length=1)
     subject: str = Field(..., min_length=1)
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     start_time: str | None = None
     end_time: str | None = None
     total_marks: float = Field(..., gt=0)
@@ -34,7 +34,7 @@ class UpdateExamRequest(BaseModel):
 
     name: str | None = Field(default=None, max_length=255)
     exam_type: str | None = None
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     start_time: str | None = None
     end_time: str | None = None
     total_marks: float | None = None
@@ -116,7 +116,7 @@ class ExamListItem(BaseModel):
     class_name: str
     section: str
     subject: str
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     start_time: str | None = None
     end_time: str | None = None
     total_marks: float
@@ -189,7 +189,7 @@ class ExamDetailResponse(BaseModel):
     class_name: str
     section: str
     subject: str
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     start_time: str | None = None
     end_time: str | None = None
     total_marks: float
@@ -224,7 +224,7 @@ class ExamCreateResponse(BaseModel):
     class_name: str
     section: str
     subject: str
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     start_time: str | None = None
     end_time: str | None = None
     total_marks: float
@@ -245,7 +245,7 @@ class ExamCancelResponse(BaseModel):
     id: uuid.UUID
     name: str
     status: str
-    cancelled_on: date
+    cancelled_on: date_type
     message: str
 
 
@@ -384,7 +384,7 @@ class SubjectTrendItem(BaseModel):
     """A single exam trend point."""
 
     exam_name: str
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     average: float
     pass_rate: float
 
@@ -505,7 +505,7 @@ class GenerateReportCardsResponse(BaseModel):
 class ScheduleExamItem(BaseModel):
     """Exam entry in the schedule."""
 
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     subject: str
     start_time: str | None = None
     end_time: str | None = None

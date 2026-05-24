@@ -663,7 +663,7 @@ async def list_submissions(
     query = (
         select(AssignmentSubmission)
         .where(base_filter)
-        .order_by(AssignmentSubmission.submitted_at.desc().nullslast())
+        .order_by(AssignmentSubmission.submitted_at.desc())
         .offset(pagination.offset)
         .limit(pagination.page_size)
     )

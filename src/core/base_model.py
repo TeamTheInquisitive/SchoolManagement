@@ -3,9 +3,27 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, MetaData, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import CHAR, ForeignKey, JSON, MetaData, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
+
+
+class UUIDType(TypeDecorator):
+    """Platform-independent UUID type. Uses CHAR(36) for MySQL."""
+
+    impl = CHAR(36)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return str(value)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return uuid.UUID(value)
+        return value
+
 
 # Explicit naming conventions for constraints/indexes
 convention = {
@@ -33,28 +51,28 @@ class TimestampMixin:
 class SoftDeleteMixin:
     is_active: Mapped[bool] = mapped_column(default=True, index=True)
     deleted_at: Mapped[datetime | None] = mapped_column(default=None)
-    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(UUIDType, default=None)
 
 
 class AuditMixin:
-    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
-    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), default=None)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUIDType, default=None)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUIDType, default=None)
 
 
 class SchoolMixin:
     school_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("schools.id"), index=True
+        UUIDType, ForeignKey("schools.id"), index=True
     )
 
 
 class BaseModel(Base, TimestampMixin, SoftDeleteMixin, AuditMixin, SchoolMixin):
-    """Abstract base model combining all mixins with UUID PK and metadata JSONB."""
+    """Abstract base model combining all mixins with UUID PK and metadata JSON."""
 
     __abstract__ = True
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        UUIDType, primary_key=True, default=uuid.uuid4
     )
     metadata_: Mapped[dict] = mapped_column(
-        "metadata", JSONB, default=dict, server_default="{}"
+        "metadata", JSON, default=dict
     )

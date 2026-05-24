@@ -6,17 +6,18 @@ from datetime import date, datetime
 from sqlalchemy import (
     Boolean,
     Date,
+    DateTime,
     ForeignKey,
     Index,
+    JSON,
     Numeric,
     String,
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class Assignment(BaseModel):
@@ -31,16 +32,16 @@ class Assignment(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     class_section_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("class_sections.id"), nullable=False
+        UUIDType, ForeignKey("class_sections.id"), nullable=False
     )
     subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("subjects.id"), nullable=False
+        UUIDType, ForeignKey("subjects.id"), nullable=False
     )
     staff_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False
+        UUIDType, ForeignKey("staff.id"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, default=None)
@@ -79,28 +80,28 @@ class AssignmentSubmission(BaseModel):
     )
 
     assignment_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        UUIDType,
         ForeignKey("assignments.id", ondelete="CASCADE"),
         nullable=False,
     )
     student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("students.id"), nullable=False
+        UUIDType, ForeignKey("students.id"), nullable=False
     )
     status: Mapped[str] = mapped_column(
         String(20), default="Pending", nullable=False
     )
     submitted_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), default=None
+        DateTime(timezone=True), default=None
     )
     comments: Mapped[str | None] = mapped_column(Text, default=None)
-    file_urls: Mapped[list | None] = mapped_column(JSONB, default=list)
+    file_urls: Mapped[list | None] = mapped_column(JSON, default=list)
     marks: Mapped[float | None] = mapped_column(Numeric(6, 2), default=None)
     feedback: Mapped[str | None] = mapped_column(Text, default=None)
     graded_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), default=None
+        DateTime(timezone=True), default=None
     )
     graded_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), default=None
+        UUIDType, ForeignKey("staff.id"), default=None
     )
     is_late: Mapped[bool] = mapped_column(Boolean, default=False)
 

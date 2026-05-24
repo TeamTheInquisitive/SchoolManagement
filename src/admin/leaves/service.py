@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import AppException, ConflictError, NotFound
@@ -107,9 +107,9 @@ async def list_leave_applications(
     # Overall summary
     summary_query = select(
         func.count().label("total"),
-        func.count().filter(LeaveApplication.status == "Approved").label("approved"),
-        func.count().filter(LeaveApplication.status == "Pending").label("pending"),
-        func.count().filter(LeaveApplication.status == "Rejected").label("rejected"),
+        func.sum(case((LeaveApplication.status == "Approved", 1), else_=0)).label("approved"),
+        func.sum(case((LeaveApplication.status == "Pending", 1), else_=0)).label("pending"),
+        func.sum(case((LeaveApplication.status == "Rejected", 1), else_=0)).label("rejected"),
     ).where(
         LeaveApplication.school_id == school_id,
         LeaveApplication.academic_year_id == ay.id,

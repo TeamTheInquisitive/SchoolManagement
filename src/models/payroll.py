@@ -6,18 +6,19 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class SalaryStructure(BaseModel):
@@ -34,10 +35,10 @@ class SalaryStructure(BaseModel):
     )
 
     staff_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False
+        UUIDType, ForeignKey("staff.id"), nullable=False
     )
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     basic_salary: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     hra: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
@@ -48,13 +49,13 @@ class SalaryStructure(BaseModel):
     medical_allowance: Mapped[Decimal] = mapped_column(
         Numeric(10, 2), default=Decimal("0")
     )
-    other_allowances: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    other_allowances: Mapped[dict] = mapped_column(JSON, default=dict)
     pf_deduction: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
     professional_tax: Mapped[Decimal] = mapped_column(
         Numeric(10, 2), default=Decimal("0")
     )
     tds: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
-    other_deductions: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    other_deductions: Mapped[dict] = mapped_column(JSON, default=dict)
     net_salary: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
 
@@ -81,10 +82,10 @@ class Payslip(BaseModel):
     )
 
     staff_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False
+        UUIDType, ForeignKey("staff.id"), nullable=False
     )
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -99,10 +100,10 @@ class Payslip(BaseModel):
     payment_method: Mapped[str | None] = mapped_column(String(50), default=None)
     reference: Mapped[str | None] = mapped_column(String(100), default=None)
     generated_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False
+        DateTime(timezone=True), nullable=False
     )
     generated_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), default=None
+        UUIDType, ForeignKey("users.id"), default=None
     )
 
     # Relationships
@@ -121,7 +122,7 @@ class SalaryAdvance(BaseModel):
     )
 
     staff_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False
+        UUIDType, ForeignKey("staff.id"), nullable=False
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, default=None)
@@ -131,20 +132,20 @@ class SalaryAdvance(BaseModel):
     )
     status: Mapped[str] = mapped_column(String(20), default="Pending", nullable=False)
     applied_on: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False
+        DateTime(timezone=True), nullable=False
     )
     approved_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), default=None
+        UUIDType, ForeignKey("users.id"), default=None
     )
     approved_on: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), default=None
+        DateTime(timezone=True), default=None
     )
     rejected_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), default=None
+        UUIDType, ForeignKey("users.id"), default=None
     )
     remarks: Mapped[str | None] = mapped_column(Text, default=None)
     disbursed_on: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), default=None
+        DateTime(timezone=True), default=None
     )
 
     # Relationships
@@ -168,10 +169,10 @@ class SalaryRevision(BaseModel):
     )
 
     staff_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False
+        UUIDType, ForeignKey("staff.id"), nullable=False
     )
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     effective_date: Mapped[date] = mapped_column(Date, nullable=False)
     previous_basic: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
@@ -182,10 +183,10 @@ class SalaryRevision(BaseModel):
         Numeric(10, 2), default=None
     )
     approved_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), default=None
+        UUIDType, ForeignKey("users.id"), default=None
     )
     approved_on: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), default=None
+        DateTime(timezone=True), default=None
     )
     remarks: Mapped[str | None] = mapped_column(Text, default=None)
 

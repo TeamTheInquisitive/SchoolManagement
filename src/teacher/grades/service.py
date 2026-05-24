@@ -495,7 +495,7 @@ async def get_exams_for_grading(
                 Exam.subject_id == subj_id,
                 Exam.is_active.is_(True),
                 Exam.status.in_(["Scheduled", "In Progress", "Completed", "Published"]),
-            ).order_by(Exam.date.desc().nullslast())
+            ).order_by(Exam.date.desc())
         )
         exams = list(exams_result.scalars().all())
 

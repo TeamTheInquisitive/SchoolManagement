@@ -5,9 +5,9 @@ A production-ready FastAPI backend for a multi-tenant School ERP system supporti
 ## Tech Stack
 
 - **FastAPI** (async Python web framework)
-- **PostgreSQL 16** (database)
+- **MySQL 8.0** (database)
 - **Redis 7** (token blacklist, caching)
-- **SQLAlchemy 2.0** (async ORM)
+- **SQLAlchemy 2.0** (async ORM with aiomysql)
 - **Alembic** (migrations)
 - **Pydantic v2** (validation)
 - **JWT** (httpOnly cookie auth)
@@ -17,7 +17,7 @@ A production-ready FastAPI backend for a multi-tenant School ERP system supporti
 | Requirement | Version | Check Command |
 |-------------|---------|---------------|
 | Python | 3.12+ | `python3 --version` |
-| PostgreSQL | 16+ | `psql --version` |
+| MySQL | 8.0+ | `mysql --version` |
 | Redis | 7+ | `redis-cli --version` |
 | Docker (optional) | 20+ | `docker --version` |
 
@@ -28,7 +28,7 @@ A production-ready FastAPI backend for a multi-tenant School ERP system supporti
 ```bash
 cd school-erp-backend
 
-# Start all services (PostgreSQL + Redis + App)
+# Start all services (MySQL + Redis + App)
 docker-compose up -d
 
 # Wait for services to be healthy (~10 seconds)
@@ -46,25 +46,25 @@ docker-compose exec app python -m src.seeds.initial
 
 ### Option 2: Local Development (Step by Step)
 
-#### Step 1: Start PostgreSQL & Redis
+#### Step 1: Start MySQL & Redis
 
 ```bash
 # macOS (Homebrew)
-brew services start postgresql@16
+brew services start mysql
 brew services start redis
 
 # Or use Docker for just DB + Redis
-docker run -d --name school-pg -p 5432:5432 -e POSTGRES_PASSWORD=password postgres:16
+docker run -d --name school-mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=password -e MYSQL_DATABASE=school_erp mysql:8.0 --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 docker run -d --name school-redis -p 6379:6379 redis:7-alpine
 ```
 
 #### Step 2: Create Database
 
 ```bash
-createdb school_erp
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS school_erp CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
 # Verify connection
-psql school_erp -c "SELECT 1;"
+mysql -u root -p school_erp -e "SELECT 1;"
 ```
 
 #### Step 3: Setup Python Environment
@@ -90,7 +90,7 @@ pip install -e .
 cp .env.example .env
 
 # Edit .env if needed (defaults work for local dev)
-# - POSTGRES_PASSWORD=password
+# - MYSQL_PASSWORD=password
 # - REDIS_URL=redis://localhost:6379/0
 # - JWT_SECRET_KEY=change-me-in-production (OK for local)
 ```
@@ -155,19 +155,19 @@ kill -9 <PID>
 uvicorn src.main:app --reload --port 8001
 ```
 
-### 2. `connection refused` (PostgreSQL)
+### 2. `connection refused` (MySQL)
 
 ```bash
-# Check if PostgreSQL is running
-pg_isready
-# → accepting connections
+# Check if MySQL is running
+mysqladmin ping -u root -p
+# → mysqld is alive
 
 # If not running:
-brew services start postgresql@16    # macOS
-sudo systemctl start postgresql      # Linux
+brew services start mysql            # macOS
+sudo systemctl start mysql           # Linux
 
 # Check connection with your .env settings
-psql -h localhost -U postgres -d school_erp
+mysql -h localhost -u root -p school_erp
 ```
 
 ### 3. `connection refused` (Redis)
@@ -258,9 +258,8 @@ ALLOWED_ORIGINS=["http://localhost:5173","http://localhost:3000"]
 # Run migrations
 alembic upgrade head
 
-# If that fails, check DATABASE_URL in .env matches your actual PostgreSQL setup
-echo $DATABASE_URL
-psql school_erp -c "\dt"   # List tables
+# If that fails, check DATABASE_URL in .env matches your actual MySQL setup
+mysql -u root -p school_erp -e "SHOW TABLES;"
 ```
 
 ---
@@ -273,276 +272,7 @@ psql school_erp -c "\dt"   # List tables
 # If running via Docker:
 docker-compose down
 
-# Stop PostgreSQL/Redis (local):
-brew services stop postgresql@16
+# Stop MySQL/Redis (local):
+brew services stop mysql
 brew services stop redis
 ```
-
-## Reset Everything (Fresh Start)
-
-```bash
-# Drop and recreate database
-dropdb school_erp
-createdb school_erp
-
-# Re-run migrations
-alembic upgrade head
-
-# Re-seed
-python -m src.seeds.initial
-```
-
-## API Documentation
-
-Once running, auto-generated docs are at:
-
-| URL | Description |
-|-----|-------------|
-| http://localhost:8000/docs | Swagger UI (interactive) |
-| http://localhost:8000/redoc | ReDoc (readable) |
-| http://localhost:8000/openapi.json | OpenAPI schema |
-| http://localhost:8000/health | Health check |
-
-## Default Credentials
-
-| Role | Email | Password | School Code | Frontend Port |
-|------|-------|----------|-------------|---------------|
-| Admin | admin@school.com | password123 | SCH001 | localhost:5173 |
-| Teacher | jane@teacher.com | password123 | SCH001 | localhost:5174 |
-| Student | john@student.com | password123 | SCH001 | localhost:5175 |
-
-## API Structure
-
-```
-/api/v1/auth/...        → Shared auth (all roles)
-/api/v1/admin/...       → Admin portal (role: admin)
-/api/v1/teacher/...     → Teacher portal (role: teacher)
-/api/v1/student/...     → Student portal (role: student)
-```
-
-## Project Structure
-
-```
-src/
-├── main.py              # App entry point
-├── core/                # Shared infrastructure
-│   ├── config.py        # Environment settings
-│   ├── database.py      # Async DB connection
-│   ├── redis.py         # Redis connection
-│   ├── base_model.py    # SQLAlchemy base + mixins
-│   ├── security.py      # JWT + password hashing
-│   ├── dependencies.py  # Annotated type aliases
-│   ├── exceptions.py    # Domain exceptions
-│   ├── pagination.py    # Generic pagination
-│   ├── middleware.py     # School context
-│   ├── csv_export.py    # CSV generation
-│   └── pdf_generator.py # PDF generation stubs
-├── auth/                # Auth domain (7 endpoints)
-├── admin/               # Admin portal domains
-│   ├── dashboard/       # 7 endpoints
-│   ├── students/        # 12 endpoints
-│   ├── teachers/        # 12 endpoints
-│   ├── staff/           # 5 endpoints
-│   ├── leaves/          # 10 endpoints
-│   ├── timetable/       # 11 endpoints
-│   ├── examinations/    # 16 endpoints
-│   ├── fees/            # 12 endpoints
-│   ├── transport/       # 24 endpoints
-│   ├── notifications/   # 5 endpoints
-│   ├── payroll/         # 11 endpoints
-│   └── settings/        # 11 endpoints
-├── teacher/             # Teacher portal domains
-│   ├── dashboard/       # 8 endpoints
-│   ├── classes/         # 4 endpoints
-│   ├── students/        # 9 endpoints
-│   ├── attendance/      # 6 endpoints
-│   ├── assignments/     # 8 endpoints
-│   ├── grades/          # 8 endpoints
-│   ├── notifications/   # 4 endpoints
-│   ├── timetable/       # 2 endpoints
-│   ├── adhoc_classes/   # 4 endpoints
-│   └── leaves/          # 6 endpoints
-├── student/             # Student portal domains
-│   ├── dashboard/       # 10 endpoints
-│   ├── profile/         # 3 endpoints
-│   ├── timetable/       # 2 endpoints
-│   ├── attendance/      # 3 endpoints
-│   ├── assignments/     # 4 endpoints
-│   ├── results/         # 5 endpoints
-│   ├── fees/            # 6 endpoints
-│   ├── library/         # 4 endpoints
-│   └── notifications/   # 3 endpoints
-└── models/              # SQLAlchemy models (shared)
-```
-
-## React UI Integration Guide
-
-### 1. Axios Setup
-
-Create an API service file in your React app:
-
-```javascript
-// src/services/api.js
-import axios from 'axios';
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
-  headers: { 'Content-Type': 'application/json' },
-  withCredentials: true,  // REQUIRED: sends httpOnly cookies
-});
-
-// Attach school code to every request
-api.interceptors.request.use((config) => {
-  const schoolCode = localStorage.getItem('school_code');
-  if (schoolCode) config.headers['X-School-Code'] = schoolCode;
-  return config;
-});
-
-// Auto-refresh token on 401
-api.interceptors.response.use(
-  (res) => res,
-  async (error) => {
-    const original = error.config;
-    if (error.response?.status === 401 && !original._retry) {
-      original._retry = true;
-      try {
-        await api.post('/auth/refresh-token/');
-        return api(original);
-      } catch {
-        window.location.href = '/login';
-      }
-    }
-    return Promise.reject(error);
-  }
-);
-
-export default api;
-```
-
-### 2. Login Flow
-
-```javascript
-// Login — cookies are set automatically by the backend
-const login = async (email, password) => {
-  const { data } = await api.post('/auth/login/', { email, password });
-  localStorage.setItem('user', JSON.stringify(data.user));
-  localStorage.setItem('school_code', data.user.school_code);
-  return data.user;
-};
-
-// Logout
-const logout = async () => {
-  await api.post('/auth/logout/');
-  localStorage.removeItem('user');
-  localStorage.removeItem('school_code');
-};
-```
-
-### 3. CORS Configuration
-
-The backend is pre-configured to accept requests from:
-- `http://localhost:5173` (Admin portal - Vite)
-- `http://localhost:5174` (Teacher portal)
-- `http://localhost:5175` (Student portal)
-
-To add more origins, update `.env`:
-```
-ALLOWED_ORIGINS=["http://localhost:5173","http://localhost:3000","https://yourdomain.com"]
-```
-
-### 4. Key Headers
-
-| Header | Value | Purpose |
-|--------|-------|---------|
-| `Content-Type` | `application/json` | Request body format |
-| `X-School-Code` | `SCH001` | Multi-tenant school identifier |
-| `Cookie` | (automatic) | Auth tokens — `withCredentials: true` handles this |
-
-### 5. Response Format
-
-All list endpoints return:
-```json
-{
-  "count": 50,
-  "page": 1,
-  "page_size": 20,
-  "total_pages": 3,
-  "results": [...]
-}
-```
-
-All errors return:
-```json
-{
-  "error": "Human-readable message",
-  "code": "ERROR_CODE",
-  "details": { "field": ["error message"] }
-}
-```
-
-### 6. File Uploads
-
-For assignment submissions (multipart/form-data):
-```javascript
-const submitAssignment = async (assignmentId, files, comments) => {
-  const formData = new FormData();
-  formData.append('comments', comments);
-  files.forEach(file => formData.append('files', file));
-
-  return api.post(`/student/assignments/${assignmentId}/submit/`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-};
-```
-
-### 7. Role-Based Routing
-
-```javascript
-// After login, route based on role
-const user = JSON.parse(localStorage.getItem('user'));
-switch (user.role) {
-  case 'admin':       navigate('/admin/dashboard'); break;
-  case 'teacher':     navigate('/teacher/dashboard'); break;
-  case 'student':     navigate('/student/dashboard'); break;
-}
-```
-
-### 8. Environment Variables (React)
-
-```env
-# .env in React app
-VITE_API_URL=http://localhost:8000/api/v1
-```
-
-## Database
-
-- Multi-tenant via `school_id` on every table
-- Academic year scoping on all transactional data
-- Soft deletes (is_active flag, never hard delete)
-- UUID primary keys
-- JSONB metadata field on every entity
-
-### Migrations
-
-```bash
-# Create new migration
-alembic revision --autogenerate -m "description_of_change"
-
-# Apply migrations
-alembic upgrade head
-
-# Rollback last migration
-alembic downgrade -1
-```
-
-## Architecture Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| Domain-based structure | Each feature owns its router, schemas, service |
-| Teacher = Staff | Same DB table, `is_teacher=true` for teachers |
-| httpOnly cookies | Prevents XSS token theft |
-| Redis token blacklist | Instant logout without waiting for expiry |
-| Academic year scoping | Schools operate in annual cycles |
-| Soft deletes everywhere | Full audit trail, no data loss |
-| Configurable enums | Admin manages dropdowns via Settings API |

@@ -585,3 +585,40 @@ async def bulk_create_subjects(
         await db.commit()
 
     return created
+
+
+# ---------------------------------------------------------------------------
+# Class Sections Lookup
+# ---------------------------------------------------------------------------
+
+
+async def list_class_sections(db: AsyncSession, school_id: uuid.UUID) -> list[dict]:
+    """List all class-section combinations with UUIDs."""
+    from src.models.academic import ClassSection
+
+    result = await db.execute(
+        select(ClassSection).where(ClassSection.school_id == school_id)
+    )
+    sections = result.scalars().all()
+    return [
+        {
+            "id": str(cs.id),
+            "class_name": cs.class_.name if cs.class_ else "",
+            "section": cs.section.name if cs.section else "",
+        }
+        for cs in sections
+    ]
+
+
+async def list_subjects(db: AsyncSession, school_id: uuid.UUID) -> list[dict]:
+    """List all subjects for dropdowns."""
+    from src.models.academic import Subject
+
+    result = await db.execute(
+        select(Subject).where(Subject.school_id == school_id, Subject.is_active.is_(True))
+    )
+    subjects = result.scalars().all()
+    return [
+        {"id": str(s.id), "name": s.name, "code": s.code}
+        for s in subjects
+    ]

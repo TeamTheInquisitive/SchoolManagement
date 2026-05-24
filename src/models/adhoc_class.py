@@ -4,10 +4,9 @@ import uuid
 from datetime import date, time
 
 from sqlalchemy import Date, ForeignKey, Index, String, Text, Time
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class AdhocClass(BaseModel):
@@ -16,16 +15,16 @@ class AdhocClass(BaseModel):
     __tablename__ = "adhoc_classes"
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     staff_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False
+        UUIDType, ForeignKey("staff.id"), nullable=False
     )
     class_section_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("class_sections.id"), nullable=False
+        UUIDType, ForeignKey("class_sections.id"), nullable=False
     )
     subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("subjects.id"), nullable=False
+        UUIDType, ForeignKey("subjects.id"), nullable=False
     )
     date: Mapped[date] = mapped_column(Date, nullable=False)
     start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
@@ -34,7 +33,7 @@ class AdhocClass(BaseModel):
     type: Mapped[str] = mapped_column(String(20), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     original_staff_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=True
+        UUIDType, ForeignKey("staff.id"), nullable=True
     )
     topic: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
