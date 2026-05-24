@@ -58,7 +58,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
-    redirect_slashes=True,
+    redirect_slashes=False,
 )
 
 # --- Exception handlers ---
