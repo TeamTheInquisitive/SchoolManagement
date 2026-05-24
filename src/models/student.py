@@ -4,10 +4,9 @@ import uuid
 from datetime import date
 
 from sqlalchemy import Boolean, Date, ForeignKey, Index, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class Student(BaseModel):
@@ -72,8 +71,6 @@ class Student(BaseModel):
     mentors: Mapped[list[StudentMentor]] = relationship(
         "StudentMentor", back_populates="student", lazy="selectin"
     )
-
-
 class StudentEnrollment(BaseModel):
     """Tracks which class+section a student is in for each academic year."""
 
@@ -91,13 +88,13 @@ class StudentEnrollment(BaseModel):
 
     # Foreign keys
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("students.id"), nullable=False
+        UUIDType, ForeignKey("students.id"), nullable=False
     )
     class_section_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("class_sections.id"), nullable=False
+        UUIDType, ForeignKey("class_sections.id"), nullable=False
     )
 
     # Enrollment details
@@ -109,8 +106,6 @@ class StudentEnrollment(BaseModel):
     student: Mapped[Student] = relationship("Student", back_populates="enrollments")
     class_section: Mapped["ClassSection"] = relationship("ClassSection", lazy="selectin")  # noqa: F821
     academic_year: Mapped["AcademicYear"] = relationship("AcademicYear", lazy="selectin")  # noqa: F821
-
-
 class Parent(BaseModel):
     """Parent/guardian records linked to students."""
 
@@ -148,8 +143,6 @@ class Parent(BaseModel):
     student_parents: Mapped[list[StudentParent]] = relationship(
         "StudentParent", back_populates="parent", lazy="selectin"
     )
-
-
 class StudentParent(BaseModel):
     """Many-to-many: a student can have multiple parents/guardians."""
 
@@ -164,17 +157,15 @@ class StudentParent(BaseModel):
 
     # Foreign keys
     student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("students.id"), nullable=False
+        UUIDType, ForeignKey("students.id"), nullable=False
     )
     parent_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("parents.id"), nullable=False
+        UUIDType, ForeignKey("parents.id"), nullable=False
     )
 
     # Relationships
     student: Mapped[Student] = relationship("Student", back_populates="student_parents")
     parent: Mapped[Parent] = relationship("Parent", back_populates="student_parents")
-
-
 class StudentMentor(BaseModel):
     """Assigns a teacher/staff as mentor to a student for an academic year."""
 
@@ -191,13 +182,13 @@ class StudentMentor(BaseModel):
 
     # Foreign keys
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("students.id"), nullable=False
+        UUIDType, ForeignKey("students.id"), nullable=False
     )
     staff_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False
+        UUIDType, ForeignKey("staff.id"), nullable=False
     )
 
     # Details

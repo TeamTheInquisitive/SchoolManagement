@@ -7,6 +7,7 @@ from decimal import Decimal
 from sqlalchemy import (
     Boolean,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -15,10 +16,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class FeeStructure(BaseModel):
@@ -38,10 +38,10 @@ class FeeStructure(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     class_section_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("class_sections.id"), default=None
+        UUIDType, ForeignKey("class_sections.id"), default=None
     )
     fee_type: Mapped[str] = mapped_column(String(50), nullable=False)
     fee_category: Mapped[str] = mapped_column(
@@ -69,13 +69,13 @@ class FeeRecord(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("students.id"), nullable=False
+        UUIDType, ForeignKey("students.id"), nullable=False
     )
     fee_structure_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("fee_structures.id"), default=None
+        UUIDType, ForeignKey("fee_structures.id"), default=None
     )
     fee_type: Mapped[str] = mapped_column(String(50), nullable=False)
     fee_category: Mapped[str] = mapped_column(
@@ -118,14 +118,14 @@ class FeePayment(BaseModel):
     )
 
     fee_record_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("fee_records.id"), nullable=False
+        UUIDType, ForeignKey("fee_records.id"), nullable=False
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     payment_date: Mapped[date] = mapped_column(Date, nullable=False)
     payment_method: Mapped[str] = mapped_column(String(50), nullable=False)
     reference: Mapped[str | None] = mapped_column(String(100), default=None)
     recorded_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), default=None
+        UUIDType, ForeignKey("users.id"), default=None
     )
 
     # Relationships
@@ -145,7 +145,7 @@ class FeeReminder(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     target_group: Mapped[str] = mapped_column(String(20), nullable=False)
     class_name: Mapped[str | None] = mapped_column(String(50), default=None)
@@ -154,10 +154,10 @@ class FeeReminder(BaseModel):
     send_via: Mapped[str] = mapped_column(String(20), nullable=False)
     sent_to_count: Mapped[int] = mapped_column(Integer, default=0)
     sent_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+        UUIDType, ForeignKey("users.id"), nullable=False
     )
     sent_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False
+        DateTime(timezone=True), nullable=False
     )
 
     # Relationships
@@ -175,16 +175,16 @@ class FeePenalty(BaseModel):
     )
 
     fee_record_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("fee_records.id"), nullable=False
+        UUIDType, ForeignKey("fee_records.id"), nullable=False
     )
     penalty_type: Mapped[str] = mapped_column(String(20), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     percentage: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), default=None)
     applied_on: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False
+        DateTime(timezone=True), nullable=False
     )
     applied_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+        UUIDType, ForeignKey("users.id"), nullable=False
     )
 
     # Relationships

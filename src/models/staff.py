@@ -5,10 +5,9 @@ from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import Boolean, Date, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class Staff(BaseModel):
@@ -72,7 +71,7 @@ class Staff(BaseModel):
     # Teacher-specific
     is_teacher: Mapped[bool] = mapped_column(Boolean, default=False)
     primary_subject_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), default=None
+        UUIDType, default=None
     )
     max_workload_hours: Mapped[int | None] = mapped_column(default=None)
 
@@ -84,7 +83,7 @@ class Staff(BaseModel):
 
     # FK to users (nullable -- user account may not be created yet)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), default=None
+        UUIDType, ForeignKey("users.id", use_alter=True), default=None
     )
 
     # Relationships
@@ -108,10 +107,10 @@ class StaffSubject(BaseModel):
     )
 
     staff_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id", ondelete="CASCADE"), nullable=False
+        UUIDType, ForeignKey("staff.id", ondelete="CASCADE"), nullable=False
     )
     subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("subjects.id"), nullable=False
+        UUIDType, ForeignKey("subjects.id"), nullable=False
     )
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -138,16 +137,16 @@ class ClassAssignment(BaseModel):
     )
 
     staff_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False
+        UUIDType, ForeignKey("staff.id"), nullable=False
     )
     class_section_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("class_sections.id"), nullable=False
+        UUIDType, ForeignKey("class_sections.id"), nullable=False
     )
     subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("subjects.id"), nullable=False
+        UUIDType, ForeignKey("subjects.id"), nullable=False
     )
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
 
     is_class_teacher: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -4,10 +4,9 @@ import uuid
 from datetime import time
 
 from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, String, Time, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class PeriodConfig(BaseModel):
@@ -27,7 +26,7 @@ class PeriodConfig(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     name: Mapped[str | None] = mapped_column(String(50), default=None)
     start_time: Mapped[time] = mapped_column(Time, nullable=False)
@@ -42,8 +41,6 @@ class PeriodConfig(BaseModel):
     timetable_slots: Mapped[list["TimetableSlot"]] = relationship(
         "TimetableSlot", back_populates="period_config", lazy="selectin"
     )
-
-
 class TimetableSlot(BaseModel):
     """Actual timetable assignment: day + period + class-section = subject + teacher."""
 
@@ -62,20 +59,20 @@ class TimetableSlot(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     class_section_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("class_sections.id"), nullable=False
+        UUIDType, ForeignKey("class_sections.id"), nullable=False
     )
     period_config_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("period_configs.id"), nullable=False
+        UUIDType, ForeignKey("period_configs.id"), nullable=False
     )
     day_of_week: Mapped[str] = mapped_column(String(10), nullable=False)
     subject_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("subjects.id"), default=None
+        UUIDType, ForeignKey("subjects.id"), default=None
     )
     staff_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), default=None
+        UUIDType, ForeignKey("staff.id"), default=None
     )
     slot_type: Mapped[str] = mapped_column(String(20), default="Lecture", nullable=False)
 
@@ -87,8 +84,6 @@ class TimetableSlot(BaseModel):
     )
     subject: Mapped["Subject | None"] = relationship("Subject", lazy="selectin")
     staff: Mapped["Staff | None"] = relationship("Staff", lazy="selectin")
-
-
 # Type stubs for relationships (avoids circular imports at runtime)
 from src.models.academic import ClassSection, Subject  # noqa: E402, F401
 from src.models.core import AcademicYear  # noqa: E402, F401

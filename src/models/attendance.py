@@ -3,11 +3,10 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, ForeignKey, Index, Integer, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class AttendanceSession(BaseModel):
@@ -28,26 +27,26 @@ class AttendanceSession(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     class_section_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("class_sections.id"), nullable=False
+        UUIDType, ForeignKey("class_sections.id"), nullable=False
     )
     date: Mapped[date] = mapped_column(Date, nullable=False)
     submitted_by: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), nullable=False
+        UUIDType, ForeignKey("staff.id"), nullable=False
     )
     submitted_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False
+        DateTime(timezone=True), nullable=False
     )
     status: Mapped[str] = mapped_column(
         String(20), default="Submitted", nullable=False
     )
     cancelled_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), default=None
+        DateTime(timezone=True), default=None
     )
     cancelled_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), default=None
+        UUIDType, default=None
     )
 
     # Cached counts
@@ -83,12 +82,12 @@ class AttendanceRecord(BaseModel):
     )
 
     attendance_session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        UUIDType,
         ForeignKey("attendance_sessions.id", ondelete="CASCADE"),
         nullable=False,
     )
     student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("students.id"), nullable=False
+        UUIDType, ForeignKey("students.id"), nullable=False
     )
     status: Mapped[str] = mapped_column(String(10), nullable=False)
     remarks: Mapped[str | None] = mapped_column(Text, default=None)

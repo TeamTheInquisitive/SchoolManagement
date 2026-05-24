@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import ConflictError, NotFound
@@ -30,9 +30,9 @@ async def get_transport_stats(db: AsyncSession, school_id: uuid.UUID) -> dict:
     v_result = await db.execute(
         select(
             func.count(Vehicle.id).label("total"),
-            func.count(Vehicle.id).filter(Vehicle.status == "Operational").label("operational"),
-            func.count(Vehicle.id).filter(Vehicle.status == "Maintenance").label("maintenance"),
-            func.count(Vehicle.id).filter(Vehicle.status == "Out-Of-Order").label("out_of_order"),
+            func.sum(case((Vehicle.status == "Operational", 1), else_=0)).label("operational"),
+            func.sum(case((Vehicle.status == "Maintenance", 1), else_=0)).label("maintenance"),
+            func.sum(case((Vehicle.status == "Out-Of-Order", 1), else_=0)).label("out_of_order"),
         ).where(Vehicle.school_id == school_id, Vehicle.is_active.is_(True))
     )
     v_row = v_result.one()
@@ -41,8 +41,8 @@ async def get_transport_stats(db: AsyncSession, school_id: uuid.UUID) -> dict:
     d_result = await db.execute(
         select(
             func.count(Driver.id).label("total"),
-            func.count(Driver.id).filter(Driver.status == "Active").label("active"),
-            func.count(Driver.id).filter(Driver.status == "Available").label("available"),
+            func.sum(case((Driver.status == "Active", 1), else_=0)).label("active"),
+            func.sum(case((Driver.status == "Available", 1), else_=0)).label("available"),
         ).where(Driver.school_id == school_id, Driver.is_active.is_(True))
     )
     d_row = d_result.one()

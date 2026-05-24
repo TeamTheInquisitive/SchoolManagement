@@ -3,11 +3,10 @@ from __future__ import annotations
 import uuid
 from datetime import date, time
 
-from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import ForeignKey, Index, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class Vehicle(BaseModel):
@@ -92,7 +91,7 @@ class Route(BaseModel):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     area: Mapped[str | None] = mapped_column(String(100), nullable=True)
     shift: Mapped[str | None] = mapped_column(String(20), nullable=True)  # Morning/Afternoon/Evening
-    stops: Mapped[dict] = mapped_column(JSONB, default=list, server_default="[]")
+    stops: Mapped[dict] = mapped_column(JSON, default=list)
     distance_km: Mapped[float | None] = mapped_column(nullable=True)
     start_time: Mapped[time | None] = mapped_column(nullable=True)
     end_time: Mapped[time | None] = mapped_column(nullable=True)
@@ -112,16 +111,16 @@ class RouteAssignment(BaseModel):
     __tablename__ = "route_assignments"
 
     route_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("routes.id"), nullable=False
+        UUIDType, ForeignKey("routes.id"), nullable=False
     )
     vehicle_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("vehicles.id"), nullable=False
+        UUIDType, ForeignKey("vehicles.id"), nullable=False
     )
     driver_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False
+        UUIDType, ForeignKey("drivers.id"), nullable=False
     )
     helper_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("helpers.id"), nullable=True
+        UUIDType, ForeignKey("helpers.id"), nullable=True
     )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="Active", server_default="Active"
@@ -145,13 +144,13 @@ class StudentTransport(BaseModel):
     __tablename__ = "student_transport"
 
     student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("students.id"), nullable=False
+        UUIDType, ForeignKey("students.id"), nullable=False
     )
     route_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("routes.id"), nullable=False
+        UUIDType, ForeignKey("routes.id"), nullable=False
     )
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     pickup_point: Mapped[str | None] = mapped_column(String(255), nullable=True)
     drop_point: Mapped[str | None] = mapped_column(String(255), nullable=True)

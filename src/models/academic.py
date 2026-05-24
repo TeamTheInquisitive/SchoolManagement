@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class Class(BaseModel):
@@ -59,13 +58,13 @@ class ClassSection(BaseModel):
     )
 
     class_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("classes.id"), nullable=False
+        UUIDType, ForeignKey("classes.id"), nullable=False
     )
     section_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("sections.id"), nullable=False
+        UUIDType, ForeignKey("sections.id"), nullable=False
     )
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
 
     # Relationships
@@ -86,4 +85,4 @@ class Subject(BaseModel):
 
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[str | None] = mapped_column(String(20), default=None)
-    description: Mapped[str | None] = mapped_column(String, default=None)
+    description: Mapped[str | None] = mapped_column(Text, default=None)

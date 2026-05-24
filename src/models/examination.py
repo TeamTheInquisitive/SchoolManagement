@@ -7,18 +7,20 @@ from decimal import Decimal
 from sqlalchemy import (
     Boolean,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
+    Time,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, TIME, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.core.base_model import BaseModel
+from src.core.base_model import BaseModel, UUIDType
 
 
 class Exam(BaseModel):
@@ -34,33 +36,33 @@ class Exam(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     exam_type: Mapped[str] = mapped_column(String(50), nullable=False)
     class_section_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("class_sections.id"), nullable=False
+        UUIDType, ForeignKey("class_sections.id"), nullable=False
     )
     subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("subjects.id"), nullable=False
+        UUIDType, ForeignKey("subjects.id"), nullable=False
     )
     date: Mapped[date | None] = mapped_column(Date, default=None)
-    start_time: Mapped[str | None] = mapped_column(TIME, default=None)
-    end_time: Mapped[str | None] = mapped_column(TIME, default=None)
+    start_time: Mapped[str | None] = mapped_column(Time, default=None)
+    end_time: Mapped[str | None] = mapped_column(Time, default=None)
     total_marks: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
     passing_marks: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), default=None)
     status: Mapped[str] = mapped_column(
         String(20), default="Draft", nullable=False
     )
     examiner_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("staff.id"), default=None
+        UUIDType, ForeignKey("staff.id"), default=None
     )
     term: Mapped[str | None] = mapped_column(String(20), default=None)
     published_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), default=None
+        DateTime(timezone=True), default=None
     )
     cancelled_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), default=None
+        DateTime(timezone=True), default=None
     )
 
     # Relationships
@@ -92,12 +94,12 @@ class ExamResult(BaseModel):
     )
 
     exam_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        UUIDType,
         ForeignKey("exams.id", ondelete="CASCADE"),
         nullable=False,
     )
     student_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("students.id"), nullable=False
+        UUIDType, ForeignKey("students.id"), nullable=False
     )
     marks_obtained: Mapped[Decimal | None] = mapped_column(
         Numeric(6, 2), default=None
@@ -128,7 +130,7 @@ class GradeSystem(BaseModel):
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("academic_years.id"), nullable=False
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -155,7 +157,7 @@ class GradeScale(BaseModel):
     )
 
     grade_system_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
+        UUIDType,
         ForeignKey("grade_systems.id", ondelete="CASCADE"),
         nullable=False,
     )
