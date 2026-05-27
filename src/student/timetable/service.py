@@ -88,8 +88,21 @@ async def get_weekly_timetable(
     academic_year_name: str | None = None,
 ) -> dict:
     """Get the weekly timetable grid for the student's class."""
-    ay = await _get_current_academic_year(db, school_id, academic_year_name)
-    enrollment = await _get_student_enrollment(db, school_id, user, ay.id)
+    try:
+        ay = await _get_current_academic_year(db, school_id, academic_year_name)
+        enrollment = await _get_student_enrollment(db, school_id, user, ay.id)
+    except NotFound:
+        from datetime import date as _date
+        return {
+            "class_info": {"class_name": "-", "section": "-", "display_label": "Not Enrolled"},
+            "academic_year": "",
+            "current_day": DAY_NAMES[_date.today().weekday()],
+            "is_today_holiday": False,
+            "total_periods": 0,
+            "periods": [],
+            "timetable": {day: [] for day in WORKING_DAYS},
+            "subject_summary": [],
+        }
 
     class_section_id = enrollment.class_section_id
 
@@ -226,8 +239,14 @@ async def get_day_schedule(
     day_name = DAY_NAMES[target_date.weekday()]
     is_today = target_date == date.today()
 
-    ay = await _get_current_academic_year(db, school_id)
-    enrollment = await _get_student_enrollment(db, school_id, user, ay.id)
+    try:
+        ay = await _get_current_academic_year(db, school_id)
+    except NotFound:
+        return {"date": str(target_date), "day": day_name, "is_today": is_today, "class_name": None, "section": None, "periods": []}
+    try:
+        enrollment = await _get_student_enrollment(db, school_id, user, ay.id)
+    except NotFound:
+        return {"date": str(target_date), "day": day_name, "is_today": is_today, "class_name": None, "section": None, "periods": []}
 
     class_section_id = enrollment.class_section_id
 
@@ -274,10 +293,6 @@ async def get_day_schedule(
     # Build schedule
     schedule: list[dict] = []
     for period in periods:
-        # Skip day-specific periods not matching
-        if period.day_of_week and period.day_of_week != day_name:
-            continue
-
         duration = _compute_duration(period.start_time, period.end_time)
         slot = slot_map.get(period.id)
 

@@ -1,7 +1,7 @@
 from typing import Optional
 
 import uuid
-from datetime import date, datetime
+from datetime import date as date_type, datetime
 
 from pydantic import BaseModel, Field
 
@@ -116,7 +116,7 @@ class ExamForGradingItem(BaseModel):
     exam_type: str
     class_section: str
     subject: str
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     max_marks: float
     is_graded: bool
     graded_count: int

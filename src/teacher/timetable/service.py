@@ -117,10 +117,6 @@ async def get_weekly_timetable(
     for day in days_to_process:
         day_items: list[dict] = []
         for period in all_periods:
-            # Skip day-specific periods not matching this day
-            if period.day_of_week and period.day_of_week != day:
-                continue
-
             duration = _compute_duration(period.start_time, period.end_time)
 
             if period.is_break:
@@ -240,10 +236,6 @@ async def get_today_schedule(
     free_periods = 0
 
     for period in all_periods:
-        # Skip day-specific periods not matching this day
-        if period.day_of_week and period.day_of_week != day_name:
-            continue
-
         duration = _compute_duration(period.start_time, period.end_time)
 
         if period.is_break:

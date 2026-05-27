@@ -41,3 +41,4 @@ from src.models.payroll import (  # noqa: F401
 from src.models.activity import Activity, Award, DisciplinaryRecord  # noqa: F401
 from src.models.meeting import ParentMeeting  # noqa: F401
 from src.models.adhoc_class import AdhocClass  # noqa: F401
+from src.models.library import Book, BookIssue  # noqa: F401

@@ -79,7 +79,7 @@ async def get_dashboard_stats(db: AsyncSession, school_id: uuid.UUID, user: User
         upcoming_exams = (await db.execute(
             select(func.count(Exam.id)).where(
                 Exam.school_id == school_id,
-                Exam.conducted_by == staff_id,
+                Exam.examiner_id == staff_id,
                 Exam.date > today,
                 Exam.is_active.is_(True),
                 Exam.status.in_(["Scheduled", "Draft"]),
@@ -235,7 +235,7 @@ async def get_upcoming_exams(db: AsyncSession, school_id: uuid.UUID, user: User)
             .join(Section, ClassSection.section_id == Section.id)
             .where(
                 Exam.school_id == school_id,
-                Exam.conducted_by == staff_id,
+                Exam.examiner_id == staff_id,
                 Exam.date > today,
                 Exam.is_active.is_(True),
                 Exam.status.in_(["Scheduled", "Draft"]),
@@ -268,6 +268,7 @@ async def get_classes_summary(db: AsyncSession, school_id: uuid.UUID, user: User
         result = await db.execute(
             select(
                 ClassAssignment.is_class_teacher,
+                ClassAssignment.class_section_id,
                 Class.name,
                 Section.name,
                 Subject.name,
@@ -282,16 +283,25 @@ async def get_classes_summary(db: AsyncSession, school_id: uuid.UUID, user: User
                 ClassAssignment.academic_year_id == ay.id,
                 ClassAssignment.is_active.is_(True),
             )
-            .order_by(Class.numeric_order, Section.name)
+            .order_by(Class.sort_order, Section.name)
         )
         rows = result.all()
 
         for row in rows:
+            # Count students enrolled in this class section
+            count_result = await db.execute(
+                select(func.count(StudentEnrollment.id)).where(
+                    StudentEnrollment.class_section_id == row[1],
+                    StudentEnrollment.is_active.is_(True),
+                )
+            )
+            student_count = count_result.scalar() or 0
+
             classes.append({
-                "class_name": row[1],
-                "section": row[2],
-                "subject": row[3],
-                "student_count": 0,
+                "class_name": row[2],
+                "section": row[3],
+                "subject": row[4],
+                "student_count": student_count,
                 "is_class_teacher": row[0],
             })
 
@@ -308,9 +318,9 @@ async def get_leave_updates(db: AsyncSession, school_id: uuid.UUID, user: User) 
             select(
                 LeaveApplication.id,
                 LeaveApplication.leave_type,
-                LeaveApplication.start_date,
-                LeaveApplication.end_date,
-                LeaveApplication.total_days,
+                LeaveApplication.from_date,
+                LeaveApplication.to_date,
+                LeaveApplication.days,
                 LeaveApplication.status,
             )
             .where(
@@ -318,7 +328,7 @@ async def get_leave_updates(db: AsyncSession, school_id: uuid.UUID, user: User) 
                 LeaveApplication.staff_id == staff_id,
                 LeaveApplication.is_active.is_(True),
             )
-            .order_by(LeaveApplication.applied_at.desc())
+            .order_by(LeaveApplication.applied_on.desc())
             .limit(5)
         )
         rows = result.all()

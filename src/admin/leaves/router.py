@@ -8,6 +8,8 @@ from fastapi import APIRouter, Query
 from src.admin.leaves import service
 from src.admin.leaves.schemas import (
     AllBalancesResponse,
+    AllocateLeaveRequest,
+    AllocateLeaveResponse,
     ApproveLeaveRequest,
     ApproveLeaveResponse,
     BulkActionRequest,
@@ -164,3 +166,15 @@ async def get_calendar(
     """Get calendar view showing who is on leave for a date range."""
     result = await service.get_calendar(db, school.id, from_date, to_date, department)
     return CalendarResponse(**result)
+
+
+@router.post("/allocate/", response_model=AllocateLeaveResponse)
+async def allocate_leaves(
+    data: AllocateLeaveRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> AllocateLeaveResponse:
+    """Allocate leave balances to selected teachers."""
+    result = await service.allocate_leaves(db, school.id, data.model_dump(), user.id)
+    return AllocateLeaveResponse(**result)

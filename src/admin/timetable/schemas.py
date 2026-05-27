@@ -1,5 +1,3 @@
-from typing import Optional
-
 from datetime import datetime, time
 from uuid import UUID
 
@@ -16,7 +14,6 @@ class CreatePeriodRequest(BaseModel):
     end_time: time
     name: str | None = None
     is_break: bool = False
-    day_of_week: str | None = None
 
 
 class UpdatePeriodRequest(BaseModel):
@@ -24,7 +21,6 @@ class UpdatePeriodRequest(BaseModel):
     end_time: time | None = None
     name: str | None = None
     is_break: bool | None = None
-    day_of_week: str | None = None
 
 
 class PeriodResponse(BaseModel):
@@ -34,7 +30,6 @@ class PeriodResponse(BaseModel):
     end_time: time
     duration_minutes: int | None = None
     is_break: bool = False
-    day_of_week: str | None = None
     sort_order: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None

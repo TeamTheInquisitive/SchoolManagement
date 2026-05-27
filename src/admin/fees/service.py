@@ -723,7 +723,9 @@ async def send_reminder(
     )
 
     target_group = data["target_group"]
-    if target_group.lower() == "overdue":
+    if target_group.lower() == "selected" and data.get("student_ids"):
+        query = query.where(FeeRecord.student_id.in_(data["student_ids"]))
+    elif target_group.lower() == "overdue":
         query = query.where(
             FeeRecord.status.in_(["Overdue", "Pending", "Partial"]),
             FeeRecord.due_date < date.today(),

@@ -341,7 +341,7 @@ async def create_teacher(
     staff.user_id = user.id
 
     await db.commit()
-    await db.refresh(staff, attribute_names=["subjects", "class_assignments"])
+    await db.refresh(staff)
 
     return _build_teacher_response(staff)
 
@@ -455,7 +455,7 @@ async def update_teacher(
 
     staff.updated_by = updated_by
     await db.commit()
-    await db.refresh(staff, attribute_names=["subjects", "class_assignments"])
+    await db.refresh(staff)
 
     return _build_teacher_response(staff)
 

@@ -105,3 +105,31 @@ async def get_adhoc_classes(
     """Get adhoc classes summary."""
     result = await service.get_adhoc_classes_dashboard(db, school.id, user)
     return AdhocClassesDashboardResponse(**result)
+
+
+@router.get("/profile/")
+async def get_teacher_profile(
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+) -> dict:
+    """Get teacher's profile info."""
+    from sqlalchemy import select
+    from src.models.staff import Staff
+    result = await db.execute(
+        select(Staff).where(Staff.school_id == school.id, Staff.user_id == user.id, Staff.is_active.is_(True))
+    )
+    staff = result.scalar_one_or_none()
+    return {
+        "id": user.id,
+        "full_name": user.full_name,
+        "email": user.email,
+        "phone": user.phone,
+        "role": user.role,
+        "employee_id": staff.employee_id if staff else None,
+        "department": staff.department if staff else None,
+        "designation": staff.designation if staff else None,
+        "qualification": staff.qualification if staff else None,
+        "joining_date": staff.joining_date if staff else None,
+        "subject": staff.primary_subject.name if staff and hasattr(staff, 'primary_subject') and staff.primary_subject else None,
+    }

@@ -52,9 +52,10 @@ class BulkApplyLateFeesRequest(BaseModel):
 
 
 class SendReminderRequest(BaseModel):
-    target_group: str  # "All", "Class", "Section", "Overdue"
+    target_group: str  # "All", "Class", "Section", "Overdue", "Selected"
     class_name: str | None = None
     section: str | None = None
+    student_ids: list[uuid.UUID] | None = None
     message: str
     send_via: str  # "email", "in_app"
 

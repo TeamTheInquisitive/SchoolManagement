@@ -4,7 +4,7 @@ import uuid
 from collections import defaultdict
 from datetime import date, time
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.admin.timetable.exceptions import SlotAlreadyOccupied, TeacherConflict, TimeOverlap
@@ -72,7 +72,6 @@ async def _check_time_overlap(
     start_time: time,
     end_time: time,
     exclude_id: uuid.UUID | None = None,
-    day_of_week: str | None = None,
 ) -> None:
     """Check for time overlaps with existing periods."""
     query = select(PeriodConfig).where(
@@ -85,17 +84,9 @@ async def _check_time_overlap(
     )
     if exclude_id:
         query = query.where(PeriodConfig.id != exclude_id)
-    # Match day_of_week (null matches all)
-    if day_of_week:
-        query = query.where(
-            (PeriodConfig.day_of_week == day_of_week) | (PeriodConfig.day_of_week.is_(None))
-        )
-    else:
-        # New period applies to all days, so overlap with any existing
-        pass
 
     result = await db.execute(query)
-    existing = result.scalar_one_or_none()
+    existing = result.scalars().first()
     if existing:
         name = existing.name or f"Period ({existing.start_time.strftime('%H:%M')})"
         raise TimeOverlap(
@@ -203,10 +194,7 @@ async def create_period(
     end_time = data["end_time"]
 
     # Check for time overlap
-    await _check_time_overlap(
-        db, school_id, ay.id, start_time, end_time,
-        day_of_week=data.get("day_of_week"),
-    )
+    await _check_time_overlap(db, school_id, ay.id, start_time, end_time)
 
     duration = _compute_duration(start_time, end_time)
 
@@ -229,7 +217,6 @@ async def create_period(
         end_time=end_time,
         duration_minutes=duration,
         is_break=data.get("is_break", False),
-        day_of_week=data.get("day_of_week"),
         sort_order=sort_order,
         created_by=created_by,
     )
@@ -265,7 +252,6 @@ async def update_period(
     await _check_time_overlap(
         db, school_id, period.academic_year_id, start_time, end_time,
         exclude_id=period_id,
-        day_of_week=data.get("day_of_week", period.day_of_week),
     )
 
     if "start_time" in data:
@@ -276,8 +262,6 @@ async def update_period(
         period.name = data["name"]
     if "is_break" in data:
         period.is_break = data["is_break"]
-    if "day_of_week" in data:
-        period.day_of_week = data["day_of_week"]
 
     period.duration_minutes = _compute_duration(period.start_time, period.end_time)
     period.updated_by = updated_by
@@ -327,7 +311,7 @@ async def get_timetable_grid(
     ay = await _get_current_academic_year(db, school_id, academic_year_name)
     cs = await _get_class_section(db, school_id, class_section_id)
 
-    # Get periods
+    # Get periods (respect class max_periods if set)
     periods_result = await db.execute(
         select(PeriodConfig).where(
             PeriodConfig.school_id == school_id,
@@ -336,7 +320,10 @@ async def get_timetable_grid(
             PeriodConfig.is_break.is_(False),
         ).order_by(PeriodConfig.start_time)
     )
-    periods = periods_result.scalars().all()
+    periods = list(periods_result.scalars().all())
+    max_periods = cs.class_.max_periods if cs.class_ else None
+    if max_periods:
+        periods = periods[:max_periods]
 
     # Get slots for this class
     slots_result = await db.execute(

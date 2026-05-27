@@ -43,9 +43,8 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:5175",
-        "http://schools.theinquisitive.in",
-        "https://schools.theinquisitive.in",
     ]
+    CORS_ALLOW_ALL: bool = True
 
     # Email
     MAIL_SERVER: str = "smtp.gmail.com"

@@ -1,7 +1,7 @@
 from typing import Optional
 
 import uuid
-from datetime import date
+from datetime import date as Date
 
 from pydantic import BaseModel
 
@@ -51,7 +51,7 @@ class SubjectAttendance(BaseModel):
 
 
 class RecentAttendanceRecord(BaseModel):
-    date: Optional[date] = None
+    date: Optional[Date] = None
     subject: str | None = None
     status: str
     period: int | None = None
@@ -74,7 +74,7 @@ class StudentAttendanceOverviewResponse(BaseModel):
 
 class AttendanceHistoryItem(BaseModel):
     id: uuid.UUID
-    date: Optional[date] = None
+    date: Optional[Date] = None
     subject: str | None = None
     period: int | None = None
     status: str
@@ -104,7 +104,7 @@ class WarningItem(BaseModel):
     type: str
     severity: str
     message: str
-    issued_date: date
+    issued_date: Date
     active: bool
     acknowledged: bool = False
     metadata: dict = {}

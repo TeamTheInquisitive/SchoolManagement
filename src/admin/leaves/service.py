@@ -723,3 +723,48 @@ async def _get_or_create_balance(
         await db.flush()
 
     return balance
+
+
+async def allocate_leaves(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    data: dict,
+    user_id: uuid.UUID,
+) -> dict:
+    """Allocate leave balances to selected teachers."""
+    ay = await _get_current_academic_year(db, school_id)
+    staff_ids = data["staff_ids"]
+    leave_types = data["leave_types"]  # {"Casual Leave": 12, "Sick Leave": 10}
+
+    count = 0
+    for staff_id in staff_ids:
+        for leave_type, total in leave_types.items():
+            if total <= 0:
+                continue
+            result = await db.execute(
+                select(LeaveBalance).where(
+                    LeaveBalance.school_id == school_id,
+                    LeaveBalance.staff_id == staff_id,
+                    LeaveBalance.academic_year_id == ay.id,
+                    LeaveBalance.leave_type == leave_type,
+                    LeaveBalance.is_active.is_(True),
+                )
+            )
+            balance = result.scalar_one_or_none()
+            if balance:
+                balance.total_allocated = total
+            else:
+                balance = LeaveBalance(
+                    school_id=school_id,
+                    staff_id=staff_id,
+                    academic_year_id=ay.id,
+                    leave_type=leave_type,
+                    total_allocated=total,
+                    carried_forward=0,
+                    created_by=user_id,
+                )
+                db.add(balance)
+            count += 1
+
+    await db.commit()
+    return {"allocated_count": count, "message": f"Allocated leaves to {len(staff_ids)} teacher(s)"}

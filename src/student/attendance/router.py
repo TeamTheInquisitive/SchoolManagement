@@ -58,3 +58,27 @@ async def get_attendance_warnings(
         db, school.id, user, academic_year
     )
     return StudentAttendanceWarningsResponse(**result)
+
+
+@router.get("/summary/", response_model=StudentAttendanceOverviewResponse)
+async def get_attendance_summary(
+    db: SessionDep,
+    school: SchoolDep,
+    user: StudentUser,
+    academic_year: str | None = Query(default=None),
+) -> StudentAttendanceOverviewResponse:
+    """Alias for attendance overview (summary)."""
+    result = await service.get_attendance_overview(db, school.id, user, academic_year, None)
+    return StudentAttendanceOverviewResponse(**result)
+
+
+@router.get("/monthly/", response_model=StudentAttendanceOverviewResponse)
+async def get_attendance_monthly(
+    db: SessionDep,
+    school: SchoolDep,
+    user: StudentUser,
+    month: str | None = Query(default=None),
+) -> StudentAttendanceOverviewResponse:
+    """Get attendance for a specific month."""
+    result = await service.get_attendance_overview(db, school.id, user, None, month)
+    return StudentAttendanceOverviewResponse(**result)

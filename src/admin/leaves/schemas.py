@@ -203,6 +203,16 @@ class BulkActionResponse(BaseModel):
     results: list[BulkActionResult]
 
 
+class AllocateLeaveRequest(BaseModel):
+    staff_ids: list[uuid.UUID]
+    leave_types: dict[str, int]  # e.g. {"Casual Leave": 12, "Sick Leave": 10, "Annual Leave": 15}
+
+
+class AllocateLeaveResponse(BaseModel):
+    allocated_count: int
+    message: str
+
+
 # --- Calendar Schemas ---
 
 

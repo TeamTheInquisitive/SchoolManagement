@@ -28,6 +28,7 @@ from src.admin.examinations.router import router as admin_examinations_router
 from src.admin.leaves.router import router as admin_leaves_router
 from src.teacher.grades.router import router as teacher_grades_router
 from src.teacher.leaves.router import router as teacher_leaves_router
+from src.teacher.notifications.router import router as teacher_notifications_router
 from src.student.results.router import router as student_results_router
 from src.admin.fees.router import router as admin_fees_router
 from src.admin.transport.router import router as admin_transport_router
@@ -40,6 +41,7 @@ from src.teacher.dashboard.router import router as teacher_dashboard_router
 from src.teacher.adhoc_classes.router import router as teacher_adhoc_classes_router
 from src.student.dashboard.router import router as student_dashboard_router
 from src.student.library.router import router as student_library_router
+from src.admin.library.router import router as admin_library_router
 
 
 @asynccontextmanager
@@ -58,7 +60,7 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
-    redirect_slashes=False,
+    redirect_slashes=True,
 )
 
 # --- Exception handlers ---
@@ -66,13 +68,32 @@ app.add_exception_handler(AppException, app_exception_handler)  # type: ignore[a
 
 # --- Middleware ---
 # CORS (must be added before other middleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if settings.CORS_ALLOW_ALL:
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import Response
+
+    class DynamicCORSMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            origin = request.headers.get("origin", "*")
+            if request.method == "OPTIONS":
+                response = Response(status_code=200)
+            else:
+                response = await call_next(request)
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-School-Code, Cookie"
+            return response
+
+    app.add_middleware(DynamicCORSMiddleware)
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # School context middleware
 app.add_middleware(SchoolContextMiddleware)
@@ -96,6 +117,7 @@ app.include_router(admin_examinations_router, prefix="/api/v1")
 app.include_router(admin_leaves_router, prefix="/api/v1")
 app.include_router(teacher_grades_router, prefix="/api/v1")
 app.include_router(teacher_leaves_router, prefix="/api/v1")
+app.include_router(teacher_notifications_router, prefix="/api/v1")
 app.include_router(student_results_router, prefix="/api/v1")
 app.include_router(admin_fees_router, prefix="/api/v1")
 app.include_router(admin_transport_router, prefix="/api/v1")
@@ -108,6 +130,7 @@ app.include_router(teacher_dashboard_router, prefix="/api/v1")
 app.include_router(teacher_adhoc_classes_router, prefix="/api/v1")
 app.include_router(student_dashboard_router, prefix="/api/v1")
 app.include_router(student_library_router, prefix="/api/v1")
+app.include_router(admin_library_router, prefix="/api/v1")
 
 
 @app.get("/health")

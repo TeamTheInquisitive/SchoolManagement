@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import and_, func, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import NotFound, ValidationError
@@ -95,6 +96,7 @@ async def get_results_overview(
     results_query = await db.execute(
         select(ExamResult)
         .join(Exam, ExamResult.exam_id == Exam.id)
+        .options(selectinload(ExamResult.exam))
         .where(
             ExamResult.student_id == student.id,
             ExamResult.school_id == school_id,
@@ -339,6 +341,7 @@ async def get_exams_with_results(
     query = (
         select(ExamResult)
         .join(Exam, ExamResult.exam_id == Exam.id)
+        .options(selectinload(ExamResult.exam))
         .where(
             ExamResult.student_id == student.id,
             ExamResult.school_id == school_id,

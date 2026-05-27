@@ -1,7 +1,7 @@
 from typing import Optional
 
 import uuid
-from datetime import date, datetime
+from datetime import date as Date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -23,7 +23,7 @@ class PerformanceTrendItem(BaseModel):
 
     exam_name: str
     exam_type: str
-    date: Optional[date] = None
+    date: Optional[Date] = None
     percentage: float
     subjects: dict[str, float] = Field(default_factory=dict)
 
@@ -77,7 +77,7 @@ class ExamDetailResponse(BaseModel):
     exam_id: uuid.UUID
     exam_name: str
     exam_type: str
-    date: Optional[date] = None
+    date: Optional[Date] = None
     class_section: str
     academic_year: str
     total_marks_obtained: float
@@ -110,7 +110,7 @@ class ExamResultListItem(BaseModel):
     id: uuid.UUID
     exam_name: str
     exam_type: str
-    date: Optional[date] = None
+    date: Optional[Date] = None
     total_marks_obtained: float
     total_max_marks: float
     percentage: float

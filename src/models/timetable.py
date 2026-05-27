@@ -10,7 +10,11 @@ from src.core.base_model import BaseModel, UUIDType
 
 
 class PeriodConfig(BaseModel):
-    """Defines the period structure (time slots) for a school's timetable."""
+    """Defines the period structure (time slots) for a school's timetable.
+
+    Periods are school-wide: the same time grid applies to all days.
+    Day-specific assignments live in TimetableSlot.
+    """
 
     __tablename__ = "period_configs"
     __table_args__ = (
@@ -18,7 +22,6 @@ class PeriodConfig(BaseModel):
             "school_id",
             "academic_year_id",
             "start_time",
-            "day_of_week",
             name="uq_period_configs_unique",
         ),
         Index("idx_period_configs_year", "school_id", "academic_year_id"),
@@ -33,7 +36,6 @@ class PeriodConfig(BaseModel):
     end_time: Mapped[time] = mapped_column(Time, nullable=False)
     duration_minutes: Mapped[int | None] = mapped_column(Integer, default=None)
     is_break: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    day_of_week: Mapped[str | None] = mapped_column(String(10), default=None)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Relationships
