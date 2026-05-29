@@ -129,7 +129,7 @@ async def _enrich_vehicle(db: AsyncSession, vehicle: Vehicle) -> dict:
             RouteAssignment.vehicle_id == vehicle.id,
             RouteAssignment.is_active.is_(True),
             RouteAssignment.status == "Active",
-        )
+        ).limit(1)
     )
     assignment = assignment_result.scalar_one_or_none()
     if assignment:
@@ -371,7 +371,7 @@ async def _enrich_driver(db: AsyncSession, driver: Driver) -> dict:
             RouteAssignment.driver_id == driver.id,
             RouteAssignment.is_active.is_(True),
             RouteAssignment.status == "Active",
-        )
+        ).limit(1)
     )
     assignment = assignment_result.scalar_one_or_none()
     if assignment:
@@ -576,7 +576,7 @@ async def _enrich_helper(db: AsyncSession, helper: Helper) -> dict:
             RouteAssignment.helper_id == helper.id,
             RouteAssignment.is_active.is_(True),
             RouteAssignment.status == "Active",
-        )
+        ).limit(1)
     )
     assignment = assignment_result.scalar_one_or_none()
     if assignment:
@@ -743,7 +743,7 @@ async def _enrich_route(db: AsyncSession, route: Route) -> dict:
             RouteAssignment.route_id == route.id,
             RouteAssignment.is_active.is_(True),
             RouteAssignment.status == "Active",
-        )
+        ).limit(1)
     )
     assignment = assignment_result.scalar_one_or_none()
     if assignment:

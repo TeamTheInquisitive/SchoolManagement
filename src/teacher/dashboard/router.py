@@ -115,11 +115,14 @@ async def get_teacher_profile(
 ) -> dict:
     """Get teacher's profile info."""
     from sqlalchemy import select
-    from src.models.staff import Staff
-    result = await db.execute(
-        select(Staff).where(Staff.school_id == school.id, Staff.user_id == user.id, Staff.is_active.is_(True))
-    )
-    staff = result.scalar_one_or_none()
+    from sqlalchemy.orm import selectinload
+    from src.models.staff import Staff, StaffSubject
+    staff = None
+    if user.staff_id:
+        result = await db.execute(
+            select(Staff).options(selectinload(Staff.subjects)).where(Staff.id == user.staff_id, Staff.is_active.is_(True))
+        )
+        staff = result.scalar_one_or_none()
     return {
         "id": user.id,
         "full_name": user.full_name,
@@ -131,5 +134,8 @@ async def get_teacher_profile(
         "designation": staff.designation if staff else None,
         "qualification": staff.qualification if staff else None,
         "joining_date": staff.joining_date if staff else None,
-        "subject": staff.primary_subject.name if staff and hasattr(staff, 'primary_subject') and staff.primary_subject else None,
+        "subject": next(
+            (ss.subject.name for ss in staff.subjects if ss.is_primary and ss.subject),
+            staff.subjects[0].subject.name if staff.subjects and staff.subjects[0].subject else None,
+        ) if staff else None,
     }

@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.core.exceptions import NotFound
 from src.core.pagination import PaginationParams, paginate
@@ -87,9 +88,12 @@ async def _verify_class_assignment(
 async def _get_class_section(
     db: AsyncSession, school_id: uuid.UUID, class_section_id: uuid.UUID
 ) -> ClassSection:
-    """Get class section or raise NotFound."""
+    """Get class section with eager-loaded class_ and section relationships."""
+    from src.models.academic import Class, Section
     result = await db.execute(
-        select(ClassSection).where(
+        select(ClassSection)
+        .options(selectinload(ClassSection.class_), selectinload(ClassSection.section))
+        .where(
             ClassSection.id == class_section_id,
             ClassSection.school_id == school_id,
             ClassSection.is_active.is_(True),
@@ -101,10 +105,15 @@ async def _get_class_section(
     return cs
 
 
-def _get_class_section_label(cs: ClassSection) -> tuple[str, str, str]:
+async def _get_class_section_label(db: AsyncSession, cs: ClassSection) -> tuple[str, str, str]:
     """Return (class_name, section_name, class_section) from a ClassSection."""
-    class_name = cs.class_.name if cs.class_ else ""
-    section_name = cs.section.name if cs.section else ""
+    from src.models.academic import Class, Section
+    cls_result = await db.execute(select(Class).where(Class.id == cs.class_id))
+    sec_result = await db.execute(select(Section).where(Section.id == cs.section_id))
+    cls = cls_result.scalar_one_or_none()
+    sec = sec_result.scalar_one_or_none()
+    class_name = cls.name if cls else ""
+    section_name = sec.name if sec else ""
     class_section = f"{class_name}-{section_name}"
     return class_name, section_name, class_section
 
@@ -122,7 +131,7 @@ async def get_attendance(
     await _verify_class_assignment(db, school_id, staff.id, class_section_id, ay.id)
 
     cs = await _get_class_section(db, school_id, class_section_id)
-    class_name, section_name, class_section_label = _get_class_section_label(cs)
+    class_name, section_name, class_section_label = await _get_class_section_label(db, cs)
 
     # Check if attendance session already exists
     session_result = await db.execute(
@@ -239,7 +248,7 @@ async def submit_attendance(
     await _verify_class_assignment(db, school_id, staff.id, data.class_id, ay.id)
 
     cs = await _get_class_section(db, school_id, data.class_id)
-    class_name, section_name, class_section_label = _get_class_section_label(cs)
+    class_name, section_name, class_section_label = await _get_class_section_label(db, cs)
 
     # Check for existing session
     existing_result = await db.execute(
@@ -320,7 +329,7 @@ async def update_attendance(
     await _verify_class_assignment(db, school_id, staff.id, data.class_id, ay.id)
 
     cs = await _get_class_section(db, school_id, data.class_id)
-    class_name, section_name, class_section_label = _get_class_section_label(cs)
+    class_name, section_name, class_section_label = await _get_class_section_label(db, cs)
 
     # Find existing session
     session_result = await db.execute(
@@ -412,36 +421,49 @@ async def get_attendance_history(
     """Get past attendance submissions by this teacher."""
     staff = await _get_staff_for_user(db, school_id, user)
 
-    query = select(AttendanceSession).where(
+    from src.models.attendance import AttendanceSession as AS
+    base_filter = [
         AttendanceSession.school_id == school_id,
         AttendanceSession.submitted_by == staff.id,
         AttendanceSession.is_active.is_(True),
-    )
+    ]
 
     if class_section_id:
-        query = query.where(AttendanceSession.class_section_id == class_section_id)
+        base_filter.append(AttendanceSession.class_section_id == class_section_id)
     if from_date:
-        query = query.where(AttendanceSession.date >= from_date)
+        base_filter.append(AttendanceSession.date >= from_date)
     if to_date:
-        query = query.where(AttendanceSession.date <= to_date)
+        base_filter.append(AttendanceSession.date <= to_date)
 
     # Count
-    count_query = select(func.count()).select_from(query.subquery())
+    count_query = select(func.count()).select_from(
+        select(AttendanceSession).where(*base_filter).subquery()
+    )
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
 
-    # Paginated results
-    query = query.order_by(AttendanceSession.date.desc())
-    query = query.offset(pagination.offset).limit(pagination.page_size)
+    # Paginated results with eager loading
+    query = (
+        select(AttendanceSession)
+        .options(
+            selectinload(AttendanceSession.class_section).selectinload(ClassSection.class_),
+            selectinload(AttendanceSession.class_section).selectinload(ClassSection.section),
+        )
+        .where(*base_filter)
+        .order_by(AttendanceSession.date.desc())
+        .offset(pagination.offset)
+        .limit(pagination.page_size)
+    )
     result = await db.execute(query)
     sessions = result.scalars().all()
 
     items = []
     for session in sessions:
         cs = session.class_section
-        class_name = cs.class_.name if cs and cs.class_ else ""
-        section_name = cs.section.name if cs and cs.section else ""
-        class_section_label = f"{class_name}-{section_name}"
+        if cs:
+            class_name, section_name, class_section_label = await _get_class_section_label(db, cs)
+        else:
+            class_name, section_name, class_section_label = "", "", ""
 
         # Get record counts
         present = session.total_present or 0
@@ -524,7 +546,7 @@ async def get_attendance_summary(
     await _verify_class_assignment(db, school_id, staff.id, class_section_id, ay.id)
 
     cs = await _get_class_section(db, school_id, class_section_id)
-    class_name, section_name, class_section_label = _get_class_section_label(cs)
+    class_name, section_name, class_section_label = await _get_class_section_label(db, cs)
 
     # Get all sessions for this class in this month
     from datetime import date as date_type

@@ -239,14 +239,15 @@ async def get_day_schedule(
     day_name = DAY_NAMES[target_date.weekday()]
     is_today = target_date == date.today()
 
+    _empty_class_info = {"class_name": "-", "section": "-", "display_label": "Not Enrolled"}
     try:
         ay = await _get_current_academic_year(db, school_id)
     except NotFound:
-        return {"date": str(target_date), "day": day_name, "is_today": is_today, "class_name": None, "section": None, "periods": []}
+        return {"class_info": _empty_class_info, "date": str(target_date), "day": day_name, "is_today": is_today, "is_holiday": False, "periods": []}
     try:
         enrollment = await _get_student_enrollment(db, school_id, user, ay.id)
     except NotFound:
-        return {"date": str(target_date), "day": day_name, "is_today": is_today, "class_name": None, "section": None, "periods": []}
+        return {"class_info": _empty_class_info, "date": str(target_date), "day": day_name, "is_today": is_today, "is_holiday": False, "periods": []}
 
     class_section_id = enrollment.class_section_id
 

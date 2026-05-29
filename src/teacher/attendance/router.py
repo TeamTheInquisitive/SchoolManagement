@@ -22,17 +22,17 @@ from src.teacher.attendance.schemas import (
 router = APIRouter(prefix="/teacher/attendance", tags=["Teacher Attendance"])
 
 
-@router.get("/", response_model=GetAttendanceResponse)
+@router.get("/")
 async def get_attendance(
     db: SessionDep,
     school: SchoolDep,
     user: TeacherUser,
-    class_id: uuid.UUID = Query(...),
+    class_section_id: uuid.UUID = Query(...),
     date: date = Query(...),
-) -> GetAttendanceResponse:
+):
     """Get attendance for a class + date (form data or already submitted)."""
-    result = await service.get_attendance(db, school.id, user, class_id, date)
-    return GetAttendanceResponse(**result)
+    result = await service.get_attendance(db, school.id, user, class_section_id, date)
+    return result
 
 
 @router.post("/", response_model=SubmitAttendanceResponse, status_code=201)
@@ -59,21 +59,20 @@ async def update_attendance(
     return UpdateAttendanceResponse(**result)
 
 
-@router.get("/history/", response_model=AttendanceHistoryResponse)
+@router.get("/history/")
 async def get_attendance_history(
     db: SessionDep,
     school: SchoolDep,
     user: TeacherUser,
     pagination: PaginationDep,
-    class_id: uuid.UUID | None = Query(default=None),
+    class_section_id: uuid.UUID | None = Query(default=None),
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
-) -> AttendanceHistoryResponse:
+):
     """Get past attendance submissions by this teacher."""
-    result = await service.get_attendance_history(
-        db, school.id, user, pagination, class_id, from_date, to_date
+    return await service.get_attendance_history(
+        db, school.id, user, pagination, class_section_id, from_date, to_date
     )
-    return AttendanceHistoryResponse(**result)
 
 
 @router.delete("/{session_id}/", response_model=CancelAttendanceResponse)
@@ -93,13 +92,13 @@ async def get_attendance_summary(
     db: SessionDep,
     school: SchoolDep,
     user: TeacherUser,
-    class_id: uuid.UUID = Query(...),
+    class_section_id: uuid.UUID = Query(...),
     month: int = Query(..., ge=1, le=12),
     year: int = Query(...),
     academic_year: str | None = Query(default=None),
 ) -> AttendanceSummaryResponse:
     """Get attendance summary/statistics for a class over a period."""
     result = await service.get_attendance_summary(
-        db, school.id, user, class_id, month, year, academic_year
+        db, school.id, user, class_section_id, month, year, academic_year
     )
     return AttendanceSummaryResponse(**result)

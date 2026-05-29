@@ -24,7 +24,7 @@ from src.admin.payroll.schemas import (
 from src.auth.dependencies import AdminUser, SchoolDep
 from src.core.dependencies import PaginationDep, SessionDep
 
-router = APIRouter(prefix="/admin", tags=["Admin Payroll"])
+router = APIRouter(prefix="/admin/staff", tags=["Admin Payroll"])
 
 
 # --- Payroll endpoints ---
@@ -70,13 +70,26 @@ async def generate_payslips(
 
 @router.get("/payroll/salary-structure/{employee_id}/", response_model=SalaryStructureResponse)
 async def get_salary_structure(
-    employee_id: uuid.UUID,
+    employee_id: str,
     db: SessionDep,
     school: SchoolDep,
     user: AdminUser,
 ) -> SalaryStructureResponse:
-    """Get salary breakdown for a staff member."""
-    result = await service.get_salary_structure(db, school.id, employee_id)
+    """Get salary breakdown for a staff member. Accepts staff UUID or employee_id string."""
+    from sqlalchemy import select as sel
+    from src.models.staff import Staff
+    from src.core.exceptions import NotFound
+    try:
+        staff_uuid = uuid.UUID(employee_id)
+    except ValueError:
+        result = await db.execute(
+            sel(Staff).where(Staff.school_id == school.id, Staff.employee_id == employee_id, Staff.is_active.is_(True))
+        )
+        staff = result.scalar_one_or_none()
+        if not staff:
+            raise NotFound("Staff", employee_id)
+        staff_uuid = staff.id
+    result = await service.get_salary_structure(db, school.id, staff_uuid)
     return SalaryStructureResponse(**result)
 
 

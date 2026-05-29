@@ -48,7 +48,7 @@ class AttendanceSummary(BaseModel):
 class StudentAttendanceRecord(BaseModel):
     student_id: uuid.UUID
     roll_number: str | None = None
-    full_name: str
+    full_name: str | None = None
     status: str
 
 
@@ -81,16 +81,16 @@ class UpdateAttendanceResponse(BaseModel):
 
 class AttendanceHistoryItem(BaseModel):
     id: uuid.UUID
-    class_name: str
-    section: str
-    class_section: str
+    class_name: str | None = None
+    section: str | None = None
+    class_section: str | None = None
     date: Optional[date] = None
-    status: str
-    total_students: int
-    present: int
-    absent: int
-    late: int
-    submitted_at: datetime
+    status: str | None = None
+    total_students: int = 0
+    present: int = 0
+    absent: int = 0
+    late: int = 0
+    submitted_at: datetime | None = None
 
 
 class AttendanceHistoryResponse(BaseModel):

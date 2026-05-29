@@ -179,6 +179,10 @@ async def create_student(
         blood_group=data.get("blood_group"),
         religion=data.get("religion"),
         address_line1=data.get("address"),
+        address_line2=data.get("address_line2"),
+        city=data.get("city"),
+        state=data.get("state"),
+        pincode=data.get("pincode"),
         status="Active",
         created_by=created_by,
     )
@@ -292,6 +296,9 @@ async def create_student(
         "admission_date": student.admission_date,
         "gender": student.gender,
         "address": student.address_line1,
+        "city": student.city,
+        "state": student.state,
+        "pincode": student.pincode,
         "parent_name": data.get("parent_name"),
         "parent_phone": data.get("parent_phone"),
         "parent_email": data.get("parent_email"),
@@ -415,6 +422,9 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
         "date_of_birth": student.date_of_birth,
         "admission_date": student.admission_date,
         "address": student.address_line1,
+        "city": student.city,
+        "state": student.state,
+        "pincode": student.pincode,
         "parent": parent_info,
         "medical": {
             "blood_group": student.blood_group,
@@ -475,6 +485,10 @@ async def update_student(
         "blood_group": "blood_group",
         "religion": "religion",
         "address": "address_line1",
+        "address_line2": "address_line2",
+        "city": "city",
+        "state": "state",
+        "pincode": "pincode",
         "status": "status",
     }
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Cookie, Depends, Response
+from fastapi import APIRouter, Cookie, Depends, Header, Response
 from redis.asyncio import Redis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import service as auth_service
@@ -60,9 +61,19 @@ async def login(
     data: LoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
+    x_school_code: str | None = Header(default=None, alias="X-School-Code"),
 ) -> LoginResponse:
     """Authenticate user and set httpOnly cookies."""
-    user = await auth_service.authenticate_user(db, data.email, data.password)
+    from src.models.core import School
+    school_id = None
+    if x_school_code:
+        result = await db.execute(
+            select(School).where(School.code == x_school_code, School.is_active.is_(True))
+        )
+        school = result.scalar_one_or_none()
+        if school:
+            school_id = school.id
+    user = await auth_service.authenticate_user(db, data.email, data.password, school_id)
     access_token, refresh_token = auth_service.create_tokens(user)
 
     _set_auth_cookies(response, access_token, refresh_token)

@@ -27,6 +27,10 @@ class CreateStudentRequest(BaseModel):
     blood_group: str | None = None
     religion: str | None = None
     address: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    pincode: str | None = None
     parent_name: str | None = None
     parent_phone: str | None = None
     parent_email: str | None = None
@@ -45,6 +49,10 @@ class UpdateStudentRequest(BaseModel):
     blood_group: str | None = None
     religion: str | None = None
     address: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    pincode: str | None = None
     status: str | None = None
     class_name: str | None = None
     section: str | None = None
@@ -164,6 +172,9 @@ class StudentResponse(BaseModel):
     date_of_birth: date | None = None
     admission_date: date | None = None
     address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    pincode: str | None = None
     parent: ParentInfo | None = None
     medical: MedicalInfo | None = None
     mentor: MentorInfo | None = None

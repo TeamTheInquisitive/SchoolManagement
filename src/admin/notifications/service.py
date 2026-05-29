@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.exceptions import ConflictError, NotFound
+from src.core.exceptions import NotFound
 from src.core.pagination import PaginationParams, paginate
 from src.models.core import User
 from src.models.staff import Staff
@@ -443,7 +443,7 @@ async def update_notification(
     data: dict,
     user_id: uuid.UUID,
 ) -> dict:
-    """Update a notification (only if Scheduled or Draft)."""
+    """Update a notification's title, message, and other editable fields."""
     result = await db.execute(
         select(Notification).where(
             Notification.id == notification_id,
@@ -454,12 +454,6 @@ async def update_notification(
     notification = result.scalar_one_or_none()
     if not notification:
         raise NotFound("Notification", str(notification_id))
-
-    if notification.status not in ("Scheduled", "Draft"):
-        raise ConflictError(
-            "Only Scheduled or Draft notifications can be updated",
-            {"current_status": notification.status},
-        )
 
     # Update fields
     for key, value in data.items():
