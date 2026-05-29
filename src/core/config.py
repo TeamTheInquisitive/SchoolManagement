@@ -43,6 +43,18 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:5175",
+        "http://localhost:5176",
+        "http://localhost:5177",
+        "http://schools.theinquisitive.in",
+        "https://schools.theinquisitive.in",
+        "https://theinquisitive.in",
+        "http://theinquisitive.in",
+        "http://admin.theinquisitive.in",
+        "https://admin.theinquisitive.in",
+        "http://students.theinquisitive.in",
+        "https://students.theinquisitive.in",
+        "http://teachers.theinquisitive.in",
+        "https://teachers.theinquisitive.in",
     ]
     CORS_ALLOW_ALL: bool = True
 
