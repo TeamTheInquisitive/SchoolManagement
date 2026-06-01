@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "a1b2c3d4e5f6"
-down_revision = None
+down_revision = "3e49d47e468c"
 branch_labels = None
 depends_on = None
 
@@ -53,7 +53,17 @@ def upgrade() -> None:
     )
 
 
+    # Create platform_settings table
+    op.create_table(
+        "platform_settings",
+        sa.Column("key", sa.String(100), primary_key=True),
+        sa.Column("value", sa.String(500), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
+    )
+
+
 def downgrade() -> None:
+    op.drop_table("platform_settings")
     op.drop_table("subscription_payments")
     op.drop_table("subscriptions")
     op.drop_column("schools", "trial_end_date")

@@ -55,6 +55,8 @@ class Settings(BaseSettings):
         "https://students.theinquisitive.in",
         "http://teachers.theinquisitive.in",
         "https://teachers.theinquisitive.in",
+        "https://superadminerp.theinquisitive.in",
+        "http://superadminerp.theinquisitive.in",
     ]
     CORS_ALLOW_ALL: bool = True
 

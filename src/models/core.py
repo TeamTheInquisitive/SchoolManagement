@@ -42,7 +42,7 @@ class School(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
 
     # Subscription fields
     enrollment_date: Mapped[date | None] = mapped_column(default=None)
-    subscription_status: Mapped[str] = mapped_column(String(20), default="trial")  # trial, active, expired
+    subscription_status: Mapped[str] = mapped_column(String(20), default="trial", server_default="trial")  # trial, active, expired
     trial_start_date: Mapped[date | None] = mapped_column(default=None)
     trial_end_date: Mapped[date | None] = mapped_column(default=None)
 
