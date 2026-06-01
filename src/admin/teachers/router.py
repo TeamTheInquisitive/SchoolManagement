@@ -149,6 +149,49 @@ async def delete_teacher(
 
 
 # ---------------------------------------------------------------------------
+# Reset Password
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{teacher_id}/reset-password")
+async def reset_teacher_password(
+    teacher_id: UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+    data: dict | None = None,
+):
+    """Admin sets a temporary password for a teacher."""
+    from sqlalchemy import select as sel
+    from src.models.core import User
+    from src.models.staff import Staff
+    from src.core.security import hash_password
+    from src.core.exceptions import NotFound
+
+    temp_password = data.get("password", "Welcome@123") if data else "Welcome@123"
+
+    # Find user account linked to this staff/teacher
+    result = await db.execute(
+        sel(User).where(User.school_id == school.id, User.staff_id == teacher_id, User.is_active.is_(True))
+    )
+    user_obj = result.scalar_one_or_none()
+    if not user_obj:
+        # Try via email match
+        staff_result = await db.execute(sel(Staff).where(Staff.id == teacher_id, Staff.school_id == school.id))
+        staff = staff_result.scalar_one_or_none()
+        if staff:
+            result2 = await db.execute(sel(User).where(User.school_id == school.id, User.email == staff.email, User.is_active.is_(True)))
+            user_obj = result2.scalar_one_or_none()
+    if not user_obj:
+        raise NotFound("User account for this teacher")
+
+    user_obj.password_hash = hash_password(temp_password)
+    await db.commit()
+
+    return {"message": "Password reset successfully", "temporary_password": temp_password}
+
+
+# ---------------------------------------------------------------------------
 # Assignments
 # ---------------------------------------------------------------------------
 

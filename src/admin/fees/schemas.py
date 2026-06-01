@@ -51,6 +51,16 @@ class BulkApplyLateFeesRequest(BaseModel):
     section: str | None = None
 
 
+class UpdateFeeRecordRequest(BaseModel):
+    fee_type: str | None = None
+    fee_category: str | None = None
+    total_amount: Decimal | None = None
+    due_date: date | None = None
+    description: str | None = None
+    is_active: bool | None = None
+    status: str | None = None
+
+
 class SendReminderRequest(BaseModel):
     target_group: str  # "All", "Class", "Section", "Overdue", "Selected"
     class_name: str | None = None
@@ -156,6 +166,16 @@ class FeeRecordCreateResponse(BaseModel):
     metadata: dict = {}
 
 
+class GeneratedFeeRecord(BaseModel):
+    id: uuid.UUID
+    student_id: uuid.UUID
+    student_name: str
+    fee_type: str
+    total_amount: Decimal
+    due_date: date
+    status: str
+
+
 class GenerateDueResponse(BaseModel):
     generated: int
     fee_type: str
@@ -164,6 +184,7 @@ class GenerateDueResponse(BaseModel):
     class_section: str
     skipped: int
     message: str
+    records: list[GeneratedFeeRecord] = []
 
 
 class RecordPaymentResponse(BaseModel):

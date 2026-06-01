@@ -145,6 +145,40 @@ async def delete_student(
 
 
 # ---------------------------------------------------------------------------
+# Reset Password
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{student_id}/reset-password")
+async def reset_student_password(
+    student_id: UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+    data: dict | None = None,
+):
+    """Admin sets a temporary password for a student."""
+    from sqlalchemy import select as sel
+    from src.models.core import User
+    from src.core.security import hash_password
+    from src.core.exceptions import NotFound
+
+    temp_password = data.get("password", "changeme123") if data else "changeme123"
+
+    result = await db.execute(
+        sel(User).where(User.school_id == school.id, User.student_id == student_id, User.is_active.is_(True))
+    )
+    user_obj = result.scalar_one_or_none()
+    if not user_obj:
+        raise NotFound("User account for this student")
+
+    user_obj.password_hash = hash_password(temp_password)
+    await db.commit()
+
+    return {"message": "Password reset successfully", "temporary_password": temp_password}
+
+
+# ---------------------------------------------------------------------------
 # Sub-resource endpoints
 # ---------------------------------------------------------------------------
 

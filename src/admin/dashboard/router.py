@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Query
+from sqlalchemy import select
 
 from src.auth.dependencies import AdminUser, SchoolDep
 from src.core.dependencies import SessionDep
@@ -14,6 +17,9 @@ from src.admin.dashboard.schemas import (
     RecentActivitiesResponse,
     StudentDistributionResponse,
 )
+from src.models.core import School
+from src.models.subscription import Subscription
+from src.models.platform_settings import PlatformSettings
 
 router = APIRouter(prefix="/admin/dashboard", tags=["Admin Dashboard"])
 
@@ -97,3 +103,64 @@ async def get_low_attendance(
     """Get students below attendance threshold."""
     result = await service.get_low_attendance(db, school.id, threshold, limit)
     return LowAttendanceResponse(**result)
+
+
+@router.get("/subscription-banner")
+async def get_subscription_banner(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get subscription/trial banner info for the admin module."""
+    today = date.today()
+
+    # Get school subscription status and trial dates
+    school_result = await db.execute(select(School).where(School.id == school.id))
+    school_obj = school_result.scalar_one()
+
+    if school_obj.subscription_status == "trial":
+        if school_obj.trial_end_date:
+            days_left = (school_obj.trial_end_date - today).days
+        else:
+            days_left = None
+        return {
+            "show_banner": True,
+            "type": "trial",
+            "message": f"Your free trial ends in {days_left} day{'s' if days_left != 1 else ''}" if days_left is not None else "You are on a free trial",
+            "days_left": days_left,
+        }
+
+    if school_obj.subscription_status == "active":
+        # Get banner_days_before_expiry from platform settings
+        banner_setting = await db.execute(
+            select(PlatformSettings).where(PlatformSettings.key == "banner_days_before_expiry")
+        )
+        banner_days_row = banner_setting.scalar_one_or_none()
+        banner_days = int(banner_days_row.value) if banner_days_row else 3
+
+        sub_result = await db.execute(
+            select(Subscription).where(
+                Subscription.school_id == school.id, Subscription.is_active.is_(True)
+            )
+        )
+        sub = sub_result.scalar_one_or_none()
+        if sub:
+            days_left = (sub.end_date - today).days
+            if days_left <= banner_days:
+                return {
+                    "show_banner": True,
+                    "type": "expiring",
+                    "message": f"Your subscription expires in {days_left} day{'s' if days_left != 1 else ''}" if days_left > 0 else "Your subscription expires today",
+                    "days_left": days_left,
+                }
+        return {"show_banner": False}
+
+    if school_obj.subscription_status == "expired":
+        return {
+            "show_banner": True,
+            "type": "expired",
+            "message": "Your subscription has expired. Please contact support.",
+            "days_left": 0,
+        }
+
+    return {"show_banner": False}

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+import os
+import time
+import uuid
+
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from sqlalchemy import select
 
 from src.admin.settings import service
 from src.admin.settings.schemas import (
@@ -23,7 +28,9 @@ from src.admin.settings.schemas import (
     SubjectsBulkResponse,
 )
 from src.auth.dependencies import AdminUser, SchoolDep
+from src.core.config import settings
 from src.core.dependencies import SessionDep
+from src.models.core import School
 
 router = APIRouter(prefix="/admin/settings", tags=["Admin Settings"])
 
@@ -298,6 +305,49 @@ async def list_subjects(
 ) -> list[dict]:
     """List all subjects for dropdowns."""
     return await service.list_subjects(db, school.id)
+
+
+@router.post("/upload-logo")
+async def upload_school_logo(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+    file: UploadFile = File(...),
+) -> dict:
+    """Upload or update the school logo."""
+    # Validate file type
+    allowed_types = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Invalid file type. Allowed: png, jpg, jpeg, webp")
+
+    # Validate file extension
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in ("png", "jpg", "jpeg", "webp"):
+        raise HTTPException(status_code=400, detail="Invalid file extension. Allowed: png, jpg, jpeg, webp")
+
+    # Read file and validate size (2MB limit)
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 2MB")
+
+    # Ensure upload directory exists
+    logos_dir = os.path.join(settings.UPLOAD_DIR, "logos")
+    os.makedirs(logos_dir, exist_ok=True)
+
+    # Save file
+    filename = f"{school.id}_{int(time.time())}.{ext}"
+    filepath = os.path.join(logos_dir, filename)
+    with open(filepath, "wb") as f:
+        f.write(contents)
+
+    # Update school logo_url in database
+    logo_url = f"/uploads/logos/{filename}"
+    result = await db.execute(select(School).where(School.id == school.id))
+    school_obj = result.scalar_one()
+    school_obj.logo_url = logo_url
+    await db.commit()
+
+    return {"logo_url": logo_url}
 
 
 @router.put("/subjects/{subject_id}/classes")

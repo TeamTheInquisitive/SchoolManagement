@@ -87,7 +87,6 @@ async def list_fee_records(
         .where(
             FeeRecord.school_id == school_id,
             FeeRecord.academic_year_id == ay.id,
-            FeeRecord.is_active.is_(True),
         )
     )
 
@@ -98,9 +97,16 @@ async def list_fee_records(
             "partial": "Partial",
             "pending": "Pending",
             "overdue": "Overdue",
+            "draft": "Draft",
         }
         mapped_status = status_map.get(status.lower(), status)
         query = query.where(FeeRecord.status == mapped_status)
+        if mapped_status == "Draft":
+            query = query.where(FeeRecord.is_active.is_(False))
+        else:
+            query = query.where(FeeRecord.is_active.is_(True))
+    else:
+        query = query.where(FeeRecord.is_active.is_(True))
 
     if fee_type:
         query = query.where(FeeRecord.fee_type == fee_type)
@@ -232,14 +238,19 @@ async def get_fee_record_detail(
     cls_name, sec_name = await _get_student_class_info(db, student, school_id)
     overdue_days = _compute_overdue_days(record.due_date)
 
-    # Payment history
+    # Payment history — explicit query to guarantee fresh data
+    payments_result = await db.execute(
+        select(FeePayment).where(
+            FeePayment.fee_record_id == fee_id,
+            FeePayment.is_active.is_(True),
+        ).order_by(FeePayment.payment_date.asc())
+    )
+    payments = payments_result.scalars().all()
+
     payment_history = []
-    for payment in record.payments:
-        if not payment.is_active:
-            continue
+    for payment in payments:
         recorder_name = None
         if payment.recorder:
-            # Get staff name from user
             recorder_name = payment.recorder.email
         payment_history.append({
             "id": payment.id,
@@ -250,11 +261,17 @@ async def get_fee_record_detail(
             "recorded_by": recorder_name,
         })
 
-    # Fine history
+    # Fine history — explicit query to guarantee fresh data
+    penalties_result = await db.execute(
+        select(FeePenalty).where(
+            FeePenalty.fee_record_id == fee_id,
+            FeePenalty.is_active.is_(True),
+        ).order_by(FeePenalty.applied_on.asc())
+    )
+    penalties = penalties_result.scalars().all()
+
     fine_history = []
-    for penalty in record.penalties:
-        if not penalty.is_active:
-            continue
+    for penalty in penalties:
         applier_name = penalty.applier.email if penalty.applier else None
         fine_history.append({
             "id": penalty.id,
@@ -348,6 +365,55 @@ async def create_fee_record(
     }
 
 
+async def update_fee_record(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    fee_id: uuid.UUID,
+    data: dict,
+) -> dict:
+    """Update a fee record — used to activate draft records created on student admission."""
+    result = await db.execute(
+        select(FeeRecord).where(FeeRecord.id == fee_id, FeeRecord.school_id == school_id)
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise NotFound("Fee record")
+
+    for k, v in data.items():
+        if k == "is_active" and v is True and record.status == "Draft":
+            record.status = "Pending"
+            record.is_active = True
+            if record.total_amount:
+                record.pending = record.total_amount - record.paid
+        elif k == "total_amount":
+            setattr(record, k, v)
+            record.pending = v - record.paid
+        elif hasattr(record, k):
+            setattr(record, k, v)
+
+    await db.commit()
+    await db.refresh(record)
+
+    student = record.student
+    cls_name, sec_name = await _get_student_class_info(db, student, school_id)
+
+    return {
+        "id": record.id,
+        "student_id": record.student_id,
+        "student_name": student.full_name if student else "",
+        "class_name": cls_name,
+        "section": sec_name,
+        "fee_type": record.fee_type,
+        "fee_category": record.fee_category,
+        "total_amount": record.total_amount,
+        "paid": record.paid,
+        "pending": record.pending,
+        "due_date": record.due_date,
+        "status": record.status,
+        "is_active": record.is_active,
+    }
+
+
 async def generate_due_fees(
     db: AsyncSession,
     school_id: uuid.UUID,
@@ -419,6 +485,7 @@ async def generate_due_fees(
 
     generated = 0
     skipped = 0
+    created_records: list[FeeRecord] = []
     for enrollment in enrollments:
         student_id = enrollment.student_id
 
@@ -453,9 +520,26 @@ async def generate_due_fees(
             created_by=user.id,
         )
         db.add(record)
+        created_records.append(record)
         generated += 1
 
     await db.commit()
+
+    # Build records list with student names
+    records_output = []
+    for record in created_records:
+        await db.refresh(record)
+        student = record.student
+        student_name = student.full_name if student else ""
+        records_output.append({
+            "id": record.id,
+            "student_id": record.student_id,
+            "student_name": student_name,
+            "fee_type": record.fee_type,
+            "total_amount": record.total_amount,
+            "due_date": record.due_date,
+            "status": record.status,
+        })
 
     class_section_label = f"{class_name}-{section_name}" if section_name else class_name
     return {
@@ -466,6 +550,7 @@ async def generate_due_fees(
         "class_section": class_section_label,
         "skipped": skipped,
         "message": f"Due fee of ₹{amount:,.0f} generated for {generated} students in Class {class_section_label}.",
+        "records": records_output,
     }
 
 
@@ -511,17 +596,22 @@ async def record_payment(
         recorded_by=user.id,
         created_by=user.id,
     )
-    db.add(payment)
+    # Add payment via the relationship to ensure ORM consistency
+    record.payments.append(payment)
 
     # Update fee record
-    record.paid = record.paid + payment_amount
-    record.pending = record.pending - payment_amount
+    new_paid = (record.paid or Decimal("0")) + payment_amount
+    new_pending = (record.pending or Decimal("0")) - payment_amount
+    record.paid = new_paid
+    record.pending = new_pending
 
-    if record.pending <= 0:
+    if new_pending <= 0:
         record.status = "Paid"
     else:
         record.status = "Partial"
 
+    # Flush to ensure INSERT and UPDATE are sent to the database
+    await db.flush()
     await db.commit()
     await db.refresh(record)
     await db.refresh(payment)
@@ -573,10 +663,24 @@ async def apply_late_fee(
     now = datetime.now(timezone.utc)
 
     if penalty_type == "fixed":
-        penalty_amount = Decimal(str(data.get("amount", 0)))
+        raw_amount = data.get("amount")
+        if not raw_amount:
+            raise AppException(
+                status_code=400,
+                error="Amount is required for fixed penalty type",
+                code="MISSING_AMOUNT",
+            )
+        penalty_amount = Decimal(str(raw_amount))
         percentage = None
     else:
-        percentage = Decimal(str(data.get("percentage", 0)))
+        raw_percentage = data.get("percentage")
+        if not raw_percentage:
+            raise AppException(
+                status_code=400,
+                error="Percentage is required for percentage penalty type",
+                code="MISSING_PERCENTAGE",
+            )
+        percentage = Decimal(str(raw_percentage))
         penalty_amount = (record.pending * percentage) / Decimal("100")
 
     # Create penalty record
@@ -592,9 +696,13 @@ async def apply_late_fee(
     )
     db.add(penalty)
 
-    # Update fee record
-    record.total_late_fee = record.total_late_fee + penalty_amount
-    record.pending = record.pending + penalty_amount
+    # Update fee record totals
+    record.total_late_fee = (record.total_late_fee or Decimal("0")) + penalty_amount
+    record.pending = (record.pending or Decimal("0")) + penalty_amount
+
+    # Update status to Overdue if past due date
+    if record.due_date < date.today() and record.status not in ("Paid",):
+        record.status = "Overdue"
 
     await db.commit()
     await db.refresh(record)
@@ -664,11 +772,32 @@ async def bulk_apply_late_fees(
     applied_records = []
     total_fines = Decimal("0")
 
+    # Validate required fields upfront
+    if penalty_type == "fixed":
+        raw_amount = data.get("amount")
+        if not raw_amount:
+            raise AppException(
+                status_code=400,
+                error="Amount is required for fixed penalty type",
+                code="MISSING_AMOUNT",
+            )
+        fixed_amount = Decimal(str(raw_amount))
+    else:
+        raw_percentage = data.get("percentage")
+        if not raw_percentage:
+            raise AppException(
+                status_code=400,
+                error="Percentage is required for percentage penalty type",
+                code="MISSING_PERCENTAGE",
+            )
+        pct_value = Decimal(str(raw_percentage))
+
     for record in records:
         if penalty_type == "fixed":
-            penalty_amount = Decimal(str(data.get("amount", 0)))
+            penalty_amount = fixed_amount
+            percentage = None
         else:
-            percentage = Decimal(str(data.get("percentage", 0)))
+            percentage = pct_value
             penalty_amount = (record.pending * percentage) / Decimal("100")
 
         penalty = FeePenalty(
@@ -676,15 +805,15 @@ async def bulk_apply_late_fees(
             fee_record_id=record.id,
             penalty_type=penalty_type,
             amount=penalty_amount,
-            percentage=data.get("percentage"),
+            percentage=percentage,
             applied_on=now,
             applied_by=user.id,
             created_by=user.id,
         )
         db.add(penalty)
 
-        record.total_late_fee = record.total_late_fee + penalty_amount
-        record.pending = record.pending + penalty_amount
+        record.total_late_fee = (record.total_late_fee or Decimal("0")) + penalty_amount
+        record.pending = (record.pending or Decimal("0")) + penalty_amount
         record.status = "Overdue"
 
         student = record.student

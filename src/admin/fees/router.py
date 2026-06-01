@@ -27,6 +27,7 @@ from src.admin.fees.schemas import (
     SendReminderRequest,
     SendReminderResponse,
     StudentFeeRecordsResponse,
+    UpdateFeeRecordRequest,
 )
 from src.auth.dependencies import AdminUser, SchoolDep
 from src.core.dependencies import PaginationDep, SessionDep
@@ -149,6 +150,19 @@ async def get_fee_receipt(
     """Generate a payment receipt for a specific fee record."""
     result = await service.get_fee_receipt(db, school.id, fee_id)
     return FeeReceiptResponse(**result)
+
+
+@router.put("/{fee_id}")
+async def update_fee_record(
+    fee_id: uuid.UUID,
+    data: UpdateFeeRecordRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Update a fee record (used to activate draft records created on student admission)."""
+    result = await service.update_fee_record(db, school.id, fee_id, data.model_dump(exclude_none=True))
+    return result
 
 
 @router.post("", status_code=201, response_model=FeeRecordCreateResponse)

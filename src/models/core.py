@@ -39,12 +39,20 @@ class School(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
     board_affiliation: Mapped[str | None] = mapped_column(String(100), default=None)
     established_year: Mapped[int | None] = mapped_column(default=None)
     principal_name: Mapped[str | None] = mapped_column(String(255), default=None)
+
+    # Subscription fields
+    enrollment_date: Mapped[date | None] = mapped_column(default=None)
+    subscription_status: Mapped[str] = mapped_column(String(20), default="trial")  # trial, active, expired
+    trial_start_date: Mapped[date | None] = mapped_column(default=None)
+    trial_end_date: Mapped[date | None] = mapped_column(default=None)
+
     metadata_: Mapped[dict] = mapped_column(
         "metadata", JSON, default=dict
     )
 
     # Relationships
     users: Mapped[list[User]] = relationship("User", back_populates="school", lazy="selectin")
+    subscriptions: Mapped[list] = relationship("Subscription", backref="school", lazy="selectin")
 
 
 class User(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):

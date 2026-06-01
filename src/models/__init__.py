@@ -42,3 +42,5 @@ from src.models.activity import Activity, Award, DisciplinaryRecord  # noqa: F40
 from src.models.meeting import ParentMeeting  # noqa: F401
 from src.models.adhoc_class import AdhocClass  # noqa: F401
 from src.models.library import Book, BookIssue  # noqa: F401
+from src.models.subscription import Subscription, SubscriptionPayment  # noqa: F401
+from src.models.platform_settings import PlatformSettings  # noqa: F401

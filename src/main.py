@@ -3,8 +3,11 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.admin.settings.router import router as admin_settings_router
 from src.admin.staff.router import router as admin_staff_router
@@ -154,6 +157,12 @@ app.include_router(student_library_router, prefix="/api/v1")
 app.include_router(admin_library_router, prefix="/api/v1")
 app.include_router(admin_mentoring_router, prefix="/api/v1")
 app.include_router(superadmin_router, prefix="/api/v1")
+
+
+# --- Static files (uploaded content) ---
+_uploads_dir = Path(settings.UPLOAD_DIR)
+_uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
 
 
 @app.get("/health")

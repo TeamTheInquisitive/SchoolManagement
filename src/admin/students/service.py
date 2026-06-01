@@ -16,6 +16,7 @@ from src.models.academic import Class, ClassSection, Section
 from src.models.core import AcademicYear, User
 from src.models.staff import Staff
 from src.models.student import Parent, Student, StudentEnrollment, StudentMentor, StudentParent
+from src.models.fee import FeeRecord, FeeStructure
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +280,76 @@ async def create_student(
             created_by=created_by,
         )
         db.add(student_parent)
+
+    # Auto-generate fee records based on class fee structure
+    ay_result2 = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school_id,
+            AcademicYear.is_current.is_(True),
+        )
+    )
+    current_ay2 = ay_result2.scalar_one_or_none()
+    if current_ay2 and class_name and section_name:
+        # Find class_section_id for fee structure lookup
+        cs_for_fee = None
+        cls_r = await db.execute(select(Class).where(Class.school_id == school_id, Class.name == class_name))
+        cls_obj = cls_r.scalar_one_or_none()
+        sec_r = await db.execute(select(Section).where(Section.school_id == school_id, Section.name == section_name))
+        sec_obj = sec_r.scalar_one_or_none()
+        if cls_obj and sec_obj:
+            cs_r = await db.execute(
+                select(ClassSection).where(ClassSection.school_id == school_id, ClassSection.class_id == cls_obj.id, ClassSection.section_id == sec_obj.id)
+            )
+            cs_for_fee = cs_r.scalar_one_or_none()
+
+        if cs_for_fee:
+            fee_structures = await db.execute(
+                select(FeeStructure).where(
+                    FeeStructure.school_id == school_id,
+                    FeeStructure.academic_year_id == current_ay2.id,
+                    FeeStructure.class_section_id == cs_for_fee.id,
+                    FeeStructure.is_active.is_(True),
+                )
+            )
+            for fs in fee_structures.scalars().all():
+                from dateutil.relativedelta import relativedelta
+                # Calculate due date based on frequency
+                due = date.today() + relativedelta(months=1)
+                fee_record = FeeRecord(
+                    school_id=school_id,
+                    academic_year_id=current_ay2.id,
+                    student_id=student.id,
+                    fee_structure_id=fs.id,
+                    fee_type=fs.fee_type,
+                    fee_category=fs.fee_category,
+                    total_amount=fs.amount,
+                    paid=0,
+                    pending=fs.amount,
+                    due_date=due,
+                    status="Pending",
+                    is_active=True,
+                    description=f"Auto-generated from class fee structure ({fs.frequency})",
+                    created_by=created_by,
+                )
+                db.add(fee_record)
+        elif current_ay2:
+            # No fee structure for this class — create draft for admin to fill
+            fee_record = FeeRecord(
+                school_id=school_id,
+                academic_year_id=current_ay2.id,
+                student_id=student.id,
+                fee_type="Tuition Fee",
+                fee_category="academic",
+                total_amount=0,
+                paid=0,
+                pending=0,
+                due_date=date.today(),
+                status="Draft",
+                is_active=False,
+                description="No fee structure found for this class. Admin to update.",
+                created_by=created_by,
+            )
+            db.add(fee_record)
 
     await db.commit()
     await db.refresh(student)

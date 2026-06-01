@@ -319,6 +319,64 @@ async def get_salary_structure(
     }
 
 
+async def update_salary_structure(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    staff_id: uuid.UUID,
+    data: dict,
+) -> dict:
+    """Update a salary structure — activate draft records created on teacher onboarding."""
+    from decimal import Decimal
+
+    result = await db.execute(
+        select(SalaryStructure).where(
+            SalaryStructure.school_id == school_id,
+            SalaryStructure.staff_id == staff_id,
+        ).order_by(SalaryStructure.created_at.desc())
+    )
+    structure = result.scalars().first()
+    if not structure:
+        raise NotFound("Salary structure", str(staff_id))
+
+    for k, v in data.items():
+        if k == "is_active" and v is True:
+            structure.is_active = True
+        elif hasattr(structure, k) and v is not None:
+            setattr(structure, k, v)
+
+    # Recalculate net salary if basic changed
+    if "basic_salary" in data or "is_active" in data:
+        total_allowances = (
+            (structure.hra or Decimal("0")) +
+            (structure.da or Decimal("0")) +
+            (structure.transport_allowance or Decimal("0")) +
+            (structure.medical_allowance or Decimal("0"))
+        )
+        total_deductions = (
+            (structure.pf_deduction or Decimal("0")) +
+            (structure.professional_tax or Decimal("0")) +
+            (structure.tds or Decimal("0"))
+        )
+        structure.net_salary = structure.basic_salary + total_allowances - total_deductions
+
+    await db.commit()
+    await db.refresh(structure)
+
+    staff = await _get_staff_by_id(db, school_id, staff_id)
+
+    return {
+        "id": str(structure.id),
+        "staff_id": str(staff_id),
+        "employee_name": staff.full_name,
+        "basic_salary": float(structure.basic_salary),
+        "hra": float(structure.hra),
+        "da": float(structure.da),
+        "net_salary": float(structure.net_salary),
+        "is_active": structure.is_active,
+        "effective_from": str(structure.effective_from),
+    }
+
+
 async def list_salary_advances(
     db: AsyncSession,
     school_id: uuid.UUID,

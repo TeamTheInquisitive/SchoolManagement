@@ -108,11 +108,17 @@ async def get_dashboard_stats(db: AsyncSession, school_id: uuid.UUID, user: User
     }
 
 
-async def get_today_schedule(db: AsyncSession, school_id: uuid.UUID, user: User) -> dict:
-    """Get today's schedule for the teacher."""
+async def get_today_schedule(db: AsyncSession, school_id: uuid.UUID, user: User, target_date: str | None = None) -> dict:
+    """Get schedule for a specific date (defaults to today)."""
     staff_id = user.staff_id
     ay = await _get_current_academic_year(db, school_id)
-    today = date.today()
+    if target_date:
+        try:
+            today = date.fromisoformat(target_date)
+        except ValueError:
+            today = date.today()
+    else:
+        today = date.today()
     day_name = today.strftime("%A")
 
     schedule = []

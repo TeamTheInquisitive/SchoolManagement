@@ -93,6 +93,19 @@ async def get_salary_structure(
     return SalaryStructureResponse(**result)
 
 
+@router.put("/payroll/salary-structure/{staff_id}")
+async def update_salary_structure(
+    staff_id: uuid.UUID,
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Update a salary structure — used to activate draft records created on teacher onboarding."""
+    result = await service.update_salary_structure(db, school.id, staff_id, data)
+    return result
+
+
 # --- Salary Advances endpoints ---
 
 

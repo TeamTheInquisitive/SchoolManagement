@@ -21,6 +21,7 @@ from src.core.security import hash_password
 from src.models.academic import ClassSection, Subject
 from src.models.core import AcademicYear, User
 from src.models.staff import ClassAssignment, Staff, StaffSubject
+from src.models.payroll import SalaryStructure
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +340,28 @@ async def create_teacher(
 
     # Link user to staff
     staff.user_id = user.id
+
+    # Create draft salary structure (inactive) for admin to update
+    ay_result = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school_id,
+            AcademicYear.is_current.is_(True),
+        )
+    )
+    current_ay = ay_result.scalar_one_or_none()
+    if current_ay:
+        from decimal import Decimal
+        salary_structure = SalaryStructure(
+            school_id=school_id,
+            staff_id=staff.id,
+            academic_year_id=current_ay.id,
+            basic_salary=Decimal("0"),
+            net_salary=Decimal("0"),
+            effective_from=data.get("joining_date") or date.today(),
+            is_active=False,
+            created_by=created_by,
+        )
+        db.add(salary_structure)
 
     await db.commit()
     await db.refresh(staff)
