@@ -1,14 +1,25 @@
 
 from datetime import date, datetime
+import re
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 # ---------------------------------------------------------------------------
 # Request schemas
 # ---------------------------------------------------------------------------
+
+
+def _clean_phone(v: str | None) -> str | None:
+    if not v:
+        return v
+    cleaned = re.sub(r'^(\+91[-\s]?|91[-\s]?|0)', '', v.strip())
+    cleaned = re.sub(r'[-\s]', '', cleaned)
+    if not re.match(r'^[6-9]\d{9}$', cleaned):
+        raise ValueError('Phone must be 10 digits starting with 6-9 (without +91 prefix)')
+    return cleaned
 
 
 class CreateStudentRequest(BaseModel):
@@ -35,6 +46,12 @@ class CreateStudentRequest(BaseModel):
     parent_phone: str | None = None
     parent_email: str | None = None
     parent_relationship: str | None = "Parent/Guardian"
+    concessions: dict[str, float] | None = None
+
+    @field_validator('phone', 'parent_phone', mode='before')
+    @classmethod
+    def validate_phone(cls, v):
+        return _clean_phone(v)
 
 
 class UpdateStudentRequest(BaseModel):
@@ -56,6 +73,11 @@ class UpdateStudentRequest(BaseModel):
     status: str | None = None
     class_name: str | None = None
     section: str | None = None
+
+    @field_validator('phone', mode='before')
+    @classmethod
+    def validate_phone(cls, v):
+        return _clean_phone(v)
 
 
 class DeleteStudentRequest(BaseModel):

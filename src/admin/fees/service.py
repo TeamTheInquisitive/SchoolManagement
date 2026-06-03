@@ -420,7 +420,7 @@ async def generate_due_fees(
     user: User,
     data: dict,
 ) -> dict:
-    """Bulk generate due fees for all enrolled students in a class/section."""
+    """Bulk generate due fees for selected students or all enrolled students in a class/section."""
     ay = await _get_current_academic_year(db, school_id)
 
     # If academic_year specified, find it
@@ -436,9 +436,77 @@ async def generate_due_fees(
         if found_ay:
             ay = found_ay
 
-    # Find class+section
-    class_name = data["class_name"]
+    fee_type = data["fee_type"]
+    amount = Decimal(str(data["amount"]))
+    due_date = data["due_date"]
+    fee_category = data.get("fee_category", "academic")
+
+    # Mode 1: student_ids provided directly (from selection)
+    if data.get("student_ids"):
+        student_ids = [uuid.UUID(sid) if isinstance(sid, str) else sid for sid in data["student_ids"]]
+        generated = 0
+        skipped = 0
+        created_records = []
+
+        for student_id in student_ids:
+            existing = await db.execute(
+                select(FeeRecord).where(
+                    FeeRecord.school_id == school_id,
+                    FeeRecord.academic_year_id == ay.id,
+                    FeeRecord.student_id == student_id,
+                    FeeRecord.fee_type == fee_type,
+                    FeeRecord.due_date == due_date,
+                    FeeRecord.is_active.is_(True),
+                )
+            )
+            if existing.scalar_one_or_none():
+                skipped += 1
+                continue
+
+            record = FeeRecord(
+                school_id=school_id,
+                academic_year_id=ay.id,
+                student_id=student_id,
+                fee_type=fee_type,
+                fee_category=fee_category,
+                total_amount=amount,
+                paid=Decimal("0"),
+                pending=amount,
+                total_late_fee=Decimal("0"),
+                due_date=due_date,
+                status="Pending",
+                description=data.get("term"),
+                created_by=user.id,
+            )
+            db.add(record)
+            created_records.append(record)
+            generated += 1
+
+        await db.commit()
+
+        records_output = []
+        for record in created_records:
+            await db.refresh(record)
+            student = record.student
+            records_output.append({
+                "id": record.id,
+                "student_id": record.student_id,
+                "student_name": student.full_name if student else "",
+            })
+
+        return {
+            "generated": generated,
+            "skipped": skipped,
+            "message": f"Generated {generated} fee record(s), skipped {skipped} duplicate(s)",
+            "records": records_output,
+        }
+
+    # Mode 2: class_name/section provided (legacy bulk by class)
+    class_name = data.get("class_name")
     section_name = data.get("section")
+    if not class_name:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Either student_ids or class_name is required")
 
     class_query = select(Class).where(
         Class.school_id == school_id,
@@ -477,11 +545,6 @@ async def generate_due_fees(
     )
     enrollment_result = await db.execute(enrollment_query)
     enrollments = enrollment_result.scalars().all()
-
-    fee_type = data["fee_type"]
-    amount = Decimal(str(data["amount"]))
-    due_date = data["due_date"]
-    fee_category = data.get("fee_category", "academic")
 
     generated = 0
     skipped = 0

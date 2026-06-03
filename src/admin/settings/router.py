@@ -307,6 +307,30 @@ async def list_subjects(
     return await service.list_subjects(db, school.id)
 
 
+@router.put("/subjects/{subject_id}")
+async def update_subject(
+    subject_id: str,
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Update a subject's name and/or code."""
+    return await service.update_subject(db, school.id, subject_id, data, user.id)
+
+
+@router.delete("/subjects/{subject_id}")
+async def delete_subject(
+    subject_id: str,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Soft-delete a subject."""
+    await service.delete_subject(db, school.id, subject_id, user.id)
+    return {"message": "Subject deleted"}
+
+
 @router.post("/upload-logo")
 async def upload_school_logo(
     db: SessionDep,

@@ -27,34 +27,69 @@ async def _get_current_academic_year(db: AsyncSession, school_id: uuid.UUID) -> 
 
 
 async def list_mentors(db: AsyncSession, school_id: uuid.UUID) -> dict:
+    """Lightweight list: teachers with mentee count only."""
+    from sqlalchemy import func
+
     ay = await _get_current_academic_year(db, school_id)
 
-    from sqlalchemy.orm import selectinload
-
-    # Get all mentor assignments for current year with eager loading
-    result = await db.execute(
-        select(StudentMentor)
-        .options(selectinload(StudentMentor.staff), selectinload(StudentMentor.student))
+    # Count mentees per staff
+    count_query = (
+        select(
+            StudentMentor.staff_id,
+            func.count(StudentMentor.id).label("mentee_count"),
+        )
         .where(
             StudentMentor.school_id == school_id,
             StudentMentor.academic_year_id == ay.id,
             StudentMentor.is_active.is_(True),
         )
+        .group_by(StudentMentor.staff_id)
+    )
+    count_result = await db.execute(count_query)
+    counts = {row.staff_id: row.mentee_count for row in count_result.all()}
+
+    if not counts:
+        return {"mentors": []}
+
+    # Fetch staff details for those with assignments
+    staff_result = await db.execute(
+        select(Staff).where(Staff.id.in_(counts.keys()), Staff.is_active.is_(True))
+    )
+    staff_list = staff_result.scalars().all()
+
+    mentors = []
+    for s in staff_list:
+        mentors.append({
+            "staff_id": str(s.id),
+            "staff_name": s.full_name,
+            "designation": s.designation or "",
+            "mentee_count": counts.get(s.id, 0),
+        })
+
+    mentors.sort(key=lambda m: m["staff_name"])
+    return {"mentors": mentors}
+
+
+async def get_mentor_students(db: AsyncSession, school_id: uuid.UUID, staff_id: uuid.UUID) -> dict:
+    """Get detailed student list for a specific mentor/teacher."""
+    from sqlalchemy.orm import selectinload
+
+    ay = await _get_current_academic_year(db, school_id)
+
+    result = await db.execute(
+        select(StudentMentor)
+        .options(selectinload(StudentMentor.student))
+        .where(
+            StudentMentor.school_id == school_id,
+            StudentMentor.academic_year_id == ay.id,
+            StudentMentor.staff_id == staff_id,
+            StudentMentor.is_active.is_(True),
+        )
     )
     assignments = result.scalars().all()
 
-    # Group by staff
-    staff_map: dict[uuid.UUID, dict] = {}
+    students = []
     for a in assignments:
-        if a.staff_id not in staff_map:
-            staff = a.staff
-            staff_map[a.staff_id] = {
-                "staff_id": str(a.staff_id),
-                "staff_name": staff.full_name if staff else "",
-                "designation": staff.designation or "" if staff else "",
-                "students": [],
-            }
-        # Get student enrollment for class-section
         enroll_result = await db.execute(
             select(StudentEnrollment).where(
                 StudentEnrollment.student_id == a.student_id,
@@ -68,7 +103,7 @@ async def list_mentors(db: AsyncSession, school_id: uuid.UUID) -> dict:
             cs = enrollment.class_section
             class_section = f"{cs.class_.name}-{cs.section.name}" if cs.class_ and cs.section else ""
 
-        staff_map[a.staff_id]["students"].append({
+        students.append({
             "id": str(a.id),
             "student_id": str(a.student_id),
             "student_name": a.student.full_name if a.student else "",
@@ -76,7 +111,7 @@ async def list_mentors(db: AsyncSession, school_id: uuid.UUID) -> dict:
             "assigned_date": str(a.assigned_date) if a.assigned_date else None,
         })
 
-    return {"mentors": list(staff_map.values())}
+    return {"students": students}
 
 
 async def list_teachers(db: AsyncSession, school_id: uuid.UUID) -> dict:

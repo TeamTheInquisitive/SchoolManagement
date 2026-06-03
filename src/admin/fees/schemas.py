@@ -24,7 +24,8 @@ class GenerateDueRequest(BaseModel):
     fee_category: str = "academic"
     amount: Decimal
     due_date: date
-    class_name: str
+    student_ids: list[str] | None = None
+    class_name: str | None = None
     section: str | None = None
     academic_year: str | None = None
     term: str | None = None

@@ -1,9 +1,10 @@
 from typing import Optional
 
+import re
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -34,6 +35,16 @@ class ClassAssignmentResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _clean_phone(v: str | None) -> str | None:
+    """Strip spaces/dashes and validate Indian phone number format."""
+    if v is None or v == "":
+        return None
+    cleaned = re.sub(r"[\s\-]+", "", v)
+    if not re.match(r"^[6-9]\d{9}$", cleaned):
+        raise ValueError("Phone must be 10 digits starting with 6-9")
+    return cleaned
+
+
 class CreateTeacherRequest(BaseModel):
     employee_id: str
     full_name: str
@@ -48,6 +59,21 @@ class CreateTeacherRequest(BaseModel):
     designation: str | None = None
     gender: str | None = None
     employment_type: str | None = None
+    date_of_birth: date | None = None
+    address: str | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
+    emergency_contact_relationship: str | None = None
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def validate_phone(cls, v):
+        return _clean_phone(v)
+
+    @field_validator("emergency_contact_phone", mode="before")
+    @classmethod
+    def validate_emergency_phone(cls, v):
+        return _clean_phone(v)
 
 
 class UpdateTeacherRequest(BaseModel):
@@ -62,6 +88,21 @@ class UpdateTeacherRequest(BaseModel):
     designation: str | None = None
     gender: str | None = None
     employment_type: str | None = None
+    date_of_birth: date | None = None
+    address: str | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
+    emergency_contact_relationship: str | None = None
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def validate_phone(cls, v):
+        return _clean_phone(v)
+
+    @field_validator("emergency_contact_phone", mode="before")
+    @classmethod
+    def validate_emergency_phone(cls, v):
+        return _clean_phone(v)
 
 
 class DeleteTeacherRequest(BaseModel):

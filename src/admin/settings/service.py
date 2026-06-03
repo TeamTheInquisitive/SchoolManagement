@@ -812,6 +812,55 @@ async def list_subjects(db: AsyncSession, school_id: uuid.UUID) -> list[dict]:
     ]
 
 
+async def update_subject(
+    db: AsyncSession, school_id: uuid.UUID, subject_id: str, data: dict, user_id: uuid.UUID
+) -> dict:
+    """Update a subject's name and/or code."""
+    from src.models.academic import Subject
+
+    result = await db.execute(
+        select(Subject).where(
+            Subject.id == subject_id, Subject.school_id == school_id, Subject.is_active.is_(True)
+        )
+    )
+    subject = result.scalar_one_or_none()
+    if not subject:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Subject not found")
+
+    if "name" in data:
+        subject.name = data["name"]
+    if "code" in data:
+        subject.code = data["code"]
+    subject.updated_by = user_id
+    await db.commit()
+    await db.refresh(subject)
+    return {"id": str(subject.id), "name": subject.name, "code": subject.code}
+
+
+async def delete_subject(
+    db: AsyncSession, school_id: uuid.UUID, subject_id: str, user_id: uuid.UUID
+) -> None:
+    """Soft-delete a subject."""
+    from src.models.academic import Subject
+
+    result = await db.execute(
+        select(Subject).where(
+            Subject.id == subject_id, Subject.school_id == school_id, Subject.is_active.is_(True)
+        )
+    )
+    subject = result.scalar_one_or_none()
+    if not subject:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Subject not found")
+
+    subject.is_active = False
+    subject.deleted_by = user_id
+    from datetime import datetime, timezone
+    subject.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+
+
 async def assign_classes_to_subject(
     db: AsyncSession, school_id: uuid.UUID, subject_id: str, class_ids: list[str]
 ) -> dict:

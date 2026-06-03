@@ -22,6 +22,11 @@ async def list_mentors(db: SessionDep, school: SchoolDep, user: AdminUser) -> di
     return await service.list_mentors(db, school.id)
 
 
+@router.get("/teacher/{staff_id}/students")
+async def get_mentor_students(staff_id: uuid.UUID, db: SessionDep, school: SchoolDep, user: AdminUser) -> dict:
+    return await service.get_mentor_students(db, school.id, staff_id)
+
+
 @router.get("/teachers")
 async def list_teachers(db: SessionDep, school: SchoolDep, user: AdminUser) -> dict:
     return await service.list_teachers(db, school.id)

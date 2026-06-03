@@ -96,6 +96,44 @@ async def _check_time_overlap(
         )
 
 
+async def get_teacher_availability(
+    db: AsyncSession, school_id: uuid.UUID, period_config_id: uuid.UUID, day: str
+) -> dict:
+    """Return which teachers are busy at a given period+day and what they're teaching."""
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(TimetableSlot)
+        .options(
+            selectinload(TimetableSlot.staff),
+            selectinload(TimetableSlot.subject),
+            selectinload(TimetableSlot.class_section).selectinload(ClassSection.class_),
+            selectinload(TimetableSlot.class_section).selectinload(ClassSection.section),
+        )
+        .where(
+            TimetableSlot.school_id == school_id,
+            TimetableSlot.period_config_id == period_config_id,
+            TimetableSlot.day_of_week == day,
+            TimetableSlot.is_active.is_(True),
+        )
+    )
+    slots = result.scalars().all()
+
+    busy_teachers = {}
+    for slot in slots:
+        if slot.staff_id:
+            staff_id = str(slot.staff_id)
+            class_name = slot.class_section.class_.name if slot.class_section and slot.class_section.class_ else "?"
+            section = slot.class_section.section.name if slot.class_section and slot.class_section.section else "?"
+            subject_name = slot.subject.name if slot.subject else "?"
+            busy_teachers[staff_id] = {
+                "class": f"{class_name}-{section}",
+                "subject": subject_name,
+            }
+
+    return {"busy_teachers": busy_teachers}
+
+
 async def _check_teacher_conflict(
     db: AsyncSession,
     school_id: uuid.UUID,

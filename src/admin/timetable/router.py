@@ -225,6 +225,18 @@ async def get_teacher_timetable(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/teacher-availability")
+async def get_teacher_availability(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+    period_config_id: UUID = Query(...),
+    day: str = Query(...),
+) -> dict:
+    """Get teacher availability for a specific period+day. Returns which teachers are busy and where."""
+    return await service.get_teacher_availability(db, school.id, period_config_id, day)
+
+
 @router.get("/conflicts", response_model=ConflictsResponse)
 async def detect_conflicts(
     db: SessionDep,

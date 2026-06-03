@@ -5,7 +5,7 @@ import io
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -302,19 +302,29 @@ async def create_student(
             )
             cs_for_fee = cs_r.scalar_one_or_none()
 
+        from dateutil.relativedelta import relativedelta
+
+        concessions = data.get("concessions") or {}
+
         if cs_for_fee:
+            # Fetch class-specific fees AND general fees (no class_id)
             fee_structures = await db.execute(
                 select(FeeStructure).where(
                     FeeStructure.school_id == school_id,
                     FeeStructure.academic_year_id == current_ay2.id,
-                    FeeStructure.class_section_id == cs_for_fee.id,
                     FeeStructure.is_active.is_(True),
+                    or_(
+                        FeeStructure.class_section_id == cs_for_fee.id,
+                        FeeStructure.class_id == cls_obj.id,
+                        and_(FeeStructure.class_id.is_(None), FeeStructure.class_section_id.is_(None)),
+                    ),
                 )
             )
             for fs in fee_structures.scalars().all():
-                from dateutil.relativedelta import relativedelta
-                # Calculate due date based on frequency
                 due = date.today() + relativedelta(months=1)
+                concession_amount = float(concessions.get(str(fs.id), 0))
+                total = float(fs.amount)
+                net_amount = max(0, total - concession_amount)
                 fee_record = FeeRecord(
                     school_id=school_id,
                     academic_year_id=current_ay2.id,
@@ -322,34 +332,16 @@ async def create_student(
                     fee_structure_id=fs.id,
                     fee_type=fs.fee_type,
                     fee_category=fs.fee_category,
-                    total_amount=fs.amount,
+                    total_amount=net_amount,
                     paid=0,
-                    pending=fs.amount,
+                    pending=net_amount,
                     due_date=due,
                     status="Pending",
                     is_active=True,
-                    description=f"Auto-generated from class fee structure ({fs.frequency})",
+                    description=f"Auto-generated ({fs.frequency}){f' | Concession: ₹{concession_amount:.0f}' if concession_amount > 0 else ''}",
                     created_by=created_by,
                 )
                 db.add(fee_record)
-        elif current_ay2:
-            # No fee structure for this class — create draft for admin to fill
-            fee_record = FeeRecord(
-                school_id=school_id,
-                academic_year_id=current_ay2.id,
-                student_id=student.id,
-                fee_type="Tuition Fee",
-                fee_category="academic",
-                total_amount=0,
-                paid=0,
-                pending=0,
-                due_date=date.today(),
-                status="Draft",
-                is_active=False,
-                description="No fee structure found for this class. Admin to update.",
-                created_by=created_by,
-            )
-            db.add(fee_record)
 
     await db.commit()
     await db.refresh(student)
