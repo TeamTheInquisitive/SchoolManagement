@@ -152,6 +152,7 @@ class TeacherResponse(BaseModel):
     left_date: date | None = None
     left_reason: str | None = None
     created_at: datetime | None = None
+    password_changed: bool = False
 
     model_config = {"from_attributes": True}
 

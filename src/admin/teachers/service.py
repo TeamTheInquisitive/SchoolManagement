@@ -232,6 +232,20 @@ async def list_teachers(
     teachers = result.scalars().unique().all()
 
     results = [_build_teacher_response(t) for t in teachers]
+
+    # Lookup password_changed for all teachers
+    staff_ids = [t.id for t in teachers]
+    if staff_ids:
+        from src.models.core import User
+        user_result = await db.execute(
+            select(User.email, User.password_changed).where(
+                User.school_id == school_id, User.email.in_([t.email for t in teachers])
+            )
+        )
+        pw_map = {row.email: row.password_changed for row in user_result}
+        for r in results:
+            r["password_changed"] = pw_map.get(r["user"]["email"], False)
+
     return paginate(results, total, pagination)
 
 

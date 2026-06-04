@@ -107,6 +107,7 @@ class StudentListItem(BaseModel):
     gender: str | None = None
     date_of_birth: date | None = None
     admission_date: date | None = None
+    password_changed: bool = False
 
 
 class StudentListSummary(BaseModel):

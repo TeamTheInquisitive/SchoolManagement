@@ -71,6 +71,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_changed: Mapped[bool] = mapped_column(default=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)  # admin, teacher, student, parent
     phone: Mapped[str | None] = mapped_column(String(20), default=None)

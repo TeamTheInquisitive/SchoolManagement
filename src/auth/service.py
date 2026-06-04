@@ -194,4 +194,5 @@ async def change_password(
         raise ValidationError("New password must be different from current password")
 
     user.password_hash = hash_password(new_password)
+    user.password_changed = True
     await db.commit()

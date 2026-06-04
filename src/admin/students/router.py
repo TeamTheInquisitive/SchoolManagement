@@ -190,6 +190,7 @@ async def reset_student_password(
         db.add(user_obj)
     else:
         user_obj.password_hash = hash_password(temp_password)
+        user_obj.password_changed = False
 
     await db.commit()
 

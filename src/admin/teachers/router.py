@@ -186,6 +186,7 @@ async def reset_teacher_password(
         raise NotFound("User account for this teacher")
 
     user_obj.password_hash = hash_password(temp_password)
+    user_obj.password_changed = False
     await db.commit()
 
     return {"message": "Password reset successfully", "temporary_password": temp_password}

@@ -121,7 +121,20 @@ async def list_students(
             "gender": student.gender,
             "date_of_birth": student.date_of_birth,
             "admission_date": student.admission_date,
+            "password_changed": False,
         })
+
+    # Lookup password_changed for all students in the list
+    student_ids = [i["id"] for i in items]
+    if student_ids:
+        user_result = await db.execute(
+            select(User.student_id, User.password_changed).where(
+                User.school_id == school_id, User.student_id.in_(student_ids)
+            )
+        )
+        pw_changed_map = {row.student_id: row.password_changed for row in user_result}
+        for item in items:
+            item["password_changed"] = pw_changed_map.get(item["id"], False)
 
     # Compute summary
     active_count = sum(1 for i in items if i["status"] == "Active")
