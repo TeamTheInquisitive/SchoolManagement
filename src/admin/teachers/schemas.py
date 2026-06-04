@@ -228,3 +228,58 @@ class TeacherHistoryResponse(BaseModel):
     reason: str | None = None
     subjects_taught: list[str] = Field(default_factory=list)
     assignment_history: list[dict] = Field(default_factory=list)
+
+
+class BulkImportTeacherItem(BaseModel):
+    employee_id: str
+    full_name: str
+    email: str
+    phone: str | None = None
+    gender: str | None = None
+    date_of_birth: date | None = None
+    department: str | None = None
+    designation: str | None = None
+    primary_subject: str | None = None
+    subjects: list[str] | str = Field(default_factory=list)
+    qualification: str | None = None
+    employment_type: str | None = None
+    joining_date: date | None = None
+    max_workload_hours: int | None = None
+    address: str | None = None
+    basic_salary: float | None = None
+    hra: float | None = None
+    da: float | None = None
+    bank_name: str | None = None
+    account_number: str | None = None
+    ifsc_code: str | None = None
+    pan_number: str | None = None
+
+    @field_validator("subjects", mode="before")
+    @classmethod
+    def parse_subjects(cls, v):
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",") if s.strip()]
+        return v
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def validate_phone(cls, v):
+        return _clean_phone(v)
+
+
+class BulkImportTeacherRowResult(BaseModel):
+    row: int
+    employee_id: str | None = None
+    success: bool
+    error: str | None = None
+
+
+class BulkImportTeacherRequest(BaseModel):
+    teachers: list[BulkImportTeacherItem]
+
+
+class BulkImportTeacherResponse(BaseModel):
+    results: list[BulkImportTeacherRowResult]
+    total: int
+    passed: int
+    failed: int

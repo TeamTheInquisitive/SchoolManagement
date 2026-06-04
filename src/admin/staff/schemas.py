@@ -35,6 +35,20 @@ class CreateStaffRequest(BaseModel):
     blood_group: str | None = None
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
+    # Banking
+    bank_name: str | None = None
+    bank_account_number: str | None = None
+    bank_ifsc: str | None = None
+    pan_number: str | None = None
+    # Salary structure fields (stored in salary_structures table)
+    basic_salary: Decimal | None = None
+    hra: Decimal | None = None
+    da: Decimal | None = None
+    ta: Decimal | None = None
+    other_allowances: Decimal | None = None
+    pf_deduction: Decimal | None = None
+    tax_deduction: Decimal | None = None
+    other_deductions: Decimal | None = None
 
 
 class UpdateStaffRequest(BaseModel):
@@ -60,6 +74,20 @@ class UpdateStaffRequest(BaseModel):
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
     status: str | None = None
+    # Banking
+    bank_name: str | None = None
+    bank_account_number: str | None = None
+    bank_ifsc: str | None = None
+    pan_number: str | None = None
+    # Salary structure fields
+    basic_salary: Decimal | None = None
+    hra: Decimal | None = None
+    da: Decimal | None = None
+    ta: Decimal | None = None
+    other_allowances: Decimal | None = None
+    pf_deduction: Decimal | None = None
+    tax_deduction: Decimal | None = None
+    other_deductions: Decimal | None = None
 
 
 class DeleteStaffRequest(BaseModel):
@@ -91,6 +119,20 @@ class StaffResponse(BaseModel):
     left_date: date | None = None
     left_reason: str | None = None
     created_at: datetime | None = None
+    # Banking
+    bank_name: str | None = None
+    bank_account_number: str | None = None
+    bank_ifsc: str | None = None
+    pan_number: str | None = None
+    # Salary structure
+    basic_salary: Decimal | None = None
+    hra: Decimal | None = None
+    da: Decimal | None = None
+    ta: Decimal | None = None
+    other_allowances: Decimal | None = None
+    pf_deduction: Decimal | None = None
+    tax_deduction: Decimal | None = None
+    other_deductions: Decimal | None = None
 
     model_config = {"from_attributes": True}
 

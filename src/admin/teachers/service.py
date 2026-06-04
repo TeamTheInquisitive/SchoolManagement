@@ -355,7 +355,7 @@ async def create_teacher(
     # Link user to staff
     staff.user_id = user.id
 
-    # Create draft salary structure (inactive) for admin to update
+    # Create salary structure from submitted salary fields
     ay_result = await db.execute(
         select(AcademicYear).where(
             AcademicYear.school_id == school_id,
@@ -365,17 +365,44 @@ async def create_teacher(
     current_ay = ay_result.scalar_one_or_none()
     if current_ay:
         from decimal import Decimal
+        basic = Decimal(str(data.get("basic_salary") or 0))
+        hra_val = Decimal(str(data.get("hra") or 0))
+        da_val = Decimal(str(data.get("da") or 0))
+        ta_val = Decimal(str(data.get("ta") or 0))
+        other_allow = Decimal(str(data.get("other_allowances") or 0))
+        pf_val = Decimal(str(data.get("pf_deduction") or 0))
+        tax_val = Decimal(str(data.get("tax_deduction") or 0))
+        other_ded = Decimal(str(data.get("other_deductions") or 0))
+        net = basic + hra_val + da_val + ta_val + other_allow - pf_val - tax_val - other_ded
+        has_salary = basic > 0
         salary_structure = SalaryStructure(
             school_id=school_id,
             staff_id=staff.id,
             academic_year_id=current_ay.id,
-            basic_salary=Decimal("0"),
-            net_salary=Decimal("0"),
+            basic_salary=basic,
+            hra=hra_val,
+            da=da_val,
+            transport_allowance=ta_val,
+            other_allowances={"other_allowances": float(other_allow)},
+            pf_deduction=pf_val,
+            tds=tax_val,
+            other_deductions={"other_deductions": float(other_ded)},
+            net_salary=net,
             effective_from=data.get("joining_date") or date.today(),
-            is_active=False,
+            is_active=has_salary,
             created_by=created_by,
         )
         db.add(salary_structure)
+
+    # Save bank details to staff record
+    if data.get("bank_name"):
+        staff.bank_name = data["bank_name"]
+    if data.get("account_number"):
+        staff.bank_account_number = data["account_number"]
+    if data.get("ifsc_code"):
+        staff.bank_ifsc = data["ifsc_code"]
+    if data.get("pan_number"):
+        staff.pan_number = data["pan_number"]
 
     await db.commit()
     await db.refresh(staff)

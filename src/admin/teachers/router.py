@@ -12,6 +12,8 @@ from src.admin.teachers.schemas import (
     AssignmentDeleteResponse,
     BulkAssignRequest,
     BulkAssignResponse,
+    BulkImportTeacherRequest,
+    BulkImportTeacherResponse,
     CreateTeacherRequest,
     DeleteTeacherRequest,
     RemoveAssignmentRequest,
@@ -81,6 +83,31 @@ async def export_teachers(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=teachers_export.csv"},
     )
+
+
+@router.post("/bulk-import", response_model=BulkImportTeacherResponse)
+async def bulk_import_teachers(
+    data: BulkImportTeacherRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> BulkImportTeacherResponse:
+    """Bulk import teachers via JSON payload."""
+    results = []
+    passed = 0
+    failed = 0
+    for idx, teacher in enumerate(data.teachers, start=1):
+        try:
+            teacher_data = teacher.model_dump(exclude_none=True)
+            await service.create_teacher(db, school.id, teacher_data, user.id)
+            await db.commit()
+            passed += 1
+            results.append({"row": idx, "employee_id": teacher.employee_id, "success": True})
+        except Exception as e:
+            await db.rollback()
+            failed += 1
+            results.append({"row": idx, "employee_id": teacher.employee_id, "success": False, "error": str(e)})
+    return BulkImportTeacherResponse(results=results, total=len(data.teachers), passed=passed, failed=failed)
 
 
 @router.get("/by-class", response_model=TeachersByClassResponse)

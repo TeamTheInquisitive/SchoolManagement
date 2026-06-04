@@ -329,3 +329,21 @@ class BulkImportResponse(BaseModel):
     imported: int = 0
     skipped: int = 0
     errors: list[dict] = []
+
+
+class BulkImportRowResult(BaseModel):
+    row: int
+    roll_number: str | None = None
+    success: bool
+    error: str | None = None
+
+
+class BulkImportJsonRequest(BaseModel):
+    students: list[CreateStudentRequest]
+
+
+class BulkImportJsonResponse(BaseModel):
+    results: list[BulkImportRowResult]
+    total: int
+    passed: int
+    failed: int

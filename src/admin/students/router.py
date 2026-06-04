@@ -8,6 +8,8 @@ from fastapi.responses import StreamingResponse
 from src.admin.students import service
 from src.admin.students.schemas import (
     ActivitiesResponse,
+    BulkImportJsonRequest,
+    BulkImportJsonResponse,
     BulkImportResponse,
     DeleteStudentRequest,
     DisciplinaryRecordsResponse,
@@ -92,6 +94,30 @@ async def bulk_import_students(
     csv_content = content.decode("utf-8")
     result = await service.bulk_import_students(db, school.id, csv_content, user.id)
     return BulkImportResponse(**result)
+
+
+@router.post("/bulk-import-json", response_model=BulkImportJsonResponse)
+async def bulk_import_students_json(
+    data: BulkImportJsonRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> BulkImportJsonResponse:
+    """Bulk import students via JSON payload."""
+    results = []
+    passed = 0
+    failed = 0
+    for idx, student in enumerate(data.students, start=1):
+        try:
+            await service.create_student(db, school.id, student.model_dump(exclude_none=True), user.id)
+            await db.commit()
+            passed += 1
+            results.append({"row": idx, "roll_number": student.roll_number, "success": True})
+        except Exception as e:
+            await db.rollback()
+            failed += 1
+            results.append({"row": idx, "roll_number": student.roll_number, "success": False, "error": str(e)})
+    return BulkImportJsonResponse(results=results, total=len(data.students), passed=passed, failed=failed)
 
 
 @router.get("/{student_id}", response_model=StudentResponse)

@@ -26,6 +26,8 @@ from src.admin.fees.schemas import (
     RecordPaymentResponse,
     SendReminderRequest,
     SendReminderResponse,
+    StudentFeeListResponse,
+    StudentFeeDetailResponse,
     StudentFeeRecordsResponse,
     UpdateFeeRecordRequest,
 )
@@ -35,7 +37,7 @@ from src.core.dependencies import PaginationDep, SessionDep
 router = APIRouter(prefix="/admin/fees", tags=["Admin Fees"])
 
 
-@router.get("", response_model=FeeRecordListResponse)
+@router.get("", response_model=StudentFeeListResponse)
 async def list_fee_records(
     db: SessionDep,
     school: SchoolDep,
@@ -64,7 +66,7 @@ async def list_fee_records(
         due_from,
         due_to,
     )
-    return FeeRecordListResponse(**result)
+    return StudentFeeListResponse(**result)
 
 
 @router.get("/export")

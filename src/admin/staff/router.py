@@ -63,10 +63,10 @@ async def create_staff(
     user: AdminUser,
 ) -> StaffResponse:
     """Create a new staff member."""
-    staff = await service.create_staff(
+    result = await service.create_staff(
         db, school.id, data.model_dump(exclude_none=True), user.id
     )
-    return StaffResponse.model_validate(staff)
+    return StaffResponse.model_validate(result)
 
 
 @router.put("/{staff_id}", response_model=StaffResponse)
@@ -78,10 +78,10 @@ async def update_staff(
     user: AdminUser,
 ) -> StaffResponse:
     """Update a staff member."""
-    staff = await service.update_staff(
+    result = await service.update_staff(
         db, school.id, staff_id, data.model_dump(exclude_none=True), user.id
     )
-    return StaffResponse.model_validate(staff)
+    return StaffResponse.model_validate(result)
 
 
 @router.delete("/{staff_id}", response_model=StaffDeleteResponse)

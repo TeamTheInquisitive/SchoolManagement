@@ -329,3 +329,52 @@ class ConsolidatedReceiptResponse(BaseModel):
     total_amount_paid: Decimal
     download_url: str
     metadata: dict = {}
+
+
+# --- Student-grouped fee list ---
+
+class StudentFeeListItem(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    roll_number: str | None = None
+    class_name: str
+    section: str
+    total_amount: Decimal
+    total_paid: Decimal
+    total_pending: Decimal
+    total_late_fine: Decimal
+    status: str  # Paid, Partial, Pending, Overdue
+    components_count: int
+
+
+class StudentFeeListResponse(BaseModel):
+    count: int
+    page: int
+    page_size: int
+    total_pages: int
+    results: list[StudentFeeListItem]
+    summary: FeeRecordSummary
+
+
+class StudentFeeComponentItem(BaseModel):
+    id: uuid.UUID
+    fee_type: str
+    fee_category: str
+    total_amount: Decimal
+    paid: Decimal
+    pending: Decimal
+    late_fine: Decimal
+    due_date: date
+    status: str
+
+
+class StudentFeeDetailResponse(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    roll_number: str | None = None
+    class_name: str
+    section: str
+    total_amount: Decimal
+    total_paid: Decimal
+    total_pending: Decimal
+    components: list[StudentFeeComponentItem]

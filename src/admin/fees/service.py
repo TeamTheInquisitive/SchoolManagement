@@ -143,40 +143,65 @@ async def list_fee_records(
                     Section, ClassSection.section_id == Section.id
                 ).where(Section.name == section)
 
-    # Count
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # Paginate
-    query = query.order_by(FeeRecord.due_date.desc())
-    query = query.offset(pagination.offset).limit(pagination.page_size)
+    # Fetch all records (pagination applied after grouping by student)
+    query = query.order_by(FeeRecord.student_id)
     result = await db.execute(query)
     records = result.scalars().all()
 
-    # Build results
-    items = []
+    # Build results - group by student
+    student_map = {}
     for record in records:
         student = record.student
-        cls_name, sec_name = await _get_student_class_info(db, student, school_id)
-        overdue_days = _compute_overdue_days(record.due_date)
+        sid = record.student_id
+        if sid not in student_map:
+            cls_name, sec_name = await _get_student_class_info(db, student, school_id)
+            student_map[sid] = {
+                "student_id": sid,
+                "student_name": student.full_name if student else "",
+                "roll_number": student.admission_number if student else None,
+                "class_name": cls_name,
+                "section": sec_name,
+                "total_amount": Decimal("0"),
+                "total_paid": Decimal("0"),
+                "total_pending": Decimal("0"),
+                "total_late_fine": Decimal("0"),
+                "components_count": 0,
+                "has_overdue": False,
+                "all_paid": True,
+            }
+        entry = student_map[sid]
+        entry["total_amount"] += record.total_amount or Decimal("0")
+        entry["total_paid"] += record.paid or Decimal("0")
+        entry["total_pending"] += record.pending or Decimal("0")
+        entry["total_late_fine"] += record.total_late_fee or Decimal("0")
+        entry["components_count"] += 1
+        if record.status == "Overdue":
+            entry["has_overdue"] = True
+        if record.status != "Paid":
+            entry["all_paid"] = False
 
+    items = []
+    for entry in student_map.values():
+        if entry["all_paid"]:
+            status = "Paid"
+        elif entry["has_overdue"]:
+            status = "Overdue"
+        elif entry["total_paid"] > 0:
+            status = "Partial"
+        else:
+            status = "Pending"
         items.append({
-            "id": record.id,
-            "student_id": record.student_id,
-            "student_name": student.full_name if student else "",
-            "class_name": cls_name,
-            "section": sec_name,
-            "fee_type": record.fee_type,
-            "fee_category": record.fee_category,
-            "total_amount": record.total_amount,
-            "paid": record.paid,
-            "pending": record.pending,
-            "late_fine": record.total_late_fee,
-            "due_date": record.due_date,
-            "status": record.status,
-            "overdue_days": overdue_days,
-            "is_active": record.is_active,
-            "metadata": record.metadata_ or {},
+            "student_id": entry["student_id"],
+            "student_name": entry["student_name"],
+            "roll_number": entry["roll_number"],
+            "class_name": entry["class_name"],
+            "section": entry["section"],
+            "total_amount": entry["total_amount"],
+            "total_paid": entry["total_paid"],
+            "total_pending": entry["total_pending"],
+            "total_late_fine": entry["total_late_fine"],
+            "status": status,
+            "components_count": entry["components_count"],
         })
 
     # Summary KPIs (across all matching records, not just current page)
@@ -205,7 +230,12 @@ async def list_fee_records(
         else 0.0
     )
 
-    paginated = paginate(items, total, pagination)
+    # Paginate grouped results
+    total_students = len(items)
+    start = pagination.offset
+    end = start + pagination.page_size
+    paginated_items = items[start:end]
+    paginated = paginate(paginated_items, total_students, pagination)
     paginated["summary"] = {
         "total_fees": total_fees,
         "collected": collected,
