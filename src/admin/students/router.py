@@ -157,25 +157,43 @@ async def reset_student_password(
     user: AdminUser,
     data: dict | None = None,
 ):
-    """Admin sets a temporary password for a student."""
+    """Admin sets a temporary password for a student. Creates user account if none exists."""
     from sqlalchemy import select as sel
     from src.models.core import User
+    from src.models.student import Student
     from src.core.security import hash_password
     from src.core.exceptions import NotFound
 
     temp_password = data.get("password", "changeme123") if data else "changeme123"
+    temp_email = data.get("email") if data else None
 
     result = await db.execute(
         sel(User).where(User.school_id == school.id, User.student_id == student_id, User.is_active.is_(True))
     )
     user_obj = result.scalar_one_or_none()
-    if not user_obj:
-        raise NotFound("User account for this student")
 
-    user_obj.password_hash = hash_password(temp_password)
+    if not user_obj:
+        # Create user account for this student
+        student_result = await db.execute(sel(Student).where(Student.id == student_id, Student.school_id == school.id))
+        student_obj = student_result.scalar_one_or_none()
+        if not student_obj:
+            raise NotFound("Student")
+        email = temp_email or student_obj.email or f"{student_obj.admission_number}@{school.code}.com"
+        user_obj = User(
+            school_id=school.id,
+            email=email,
+            password_hash=hash_password(temp_password),
+            full_name=student_obj.full_name,
+            role="student",
+            student_id=student_id,
+        )
+        db.add(user_obj)
+    else:
+        user_obj.password_hash = hash_password(temp_password)
+
     await db.commit()
 
-    return {"message": "Password reset successfully", "temporary_password": temp_password}
+    return {"message": "Password reset successfully", "temporary_password": temp_password, "email": user_obj.email}
 
 
 # ---------------------------------------------------------------------------

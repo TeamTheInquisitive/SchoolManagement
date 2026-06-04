@@ -178,6 +178,19 @@ async def get_me(current_user: CurrentUser) -> UserResponse:
     )
 
 
+@router.get("/school-profile")
+async def get_school_profile_for_user(current_user: CurrentUser):
+    """Get school profile for any authenticated user."""
+    school = current_user.school
+    return {
+        "school_name": school.name if school else None,
+        "code": school.code if school else None,
+        "logo_url": school.logo_url if school else None,
+        "email": school.email if school else None,
+        "phone": school.phone if school else None,
+    }
+
+
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
 async def forgot_password(
     data: ForgotPasswordRequest,

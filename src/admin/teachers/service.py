@@ -325,11 +325,11 @@ async def create_teacher(
             )
             db.add(staff_subject)
 
-    # Create user account for the teacher
+    # Create user account for the teacher (password = email)
     user = User(
         school_id=school_id,
         email=email,
-        password_hash=hash_password("Welcome@123"),  # default password
+        password_hash=hash_password(email),
         full_name=full_name,
         role="teacher",
         phone=data.get("phone"),
