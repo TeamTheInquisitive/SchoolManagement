@@ -309,7 +309,7 @@ async def create_student(
             )
             cs_for_fee = cs_r.scalar_one_or_none()
 
-        from dateutil.relativedelta import relativedelta
+        from datetime import timedelta
 
         concessions = data.get("concessions") or {}
 
@@ -328,7 +328,7 @@ async def create_student(
                 )
             )
             for fs in fee_structures.scalars().all():
-                due = date.today() + relativedelta(months=1)
+                due = date.today() + timedelta(days=30)
                 concession_amount = float(concessions.get(str(fs.id), 0))
                 total = float(fs.amount)
                 net_amount = max(0, total - concession_amount)
