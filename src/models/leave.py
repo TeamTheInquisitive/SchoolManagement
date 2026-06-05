@@ -40,6 +40,7 @@ class LeavePolicy(BaseModel):
         UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     leave_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(50), default=None)
     code: Mapped[str | None] = mapped_column(String(10), default=None)
     total_per_year: Mapped[int] = mapped_column(Integer, nullable=False)
     carry_forward: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -1067,7 +1067,11 @@ async def create_fee_structure(
     db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
 ) -> dict:
     """Create a fee structure."""
-    from src.models.fee import FeeStructure
+    from src.models.fee import FeeStructure, FeeRecord
+    from src.models.student import StudentEnrollment
+    from src.models.academic import ClassSection
+    from decimal import Decimal
+    from datetime import date, timedelta
 
     ay_result = await db.execute(
         select(AcademicYear).where(AcademicYear.school_id == school_id, AcademicYear.is_current.is_(True))
@@ -1089,6 +1093,55 @@ async def create_fee_structure(
         created_by=created_by,
     )
     db.add(fs)
+    await db.flush()
+
+    # Create FeeRecords for existing students in the applicable class/section
+    cs_ids = []
+    if fs.class_section_id:
+        cs_ids = [fs.class_section_id]
+    elif fs.class_id:
+        cs_result = await db.execute(
+            select(ClassSection.id).where(
+                ClassSection.school_id == school_id,
+                ClassSection.class_id == fs.class_id,
+                ClassSection.is_active.is_(True),
+            )
+        )
+        cs_ids = [row[0] for row in cs_result.all()]
+
+    if cs_ids:
+        enrollment_result = await db.execute(
+            select(StudentEnrollment).where(
+                StudentEnrollment.school_id == school_id,
+                StudentEnrollment.academic_year_id == academic_year.id,
+                StudentEnrollment.class_section_id.in_(cs_ids),
+                StudentEnrollment.status == "Active",
+                StudentEnrollment.is_active.is_(True),
+            )
+        )
+        enrollments = enrollment_result.scalars().all()
+
+        due_date = date.today() + timedelta(days=30)
+        amount = Decimal(str(data["amount"]))
+
+        for enrollment in enrollments:
+            record = FeeRecord(
+                school_id=school_id,
+                academic_year_id=academic_year.id,
+                student_id=enrollment.student_id,
+                fee_structure_id=fs.id,
+                fee_type=fs.fee_type,
+                fee_category=fs.fee_category,
+                total_amount=amount,
+                paid=Decimal("0"),
+                pending=amount,
+                total_late_fee=Decimal("0"),
+                due_date=due_date,
+                status="Pending",
+                created_by=created_by,
+            )
+            db.add(record)
+
     await db.commit()
     await db.refresh(fs)
     return {
@@ -1145,3 +1198,143 @@ async def delete_fee_structure(db: AsyncSession, school_id: uuid.UUID, structure
     fs.is_active = False
     await db.commit()
     return {"message": "Fee structure deleted"}
+
+
+# ---------------------------------------------------------------------------
+# ID Auto-Generation
+# ---------------------------------------------------------------------------
+
+DEFAULT_ID_CONFIG = {
+    "student": {"enabled": False, "pattern": "STU-{YEAR}-{SEQ:4}", "next_seq": 1},
+    "teacher": {"enabled": False, "pattern": "TCH-{YEAR}-{SEQ:3}", "next_seq": 1},
+    "staff": {"enabled": False, "pattern": "STF-{YEAR}-{SEQ:3}", "next_seq": 1},
+}
+
+
+async def get_id_generation_config(db: AsyncSession, school_id: uuid.UUID) -> dict:
+    """Get ID auto-generation config."""
+    import re
+
+    result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school_id,
+            Settings.category == "id_generation",
+            Settings.key == "config",
+            Settings.is_active.is_(True),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    config = setting.value if setting else DEFAULT_ID_CONFIG
+
+    # Add preview for each entity type
+    from datetime import datetime
+
+    year = str(datetime.now().year)
+    for entity_type, cfg in config.items():
+        pattern = cfg.get("pattern", "")
+        preview = pattern.replace("{YEAR}", year)
+        seq_match = re.search(r"\{SEQ(?::(\d+))?\}", preview)
+        if seq_match:
+            pad = int(seq_match.group(1)) if seq_match.group(1) else 1
+            preview = preview[: seq_match.start()] + str(cfg.get("next_seq", 1)).zfill(pad) + preview[seq_match.end() :]
+        cfg["preview"] = preview
+
+    return config
+
+
+async def update_id_generation_config(
+    db: AsyncSession, school_id: uuid.UUID, data: dict, updated_by: uuid.UUID
+) -> dict:
+    """Update ID auto-generation config."""
+    result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school_id,
+            Settings.category == "id_generation",
+            Settings.key == "config",
+            Settings.is_active.is_(True),
+        )
+    )
+    existing = result.scalar_one_or_none()
+
+    # Merge: only update fields provided
+    if existing:
+        current = dict(existing.value)
+        for entity_type, cfg in data.items():
+            if entity_type in current:
+                current[entity_type].update(cfg)
+            else:
+                current[entity_type] = cfg
+        existing.value = current
+        existing.updated_by = updated_by
+    else:
+        merged = dict(DEFAULT_ID_CONFIG)
+        for entity_type, cfg in data.items():
+            if entity_type in merged:
+                merged[entity_type].update(cfg)
+            else:
+                merged[entity_type] = cfg
+        new_setting = Settings(
+            school_id=school_id,
+            category="id_generation",
+            key="config",
+            value=merged,
+            created_by=updated_by,
+        )
+        db.add(new_setting)
+
+    await db.commit()
+    return {"message": "ID generation config updated"}
+
+
+async def generate_next_id(
+    db: AsyncSession, school_id: uuid.UUID, entity_type: str
+) -> dict:
+    """Generate the next ID for an entity type and increment sequence."""
+    import re
+    from datetime import datetime
+
+    result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school_id,
+            Settings.category == "id_generation",
+            Settings.key == "config",
+            Settings.is_active.is_(True),
+        )
+    )
+    setting = result.scalar_one_or_none()
+    config = setting.value if setting else DEFAULT_ID_CONFIG
+
+    cfg = config.get(entity_type)
+    if not cfg or not cfg.get("enabled"):
+        return {"enabled": False, "id": None}
+
+    pattern = cfg["pattern"]
+    seq = cfg.get("next_seq", 1)
+    year = str(datetime.now().year)
+
+    generated = pattern.replace("{YEAR}", year)
+    seq_match = re.search(r"\{SEQ(?::(\d+))?\}", generated)
+    if seq_match:
+        pad = int(seq_match.group(1)) if seq_match.group(1) else 1
+        generated = generated[: seq_match.start()] + str(seq).zfill(pad) + generated[seq_match.end() :]
+
+    # Increment sequence
+    cfg["next_seq"] = seq + 1
+    config[entity_type] = cfg
+
+    if setting:
+        setting.value = config
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(setting, "value")
+    else:
+        new_setting = Settings(
+            school_id=school_id,
+            category="id_generation",
+            key="config",
+            value=config,
+            created_by=school_id,
+        )
+        db.add(new_setting)
+
+    await db.commit()
+    return {"enabled": True, "id": generated}

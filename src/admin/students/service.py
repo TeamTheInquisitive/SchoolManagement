@@ -585,6 +585,56 @@ async def update_student(
         student.first_name = name_parts[0]
         student.last_name = name_parts[1] if len(name_parts) > 1 else None
 
+    # Update parent details if provided
+    parent_fields = ["parent_name", "parent_phone", "parent_email", "parent_relationship"]
+    if any(f in data for f in parent_fields):
+        sp_result = await db.execute(
+            select(StudentParent).where(
+                StudentParent.student_id == student.id,
+                StudentParent.school_id == school_id,
+                StudentParent.is_active.is_(True),
+            )
+        )
+        sp = sp_result.scalars().first()
+        if sp:
+            p_result = await db.execute(select(Parent).where(Parent.id == sp.parent_id))
+            parent = p_result.scalar_one_or_none()
+            if parent:
+                if "parent_name" in data and data["parent_name"]:
+                    parent.full_name = data["parent_name"]
+                    parts = data["parent_name"].split(" ", 1)
+                    parent.first_name = parts[0]
+                    parent.last_name = parts[1] if len(parts) > 1 else None
+                if "parent_phone" in data:
+                    parent.phone = data["parent_phone"]
+                if "parent_email" in data:
+                    parent.email = data["parent_email"]
+                if "parent_relationship" in data:
+                    parent.relation = data["parent_relationship"]
+        elif data.get("parent_name"):
+            # No existing parent - create one
+            parent_name_parts = data["parent_name"].split(" ", 1)
+            parent = Parent(
+                school_id=school_id,
+                first_name=parent_name_parts[0],
+                last_name=parent_name_parts[1] if len(parent_name_parts) > 1 else None,
+                full_name=data["parent_name"],
+                relation=data.get("parent_relationship", "Parent/Guardian"),
+                phone=data.get("parent_phone"),
+                email=data.get("parent_email"),
+                is_primary_contact=True,
+                created_by=updated_by,
+            )
+            db.add(parent)
+            await db.flush()
+            student_parent = StudentParent(
+                school_id=school_id,
+                student_id=student.id,
+                parent_id=parent.id,
+                created_by=updated_by,
+            )
+            db.add(student_parent)
+
     student.updated_by = updated_by
     await db.commit()
     await db.refresh(student)

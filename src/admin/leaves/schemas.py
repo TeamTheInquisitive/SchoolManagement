@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 class LeavePolicyTypeSchema(BaseModel):
     type: str
+    display_name: str | None = None
     code: str | None = None
     total_per_year: int
     carry_forward: bool = False

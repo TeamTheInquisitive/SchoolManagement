@@ -399,6 +399,58 @@ async def update_leave_policy(
         db.add(policy)
         new_policies.append(policy)
 
+    await db.flush()
+
+    # Allocate leave balances to applicable staff
+    for policy in new_policies:
+        applicable_to = policy.applicable_to or "all"
+        members = policy.members
+
+        staff_query = select(Staff).where(
+            Staff.school_id == school_id,
+            Staff.is_active.is_(True),
+        )
+
+        if members and isinstance(members, list) and len(members) > 0:
+            # Specific member IDs
+            staff_ids = [uuid.UUID(m) if isinstance(m, str) else m for m in members]
+            staff_query = staff_query.where(Staff.id.in_(staff_ids))
+        elif applicable_to != "all":
+            # Specific departments
+            departments = [d.strip() for d in applicable_to.split(",") if d.strip()]
+            if departments:
+                staff_query = staff_query.where(Staff.department.in_(departments))
+
+        staff_result = await db.execute(staff_query)
+        staff_list = staff_result.scalars().all()
+
+        for staff in staff_list:
+            existing_bal = await db.execute(
+                select(LeaveBalance).where(
+                    LeaveBalance.school_id == school_id,
+                    LeaveBalance.staff_id == staff.id,
+                    LeaveBalance.academic_year_id == ay.id,
+                    LeaveBalance.leave_type == policy.leave_type,
+                )
+            )
+            balance = existing_bal.scalar_one_or_none()
+            if balance:
+                balance.total_allocated = policy.total_per_year
+                balance.is_active = True
+            else:
+                balance = LeaveBalance(
+                    school_id=school_id,
+                    staff_id=staff.id,
+                    academic_year_id=ay.id,
+                    leave_type=policy.leave_type,
+                    total_allocated=policy.total_per_year,
+                    carried_forward=0,
+                    used=Decimal("0"),
+                    pending=Decimal("0"),
+                    created_by=user.id,
+                )
+                db.add(balance)
+
     await db.commit()
 
     return {

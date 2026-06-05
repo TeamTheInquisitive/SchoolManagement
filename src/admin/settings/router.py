@@ -462,3 +462,42 @@ async def delete_fee_structure(
 ) -> dict:
     """Delete a fee structure."""
     return await service.delete_fee_structure(db, school.id, structure_id)
+
+
+# ---------------------------------------------------------------------------
+# ID Auto-Generation
+# ---------------------------------------------------------------------------
+
+
+@router.get("/id-generation")
+async def get_id_generation_config(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Get ID auto-generation config."""
+    return await service.get_id_generation_config(db, school.id)
+
+
+@router.put("/id-generation")
+async def update_id_generation_config(
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Update ID auto-generation config."""
+    return await service.update_id_generation_config(db, school.id, data, user.id)
+
+
+@router.get("/next-id")
+async def get_next_id(
+    type: str,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Generate next ID for entity type."""
+    if type not in ("student", "teacher", "staff"):
+        raise HTTPException(status_code=400, detail="type must be student, teacher, or staff")
+    return await service.generate_next_id(db, school.id, type)
