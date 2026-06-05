@@ -75,9 +75,9 @@ class SendReminderRequest(BaseModel):
 
 
 class FeeRecordSummary(BaseModel):
-    total_fees: Decimal
-    collected: Decimal
-    pending: Decimal
+    total_fees: Decimal = Decimal("0")
+    collected: Decimal = Decimal("0")
+    pending: Decimal = Decimal("0")
     overdue_count: int
     late_fines_total: Decimal
     collection_rate: float

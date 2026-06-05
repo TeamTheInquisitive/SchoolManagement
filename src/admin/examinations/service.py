@@ -1046,8 +1046,12 @@ async def update_grade_system(
             grade_system.name = data.name
         grade_system.updated_by = user.id
         # Remove old scales
-        for scale in grade_system.scales:
+        old_scales_result = await db.execute(
+            select(GradeScale).where(GradeScale.grade_system_id == grade_system.id)
+        )
+        for scale in old_scales_result.scalars().all():
             await db.delete(scale)
+        await db.flush()
 
     # Add new scales
     for idx, g in enumerate(data.grades):

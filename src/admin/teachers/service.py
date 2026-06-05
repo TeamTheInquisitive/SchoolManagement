@@ -712,7 +712,7 @@ async def assign_class(
 
     class_name = data["class_name"]
     section = data["section"]
-    subject_name = data["subject"]
+    subject_name = data.get("subject", "")
     is_class_teacher = data.get("is_class_teacher", False)
     periods_per_week = data.get("periods_per_week")
 
@@ -721,15 +721,17 @@ async def assign_class(
     if not class_section:
         raise NotFound("ClassSection", f"{class_name}-{section}")
 
-    # Resolve subject
-    subject = await _resolve_subject(db, school_id, subject_name)
-    if not subject:
-        raise NotFound("Subject", subject_name)
+    # Resolve subject (optional for class teacher assignment)
+    subject = None
+    if subject_name:
+        subject = await _resolve_subject(db, school_id, subject_name)
+        if not subject:
+            raise NotFound("Subject", subject_name)
 
-    # Validate teacher is qualified
-    qualified_subjects = [ss.subject.name for ss in staff.subjects if ss.subject]
-    if subject_name not in qualified_subjects:
-        raise SubjectNotQualified(subject_name, qualified_subjects)
+        # Validate teacher is qualified
+        qualified_subjects = [ss.subject.name for ss in staff.subjects if ss.subject]
+        if subject_name not in qualified_subjects:
+            raise SubjectNotQualified(subject_name, qualified_subjects)
 
     # Get current academic year
     academic_year = await _get_current_academic_year(db, school_id)
@@ -737,19 +739,21 @@ async def assign_class(
         raise NotFound("AcademicYear", "current")
 
     # Check duplicate
-    existing = await db.execute(
-        select(ClassAssignment).where(
-            ClassAssignment.school_id == school_id,
-            ClassAssignment.staff_id == teacher_id,
-            ClassAssignment.class_section_id == class_section.id,
-            ClassAssignment.subject_id == subject.id,
-            ClassAssignment.academic_year_id == academic_year.id,
-            ClassAssignment.status == "Active",
-            ClassAssignment.is_active.is_(True),
-        )
+    dup_query = select(ClassAssignment).where(
+        ClassAssignment.school_id == school_id,
+        ClassAssignment.staff_id == teacher_id,
+        ClassAssignment.class_section_id == class_section.id,
+        ClassAssignment.academic_year_id == academic_year.id,
+        ClassAssignment.status == "Active",
+        ClassAssignment.is_active.is_(True),
     )
+    if subject:
+        dup_query = dup_query.where(ClassAssignment.subject_id == subject.id)
+    else:
+        dup_query = dup_query.where(ClassAssignment.is_class_teacher.is_(True))
+    existing = await db.execute(dup_query)
     if existing.scalar_one_or_none():
-        raise DuplicateAssignment(f"{class_name}-{section}", subject_name)
+        raise DuplicateAssignment(f"{class_name}-{section}", subject_name or "Class Teacher")
 
     # Check workload
     if staff.max_workload_hours and periods_per_week:
@@ -770,7 +774,7 @@ async def assign_class(
         school_id=school_id,
         staff_id=teacher_id,
         class_section_id=class_section.id,
-        subject_id=subject.id,
+        subject_id=subject.id if subject else None,
         academic_year_id=academic_year.id,
         is_class_teacher=is_class_teacher,
         periods_per_week=periods_per_week,

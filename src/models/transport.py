@@ -30,7 +30,7 @@ class Vehicle(BaseModel):
     fitness_expiry: Mapped[date | None] = mapped_column(nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("school_id", "vehicle_number", name="uq_vehicles_school_vehicle_number"),
+        UniqueConstraint("school_id", "vehicle_number", "is_active", name="uq_vehicles_school_vehicle_number_active"),
         Index("idx_vehicles_status", "school_id", "status"),
     )
 
@@ -130,7 +130,8 @@ class RouteAssignment(BaseModel):
         UniqueConstraint(
             "school_id",
             "vehicle_id",
-            name="uq_route_assignments_school_vehicle",
+            "is_active",
+            name="uq_route_assignments_school_vehicle_active",
         ),
         Index("idx_route_assignments_route", "route_id"),
         Index("idx_route_assignments_vehicle", "vehicle_id"),

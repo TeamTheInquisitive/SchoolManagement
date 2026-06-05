@@ -13,9 +13,9 @@ from pydantic import BaseModel
 class LeaveBalanceItem(BaseModel):
     leave_type: str
     total_allocated: int
-    available: Decimal
-    used: Decimal
-    pending: Decimal
+    available: Decimal = Decimal("0")
+    used: Decimal = Decimal("0")
+    pending: Decimal = Decimal("0")
 
 
 class LeaveBalanceSummary(BaseModel):

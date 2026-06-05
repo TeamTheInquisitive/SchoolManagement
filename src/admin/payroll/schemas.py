@@ -57,8 +57,8 @@ class PayslipListItem(BaseModel):
 
 class PayrollSummary(BaseModel):
     total_staff: int
-    total_disbursed: Decimal
-    pending_amount: Decimal
+    total_disbursed: Decimal = Decimal("0")
+    pending_amount: Decimal = Decimal("0")
     pending_count: int
 
 

@@ -132,10 +132,10 @@ async def list_leave_applications(
 
     paginated = paginate(items, total, pagination)
     paginated["overall_summary"] = {
-        "total_applications": summary_row.total,
-        "approved": summary_row.approved,
-        "pending": summary_row.pending,
-        "rejected": summary_row.rejected,
+        "total_applications": summary_row.total or 0,
+        "approved": summary_row.approved or 0,
+        "pending": summary_row.pending or 0,
+        "rejected": summary_row.rejected or 0,
         "on_leave_today": on_leave_today,
     }
     return paginated

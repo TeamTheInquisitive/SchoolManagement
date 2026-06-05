@@ -45,6 +45,7 @@ from src.teacher.adhoc_classes.router import router as teacher_adhoc_classes_rou
 from src.student.dashboard.router import router as student_dashboard_router
 from src.student.library.router import router as student_library_router
 from src.admin.library.router import router as admin_library_router
+from src.admin.attendance.router import router as admin_attendance_router
 from src.admin.mentoring.router import router as admin_mentoring_router
 from src.superadmin.router import router as superadmin_router
 
@@ -156,6 +157,7 @@ app.include_router(student_dashboard_router, prefix="/api/v1")
 app.include_router(student_library_router, prefix="/api/v1")
 app.include_router(admin_library_router, prefix="/api/v1")
 app.include_router(admin_mentoring_router, prefix="/api/v1")
+app.include_router(admin_attendance_router, prefix="/api/v1")
 app.include_router(superadmin_router, prefix="/api/v1")
 
 

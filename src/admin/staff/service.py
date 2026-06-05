@@ -196,9 +196,9 @@ async def list_staff(
     if department:
         query = query.where(Staff.department == department)
 
-    if status:
+    if status and status != "All":
         query = query.where(Staff.status == status)
-    else:
+    elif not status:
         query = query.where(Staff.status == "Active")
 
     if employment_type:

@@ -140,7 +140,7 @@ class DeleteTeacherRequest(BaseModel):
 class AssignClassRequest(BaseModel):
     class_name: str
     section: str
-    subject: str
+    subject: str = ""
     is_class_teacher: bool = False
     periods_per_week: int | None = None
 

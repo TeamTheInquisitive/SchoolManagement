@@ -65,11 +65,11 @@ class LeaveApplicationListItem(BaseModel):
 
 
 class OverallSummary(BaseModel):
-    total_applications: int
-    approved: int
-    pending: int
-    rejected: int
-    on_leave_today: int
+    total_applications: int = 0
+    approved: int = 0
+    pending: int = 0
+    rejected: int = 0
+    on_leave_today: int = 0
 
 
 class LeaveApplicationListResponse(BaseModel):
@@ -86,16 +86,16 @@ class LeaveApplicationListResponse(BaseModel):
 
 class LeaveTypeBalance(BaseModel):
     total: int
-    availed: Decimal
-    pending: Decimal
-    remaining: Decimal
+    availed: Decimal = Decimal("0")
+    pending: Decimal = Decimal("0")
+    remaining: Decimal = Decimal("0")
 
 
 class TotalSummary(BaseModel):
     total_allocated: int
-    total_availed: Decimal
-    total_pending: Decimal
-    total_remaining: Decimal
+    total_availed: Decimal = Decimal("0")
+    total_pending: Decimal = Decimal("0")
+    total_remaining: Decimal = Decimal("0")
 
 
 class TeacherLeaveHistoryItem(BaseModel):

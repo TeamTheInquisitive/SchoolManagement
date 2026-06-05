@@ -142,8 +142,8 @@ class ClassAssignment(BaseModel):
     class_section_id: Mapped[uuid.UUID] = mapped_column(
         UUIDType, ForeignKey("class_sections.id"), nullable=False
     )
-    subject_id: Mapped[uuid.UUID] = mapped_column(
-        UUIDType, ForeignKey("subjects.id"), nullable=False
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType, ForeignKey("subjects.id"), nullable=True, default=None
     )
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
         UUIDType, ForeignKey("academic_years.id"), nullable=False
