@@ -203,11 +203,12 @@ async def create_student(
     db.add(student)
     await db.flush()
 
-    # Create user account if not already exists (rollnumber@schoolcode.com)
+    # Create user account if not already exists (rollnumber as username)
     from src.models.core import School
     school_result = await db.execute(select(School).where(School.id == school_id))
     school_obj = school_result.scalar_one()
     user_email = data.get("email") or f"{roll_number}@{school_obj.code}.com"
+    user_password = roll_number
     existing_user = await db.execute(
         select(User).where(User.school_id == school_id, User.email == user_email)
     )
@@ -215,7 +216,7 @@ async def create_student(
         user = User(
             school_id=school_id,
             email=user_email,
-            password_hash=hash_password(user_email),
+            password_hash=hash_password(user_password),
             full_name=data["full_name"],
             role="student",
             student_id=student.id,

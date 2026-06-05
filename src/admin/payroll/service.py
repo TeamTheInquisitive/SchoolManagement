@@ -114,22 +114,26 @@ async def get_payroll(
 
     for payslip in payslips:
         staff = payslip.staff
+        remaining = payslip.net_salary - (payslip.paid_amount or Decimal("0"))
         items.append({
             "id": payslip.id,
             "employee_id": staff.employee_id if staff else "",
             "employee_name": staff.full_name if staff else "",
             "basic_salary": payslip.basic_salary,
+            "hra": payslip.hra or Decimal("0"),
+            "da": payslip.da or Decimal("0"),
+            "transport_allowance": payslip.transport_allowance or Decimal("0"),
             "allowances": payslip.total_allowances,
             "deductions": payslip.total_deductions,
             "net_salary": payslip.net_salary,
+            "paid_amount": payslip.paid_amount or Decimal("0"),
             "status": payslip.status,
             "paid_on": payslip.paid_on,
         })
 
-        if payslip.status == "Paid":
-            total_disbursed += payslip.net_salary
-        else:
-            pending_amount += payslip.net_salary
+        total_disbursed += payslip.paid_amount or Decimal("0")
+        if payslip.status != "Paid":
+            pending_amount += remaining
             pending_count += 1
 
     return {
@@ -221,10 +225,14 @@ async def run_payroll(
             month=month,
             year=year,
             basic_salary=structure.basic_salary,
+            hra=structure.hra,
+            da=structure.da,
+            transport_allowance=structure.transport_allowance,
             total_allowances=total_allowances,
             total_deductions=total_deductions,
             net_salary=net,
-            status="Generated",
+            paid_amount=Decimal("0"),
+            status="Unpaid",
             generated_at=now,
             generated_by=user.id,
             created_by=user.id,
@@ -271,6 +279,115 @@ async def generate_payslips(
         "generated": count,
         "download_url": download_url,
     }
+
+
+async def update_payslip(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    payslip_id: uuid.UUID,
+    data: dict,
+) -> dict:
+    """Update a payslip's salary components."""
+    result = await db.execute(
+        select(Payslip).where(
+            Payslip.id == payslip_id,
+            Payslip.school_id == school_id,
+            Payslip.is_active.is_(True),
+        )
+    )
+    payslip = result.scalar_one_or_none()
+    if not payslip:
+        raise NotFound("Payslip", str(payslip_id))
+
+    for field in ["basic_salary", "hra", "da", "transport_allowance", "total_allowances", "total_deductions", "net_salary"]:
+        if field in data and data[field] is not None:
+            setattr(payslip, field, Decimal(str(data[field])))
+
+    await db.commit()
+    await db.refresh(payslip)
+    staff = payslip.staff
+    return {
+        "id": payslip.id,
+        "employee_name": staff.full_name if staff else "",
+        "basic_salary": payslip.basic_salary,
+        "hra": payslip.hra,
+        "da": payslip.da,
+        "transport_allowance": payslip.transport_allowance,
+        "allowances": payslip.total_allowances,
+        "deductions": payslip.total_deductions,
+        "net_salary": payslip.net_salary,
+        "paid_amount": payslip.paid_amount,
+        "status": payslip.status,
+    }
+
+
+async def record_payment(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    payslip_id: uuid.UUID,
+    data: dict,
+) -> dict:
+    """Record a partial or full payment on a payslip."""
+    result = await db.execute(
+        select(Payslip).where(
+            Payslip.id == payslip_id,
+            Payslip.school_id == school_id,
+            Payslip.is_active.is_(True),
+        )
+    )
+    payslip = result.scalar_one_or_none()
+    if not payslip:
+        raise NotFound("Payslip", str(payslip_id))
+
+    amount = Decimal(str(data["amount"]))
+    payslip.paid_amount = (payslip.paid_amount or Decimal("0")) + amount
+    payslip.payment_method = data.get("payment_method")
+    payslip.paid_on = date.today()
+
+    if payslip.paid_amount >= payslip.net_salary:
+        payslip.status = "Paid"
+    elif payslip.paid_amount > Decimal("0"):
+        payslip.status = "Partially Paid"
+
+    await db.commit()
+    await db.refresh(payslip)
+    return {
+        "id": payslip.id,
+        "paid_amount": payslip.paid_amount,
+        "status": payslip.status,
+    }
+
+
+async def mark_all_paid(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    data: dict,
+) -> dict:
+    """Mark all unpaid/partially paid payslips as fully paid for a month."""
+    month = data["month"]
+    year = data["year"]
+
+    result = await db.execute(
+        select(Payslip).where(
+            Payslip.school_id == school_id,
+            Payslip.month == month,
+            Payslip.year == year,
+            Payslip.status.in_(["Unpaid", "Partially Paid", "Generated"]),
+            Payslip.is_active.is_(True),
+        )
+    )
+    payslips = result.scalars().all()
+    today = date.today()
+    count = 0
+    for p in payslips:
+        p.paid_amount = p.net_salary
+        p.status = "Paid"
+        p.paid_on = today
+        p.payment_method = "Bulk"
+        count += 1
+
+    await db.commit()
+    return {"updated": count, "message": f"Marked {count} payslips as paid"}
 
 
 async def get_salary_structure(

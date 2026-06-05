@@ -3,7 +3,7 @@ from typing import Optional
 from datetime import date
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Settings (generic) ---
@@ -69,6 +69,20 @@ class SchoolProfileUpdateRequest(BaseModel):
     principal_name: str | None = None
     established_year: int | None = None
     board: str | None = None
+
+    @field_validator('established_year', mode='before')
+    @classmethod
+    def clean_established_year(cls, v):
+        if v == '' or v is None:
+            return None
+        return int(v)
+
+    @field_validator('school_name', 'address', 'city', 'state', 'pin_code', 'phone', 'email', 'website', 'principal_name', 'board', mode='before')
+    @classmethod
+    def empty_to_none(cls, v):
+        if v == '':
+            return None
+        return v
 
 
 class SchoolProfileUpdateResponse(BaseModel):

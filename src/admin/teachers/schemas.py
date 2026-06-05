@@ -179,6 +179,7 @@ class TeacherResponse(BaseModel):
     pincode: str | None = None
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
+    emergency_contact_relationship: str | None = None
     workload_hours: int = 0
     max_workload_hours: int | None = None
     class_assignments: list[ClassAssignmentResponse] = Field(default_factory=list)

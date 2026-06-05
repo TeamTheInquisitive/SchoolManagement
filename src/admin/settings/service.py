@@ -1205,9 +1205,9 @@ async def delete_fee_structure(db: AsyncSession, school_id: uuid.UUID, structure
 # ---------------------------------------------------------------------------
 
 DEFAULT_ID_CONFIG = {
-    "student": {"enabled": False, "pattern": "STU-{YEAR}-{SEQ:4}", "next_seq": 1},
-    "teacher": {"enabled": False, "pattern": "TCH-{YEAR}-{SEQ:3}", "next_seq": 1},
-    "staff": {"enabled": False, "pattern": "STF-{YEAR}-{SEQ:3}", "next_seq": 1},
+    "student": {"enabled": False, "pattern": "STU{YY}{SEQ:4}", "next_seq": 1},
+    "teacher": {"enabled": False, "pattern": "TCH{YY}{SEQ:4}", "next_seq": 1},
+    "staff": {"enabled": False, "pattern": "STF{YY}{SEQ:4}", "next_seq": 1},
 }
 
 
@@ -1230,9 +1230,10 @@ async def get_id_generation_config(db: AsyncSession, school_id: uuid.UUID) -> di
     from datetime import datetime
 
     year = str(datetime.now().year)
+    yy = year[-2:]
     for entity_type, cfg in config.items():
         pattern = cfg.get("pattern", "")
-        preview = pattern.replace("{YEAR}", year)
+        preview = pattern.replace("{YY}", yy).replace("{YEAR}", yy)
         seq_match = re.search(r"\{SEQ(?::(\d+))?\}", preview)
         if seq_match:
             pad = int(seq_match.group(1)) if seq_match.group(1) else 1
@@ -1311,8 +1312,9 @@ async def generate_next_id(
     pattern = cfg["pattern"]
     seq = cfg.get("next_seq", 1)
     year = str(datetime.now().year)
+    yy = year[-2:]
 
-    generated = pattern.replace("{YEAR}", year)
+    generated = pattern.replace("{YY}", yy).replace("{YEAR}", yy)
     seq_match = re.search(r"\{SEQ(?::(\d+))?\}", generated)
     if seq_match:
         pad = int(seq_match.group(1)) if seq_match.group(1) else 1

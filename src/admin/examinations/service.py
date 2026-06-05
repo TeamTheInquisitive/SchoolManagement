@@ -179,15 +179,33 @@ async def list_exams(
             Subject.name == subject
         )
 
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    total = (await db.execute(count_query)).scalar() or 0
+    # Count total distinct exam names (for group-based pagination)
+    name_count_query = select(func.count(func.distinct(Exam.name))).where(
+        Exam.school_id == school_id, Exam.academic_year_id == ay.id, Exam.is_active.is_(True),
+    )
+    total_names = (await db.execute(name_count_query)).scalar() or 0
 
-    # Paginate
-    query = query.order_by(Exam.date.desc(), Exam.created_at.desc())
-    query = query.offset(pagination.offset).limit(pagination.page_size)
+    # Get paginated distinct exam names
+    names_query = (
+        select(func.distinct(Exam.name))
+        .where(Exam.school_id == school_id, Exam.academic_year_id == ay.id, Exam.is_active.is_(True))
+        .order_by(Exam.name)
+        .offset(pagination.offset)
+        .limit(pagination.page_size)
+    )
+    names_result = await db.execute(names_query)
+    exam_names = [row[0] for row in names_result.all()]
+
+    # Fetch ALL rows for those exam names (no row-level pagination)
+    if exam_names:
+        query = query.where(Exam.name.in_(exam_names))
+    else:
+        query = query.where(Exam.name.is_(None))  # return empty
+
+    query = query.order_by(Exam.name, Exam.date.desc())
     result = await db.execute(query)
     exams = list(result.scalars().all())
+    total = total_names  # pagination is by exam group count
 
     # Build response items
     items = []

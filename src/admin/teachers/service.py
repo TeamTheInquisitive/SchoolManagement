@@ -299,8 +299,10 @@ async def list_teachers(
                 "hra": float(ss.hra or 0),
                 "da": float(ss.da or 0),
                 "ta": float(ss.transport_allowance or 0),
+                "other_allowances": float(ss.other_allowances.get("other_allowances", 0)) if isinstance(ss.other_allowances, dict) else 0,
                 "pf_deduction": float(ss.pf_deduction or 0),
-                "tax_deduction": float(ss.professional_tax or 0),
+                "tax_deduction": float(ss.tds or ss.professional_tax or 0),
+                "other_deductions": float(ss.other_deductions.get("other_deductions", 0)) if isinstance(ss.other_deductions, dict) else 0,
             }
         for r in results:
             salary_info = ss_map.get(r["id"], {})
@@ -378,6 +380,8 @@ async def create_teacher(
         designation=data.get("designation"),
         gender=data.get("gender"),
         employment_type=data.get("employment_type"),
+        date_of_birth=data.get("date_of_birth"),
+        address_line1=data.get("address"),
         primary_subject_id=primary_subject_id,
         salary=data.get("basic_salary"),
         emergency_contact_name=data.get("emergency_contact_name"),
@@ -639,18 +643,21 @@ async def update_teacher(
                 ss.da = Decimal(str(salary_data["da"]))
             if "ta" in salary_data:
                 ss.transport_allowance = Decimal(str(salary_data["ta"]))
+            if "other_allowances" in salary_data:
+                ss.other_allowances = {"other_allowances": float(salary_data["other_allowances"])}
             if "pf_deduction" in salary_data:
                 ss.pf_deduction = Decimal(str(salary_data["pf_deduction"]))
             if "tax_deduction" in salary_data:
-                ss.professional_tax = Decimal(str(salary_data["tax_deduction"]))
+                ss.tds = Decimal(str(salary_data["tax_deduction"]))
+            if "other_deductions" in salary_data:
+                ss.other_deductions = {"other_deductions": float(salary_data["other_deductions"])}
             basic = ss.basic_salary or Decimal("0")
             hra_v = ss.hra or Decimal("0")
             da_v = ss.da or Decimal("0")
             ta_v = ss.transport_allowance or Decimal("0")
             pf = ss.pf_deduction or Decimal("0")
-            pt = ss.professional_tax or Decimal("0")
             tds = ss.tds or Decimal("0")
-            ss.net_salary = basic + hra_v + da_v + ta_v - pf - pt - tds
+            ss.net_salary = basic + hra_v + da_v + ta_v - pf - tds
         else:
             from src.models.academic import AcademicYear as AY2
             ay_r = await db.execute(select(AY2).where(AY2.school_id == school_id, AY2.is_current.is_(True)))

@@ -10,7 +10,9 @@ from src.admin.payroll.schemas import (
     CreateSalaryRevisionRequest,
     GeneratePayslipsRequest,
     GeneratePayslipsResponse,
+    MarkAllPaidRequest,
     PayrollListResponse,
+    RecordPaymentRequest,
     RejectAdvanceRequest,
     RunPayrollRequest,
     RunPayrollResponse,
@@ -20,6 +22,7 @@ from src.admin.payroll.schemas import (
     SalaryRevisionCreateResponse,
     SalaryRevisionHistoryResponse,
     SalaryStructureResponse,
+    UpdatePayslipRequest,
 )
 from src.auth.dependencies import AdminUser, SchoolDep
 from src.core.dependencies import PaginationDep, SessionDep
@@ -66,6 +69,44 @@ async def generate_payslips(
     """Generate downloadable payslips for all staff."""
     result = await service.generate_payslips(db, school.id, user, data.model_dump())
     return GeneratePayslipsResponse(**result)
+
+
+@router.put("/payroll/{payslip_id}")
+async def update_payslip(
+    payslip_id: uuid.UUID,
+    data: UpdatePayslipRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Update individual payslip salary components."""
+    result = await service.update_payslip(db, school.id, payslip_id, data.model_dump(exclude_none=True))
+    return result
+
+
+@router.post("/payroll/{payslip_id}/pay")
+async def record_payment(
+    payslip_id: uuid.UUID,
+    data: RecordPaymentRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Record partial or full payment on a payslip."""
+    result = await service.record_payment(db, school.id, payslip_id, data.model_dump())
+    return result
+
+
+@router.post("/payroll/mark-all-paid")
+async def mark_all_paid(
+    data: MarkAllPaidRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Mark all unpaid payslips as paid for a given month/year."""
+    result = await service.mark_all_paid(db, school.id, data.model_dump())
+    return result
 
 
 @router.get("/payroll/salary-structure/{employee_id}", response_model=SalaryStructureResponse)

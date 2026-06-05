@@ -20,6 +20,26 @@ class GeneratePayslipsRequest(BaseModel):
     year: int
 
 
+class UpdatePayslipRequest(BaseModel):
+    basic_salary: Decimal | None = None
+    hra: Decimal | None = None
+    da: Decimal | None = None
+    transport_allowance: Decimal | None = None
+    total_allowances: Decimal | None = None
+    total_deductions: Decimal | None = None
+    net_salary: Decimal | None = None
+
+
+class RecordPaymentRequest(BaseModel):
+    amount: Decimal
+    payment_method: str
+
+
+class MarkAllPaidRequest(BaseModel):
+    month: int
+    year: int
+
+
 class CreateSalaryAdvanceRequest(BaseModel):
     staff_id: uuid.UUID
     amount: Decimal
@@ -48,9 +68,13 @@ class PayslipListItem(BaseModel):
     employee_id: str
     employee_name: str
     basic_salary: Decimal
+    hra: Decimal = Decimal("0")
+    da: Decimal = Decimal("0")
+    transport_allowance: Decimal = Decimal("0")
     allowances: Decimal
     deductions: Decimal
     net_salary: Decimal
+    paid_amount: Decimal = Decimal("0")
     status: str
     paid_on: date | None = None
 

@@ -90,9 +90,13 @@ class Payslip(BaseModel):
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     basic_salary: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    hra: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
+    da: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
+    transport_allowance: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
     total_allowances: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     total_deductions: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     net_salary: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    paid_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
     status: Mapped[str] = mapped_column(
         String(20), default="Generated", nullable=False
     )
