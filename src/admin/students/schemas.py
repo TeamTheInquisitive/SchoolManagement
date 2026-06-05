@@ -14,11 +14,11 @@ from pydantic import BaseModel, field_validator
 
 def _clean_phone(v: str | None) -> str | None:
     if not v:
-        return v
+        return None
     cleaned = re.sub(r'^(\+91[-\s]?|91[-\s]?|0)', '', v.strip())
     cleaned = re.sub(r'[-\s]', '', cleaned)
     if not re.match(r'^[6-9]\d{9}$', cleaned):
-        raise ValueError('Phone must be 10 digits starting with 6-9 (without +91 prefix)')
+        return v.strip()  # Return as-is if doesn't match expected format
     return cleaned
 
 
@@ -73,11 +73,22 @@ class UpdateStudentRequest(BaseModel):
     status: str | None = None
     class_name: str | None = None
     section: str | None = None
+    parent_name: str | None = None
+    parent_phone: str | None = None
+    parent_email: str | None = None
+    parent_relationship: str | None = None
 
-    @field_validator('phone', mode='before')
+    @field_validator('phone', 'parent_phone', mode='before')
     @classmethod
     def validate_phone(cls, v):
         return _clean_phone(v)
+
+    @field_validator('date_of_birth', mode='before')
+    @classmethod
+    def clean_date(cls, v):
+        if v == '' or v is None:
+            return None
+        return v
 
 
 class DeleteStudentRequest(BaseModel):
@@ -289,7 +300,7 @@ class FeeStructureItem(BaseModel):
 
 class FeePaymentItem(BaseModel):
     id: UUID | None = None
-    date: Optional[date] = None
+    payment_date: date | None = None
     amount: float
     method: str | None = None
     status: str | None = None

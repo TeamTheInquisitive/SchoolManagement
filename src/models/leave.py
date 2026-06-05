@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -50,6 +51,8 @@ class LeavePolicy(BaseModel):
         Integer, default=None
     )
     advance_notice_days: Mapped[int | None] = mapped_column(Integer, default=None)
+    applicable_to: Mapped[str | None] = mapped_column(String(255), default="all")
+    members: Mapped[list | None] = mapped_column(JSON, default=None)
 
     # Relationships
     academic_year: Mapped["AcademicYear"] = relationship("AcademicYear", lazy="selectin")

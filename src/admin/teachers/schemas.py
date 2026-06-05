@@ -64,6 +64,19 @@ class CreateTeacherRequest(BaseModel):
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
     emergency_contact_relationship: str | None = None
+    # Salary fields
+    basic_salary: float | None = None
+    hra: float | None = None
+    da: float | None = None
+    ta: float | None = None
+    other_allowances: float | None = None
+    pf_deduction: float | None = None
+    tax_deduction: float | None = None
+    other_deductions: float | None = None
+    bank_name: str | None = None
+    account_number: str | None = None
+    ifsc_code: str | None = None
+    pan_number: str | None = None
 
     @field_validator("phone", mode="before")
     @classmethod
@@ -93,6 +106,19 @@ class UpdateTeacherRequest(BaseModel):
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
     emergency_contact_relationship: str | None = None
+    # Salary fields
+    basic_salary: float | None = None
+    hra: float | None = None
+    da: float | None = None
+    ta: float | None = None
+    other_allowances: float | None = None
+    pf_deduction: float | None = None
+    tax_deduction: float | None = None
+    other_deductions: float | None = None
+    bank_name: str | None = None
+    account_number: str | None = None
+    ifsc_code: str | None = None
+    pan_number: str | None = None
 
     @field_validator("phone", mode="before")
     @classmethod
@@ -140,7 +166,19 @@ class TeacherResponse(BaseModel):
     subjects: list[str] = Field(default_factory=list)
     primary_subject: str | None = None
     qualification: str | None = None
+    department: str | None = None
+    designation: str | None = None
+    gender: str | None = None
+    employment_type: str | None = None
+    date_of_birth: date | None = None
     joining_date: date | None = None
+    address: str | None = None
+    address_line1: str | None = None
+    city: str | None = None
+    state: str | None = None
+    pincode: str | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
     workload_hours: int = 0
     max_workload_hours: int | None = None
     class_assignments: list[ClassAssignmentResponse] = Field(default_factory=list)
@@ -153,6 +191,19 @@ class TeacherResponse(BaseModel):
     left_reason: str | None = None
     created_at: datetime | None = None
     password_changed: bool = False
+    # Salary fields
+    basic_salary: float | None = None
+    hra: float | None = None
+    da: float | None = None
+    ta: float | None = None
+    other_allowances: float | None = None
+    pf_deduction: float | None = None
+    tax_deduction: float | None = None
+    other_deductions: float | None = None
+    bank_name: str | None = None
+    account_number: str | None = None
+    ifsc_code: str | None = None
+    pan_number: str | None = None
 
     model_config = {"from_attributes": True}
 

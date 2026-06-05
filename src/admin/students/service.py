@@ -681,7 +681,7 @@ async def get_activities(
 async def get_fee_history(
     db: AsyncSession, school_id: UUID, student_id: UUID
 ) -> dict:
-    """Get fee history for a student."""
+    """Get fee history for a student - actual payment transactions."""
     result = await db.execute(
         select(Student).where(
             Student.id == student_id, Student.school_id == school_id, Student.is_active.is_(True)
@@ -690,10 +690,45 @@ async def get_fee_history(
     if not result.scalar_one_or_none():
         raise StudentNotFound(str(student_id))
 
+    # Get all fee records for this student
+    from src.models.fee import FeeRecord, FeePayment
+    records_result = await db.execute(
+        select(FeeRecord).where(
+            FeeRecord.school_id == school_id,
+            FeeRecord.student_id == student_id,
+            FeeRecord.is_active.is_(True),
+        )
+    )
+    records = records_result.scalars().all()
+    record_ids = [r.id for r in records]
+
+    total_fees = sum(float(r.total_amount or 0) for r in records)
+    total_paid = sum(float(r.paid or 0) for r in records)
+
+    # Get all payments across all fee records
+    payments = []
+    if record_ids:
+        payments_result = await db.execute(
+            select(FeePayment).where(
+                FeePayment.fee_record_id.in_(record_ids),
+                FeePayment.is_active.is_(True),
+            ).order_by(FeePayment.payment_date.desc())
+        )
+        for p in payments_result.scalars().all():
+            fee_record = next((r for r in records if r.id == p.fee_record_id), None)
+            payments.append({
+                "id": p.id,
+                "amount": float(p.amount),
+                "payment_date": p.payment_date,
+                "method": p.payment_method,
+                "reference": p.reference,
+                "status": "Paid",
+            })
+
     return {
-        "summary": {"total_fees": 0, "total_paid": 0, "total_due": 0},
-        "fee_structure": [],
-        "payments": [],
+        "summary": {"total_fees": total_fees, "total_paid": total_paid, "total_due": total_fees - total_paid},
+        "fee_structure": [{"component": r.fee_type, "amount": float(r.total_amount), "frequency": r.fee_category} for r in records],
+        "payments": payments,
     }
 
 

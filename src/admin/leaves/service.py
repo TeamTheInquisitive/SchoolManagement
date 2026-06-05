@@ -320,8 +320,14 @@ async def get_leave_policy(
     )
     policies = result.scalars().all()
 
-    leave_types = [
-        {
+    leave_types = []
+    for p in policies:
+        applicable_to = p.applicable_to or "all"
+        if applicable_to != "all" and "," in applicable_to:
+            applicable_to = applicable_to.split(",")
+        elif applicable_to != "all":
+            applicable_to = [applicable_to]
+        leave_types.append({
             "type": p.leave_type,
             "code": p.code,
             "total_per_year": p.total_per_year,
@@ -332,9 +338,9 @@ async def get_leave_policy(
             "half_day_allowed": p.half_day_allowed,
             "medical_certificate_required_after_days": p.medical_certificate_required_after_days,
             "advance_notice_days": p.advance_notice_days,
-        }
-        for p in policies
-    ]
+            "applicable_to": applicable_to,
+            "members": p.members,
+        })
 
     return {
         "academic_year": ay.name,
@@ -351,22 +357,26 @@ async def update_leave_policy(
     """Update leave policy for the current academic year."""
     ay = await _get_current_academic_year(db, school_id)
 
-    # Deactivate existing policies
+    # Delete existing policies for this academic year
     existing_result = await db.execute(
         select(LeavePolicy).where(
             LeavePolicy.school_id == school_id,
             LeavePolicy.academic_year_id == ay.id,
-            LeavePolicy.is_active.is_(True),
         )
     )
-    existing_policies = existing_result.scalars().all()
-    for p in existing_policies:
-        p.is_active = False
+    for p in existing_result.scalars().all():
+        await db.delete(p)
+    await db.flush()
 
     # Create new policies
     leave_types = data.get("leave_types", [])
     new_policies = []
     for lt in leave_types:
+        # Handle applicable_to - store as comma-separated string for list, or "all"
+        applicable_to = lt.get("applicable_to", "all")
+        if isinstance(applicable_to, list):
+            applicable_to = ",".join(applicable_to)
+
         policy = LeavePolicy(
             school_id=school_id,
             academic_year_id=ay.id,
@@ -382,6 +392,8 @@ async def update_leave_policy(
                 "medical_certificate_required_after_days"
             ),
             advance_notice_days=lt.get("advance_notice_days"),
+            applicable_to=applicable_to,
+            members=lt.get("members"),
             created_by=user.id,
         )
         db.add(policy)
@@ -404,6 +416,8 @@ async def update_leave_policy(
                 "half_day_allowed": p.half_day_allowed,
                 "medical_certificate_required_after_days": p.medical_certificate_required_after_days,
                 "advance_notice_days": p.advance_notice_days,
+                "applicable_to": p.applicable_to.split(",") if p.applicable_to and p.applicable_to != "all" else p.applicable_to or "all",
+                "members": p.members,
             }
             for p in new_policies
         ],

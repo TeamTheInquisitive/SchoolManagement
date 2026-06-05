@@ -21,6 +21,8 @@ class LeavePolicyTypeSchema(BaseModel):
     half_day_allowed: bool = False
     medical_certificate_required_after_days: int | None = None
     advance_notice_days: int | None = None
+    applicable_to: str | list[str] = "all"
+    members: list[str] | None = None
 
 
 class LeavePolicyResponse(BaseModel):

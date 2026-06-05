@@ -39,6 +39,13 @@ def _build_teacher_response(staff: Staff) -> dict:
             if ss.is_primary:
                 primary_subject = ss.subject.name
 
+    # Fallback: check primary_subject_id if no is_primary flag set
+    if not primary_subject and getattr(staff, 'primary_subject_id', None):
+        for ss in (staff.subjects or []):
+            if ss.subject and ss.subject_id == staff.primary_subject_id:
+                primary_subject = ss.subject.name
+                break
+
     active_assignments = [
         a for a in (staff.class_assignments or [])
         if a.status == "Active" and a.is_active
@@ -85,7 +92,19 @@ def _build_teacher_response(staff: Staff) -> dict:
         "subjects": subjects,
         "primary_subject": primary_subject,
         "qualification": staff.qualification,
+        "department": staff.department,
+        "designation": staff.designation,
+        "gender": staff.gender,
+        "employment_type": staff.employment_type,
+        "date_of_birth": staff.date_of_birth,
         "joining_date": staff.joining_date,
+        "address": staff.address_line1,
+        "address_line1": staff.address_line1,
+        "city": staff.city,
+        "state": staff.state,
+        "pincode": staff.pincode,
+        "emergency_contact_name": staff.emergency_contact_name,
+        "emergency_contact_phone": staff.emergency_contact_phone,
         "workload_hours": total_periods,
         "max_workload_hours": staff.max_workload_hours,
         "class_assignments": class_assignments,
@@ -97,6 +116,11 @@ def _build_teacher_response(staff: Staff) -> dict:
         "left_date": staff.left_date,
         "left_reason": staff.left_reason,
         "created_at": staff.created_at,
+        "basic_salary": float(staff.salary) if staff.salary else None,
+        "bank_name": getattr(staff, 'bank_name', None),
+        "account_number": getattr(staff, 'bank_account_number', None),
+        "ifsc_code": getattr(staff, 'bank_ifsc', None),
+        "pan_number": getattr(staff, 'pan_number', None),
     }
 
 
@@ -246,6 +270,41 @@ async def list_teachers(
         for r in results:
             r["password_changed"] = pw_map.get(r["user"]["email"], False)
 
+    # Resolve primary_subject for teachers where _build_teacher_response couldn't find it
+    unresolved_ids = set()
+    teacher_primary_map = {}
+    for t, r in zip(teachers, results):
+        if not r.get("primary_subject") and t.primary_subject_id:
+            unresolved_ids.add(t.primary_subject_id)
+            teacher_primary_map[t.id] = t.primary_subject_id
+    if unresolved_ids:
+        from src.models.academic import Subject as SubjectModel
+        subj_result = await db.execute(select(SubjectModel).where(SubjectModel.id.in_(unresolved_ids)))
+        subj_name_map = {s.id: s.name for s in subj_result.scalars().all()}
+        for r in results:
+            if not r.get("primary_subject") and r["id"] in teacher_primary_map:
+                r["primary_subject"] = subj_name_map.get(teacher_primary_map[r["id"]])
+
+    # Fetch salary structures for all teachers
+    staff_ids = [t.id for t in teachers]
+    if staff_ids:
+        ss_result = await db.execute(
+            select(SalaryStructure).where(SalaryStructure.staff_id.in_(staff_ids))
+        )
+        ss_map = {}
+        for ss in ss_result.scalars().all():
+            ss_map[ss.staff_id] = {
+                "basic_salary": float(ss.basic_salary or 0),
+                "hra": float(ss.hra or 0),
+                "da": float(ss.da or 0),
+                "ta": float(ss.transport_allowance or 0),
+                "pf_deduction": float(ss.pf_deduction or 0),
+                "tax_deduction": float(ss.professional_tax or 0),
+            }
+        for r in results:
+            salary_info = ss_map.get(r["id"], {})
+            r.update(salary_info)
+
     return paginate(results, total, pagination)
 
 
@@ -319,6 +378,7 @@ async def create_teacher(
         gender=data.get("gender"),
         employment_type=data.get("employment_type"),
         primary_subject_id=primary_subject_id,
+        salary=data.get("basic_salary"),
         status="Active",
         created_by=created_by,
     )
@@ -479,6 +539,11 @@ async def update_teacher(
         "designation": "designation",
         "gender": "gender",
         "employment_type": "employment_type",
+        "date_of_birth": "date_of_birth",
+        "joining_date": "joining_date",
+        "address": "address_line1",
+        "emergency_contact_name": "emergency_contact_name",
+        "emergency_contact_phone": "emergency_contact_phone",
     }
 
     for req_field, model_field in field_map.items():
@@ -516,8 +581,71 @@ async def update_teacher(
         subj = await _resolve_subject(db, school_id, primary_subject_name)
         if subj:
             staff.primary_subject_id = subj.id
+            # Update is_primary flags on existing staff_subjects
+            for ss in (staff.subjects or []):
+                ss.is_primary = (ss.subject_id == subj.id)
 
     staff.updated_by = updated_by
+
+    # Handle salary fields
+    salary_fields = {"basic_salary", "hra", "da", "ta", "other_allowances", "pf_deduction", "tax_deduction", "other_deductions"}
+    salary_data = {k: data[k] for k in salary_fields if k in data and data[k] is not None}
+    if salary_data:
+        from decimal import Decimal
+        ss_result = await db.execute(
+            select(SalaryStructure).where(SalaryStructure.staff_id == staff.id).order_by(SalaryStructure.created_at.desc())
+        )
+        ss = ss_result.scalar_one_or_none()
+        if ss:
+            if "basic_salary" in salary_data:
+                ss.basic_salary = Decimal(str(salary_data["basic_salary"]))
+            if "hra" in salary_data:
+                ss.hra = Decimal(str(salary_data["hra"]))
+            if "da" in salary_data:
+                ss.da = Decimal(str(salary_data["da"]))
+            if "ta" in salary_data:
+                ss.transport_allowance = Decimal(str(salary_data["ta"]))
+            if "pf_deduction" in salary_data:
+                ss.pf_deduction = Decimal(str(salary_data["pf_deduction"]))
+            if "tax_deduction" in salary_data:
+                ss.professional_tax = Decimal(str(salary_data["tax_deduction"]))
+            basic = ss.basic_salary or Decimal("0")
+            hra_v = ss.hra or Decimal("0")
+            da_v = ss.da or Decimal("0")
+            ta_v = ss.transport_allowance or Decimal("0")
+            pf = ss.pf_deduction or Decimal("0")
+            pt = ss.professional_tax or Decimal("0")
+            tds = ss.tds or Decimal("0")
+            ss.net_salary = basic + hra_v + da_v + ta_v - pf - pt - tds
+        else:
+            from src.models.academic import AcademicYear as AY2
+            ay_r = await db.execute(select(AY2).where(AY2.school_id == school_id, AY2.is_current.is_(True)))
+            ay = ay_r.scalar_one_or_none()
+            basic = Decimal(str(salary_data.get("basic_salary", 0)))
+            hra_v = Decimal(str(salary_data.get("hra", 0)))
+            da_v = Decimal(str(salary_data.get("da", 0)))
+            ta_v = Decimal(str(salary_data.get("ta", 0)))
+            pf = Decimal(str(salary_data.get("pf_deduction", 0)))
+            pt = Decimal(str(salary_data.get("tax_deduction", 0)))
+            net = basic + hra_v + da_v + ta_v - pf - pt
+            new_ss = SalaryStructure(
+                school_id=school_id, staff_id=staff.id,
+                academic_year_id=ay.id if ay else None,
+                basic_salary=basic, hra=hra_v, da=da_v,
+                transport_allowance=ta_v, pf_deduction=pf,
+                professional_tax=pt, net_salary=net,
+                effective_from=date.today(),
+                created_by=updated_by,
+            )
+            db.add(new_ss)
+        if "basic_salary" in salary_data:
+            staff.salary = float(salary_data["basic_salary"])
+
+    # Bank details
+    for bk in ("bank_name", "account_number", "ifsc_code", "pan_number"):
+        if bk in data and data[bk] is not None:
+            setattr(staff, bk, data[bk])
+
     await db.commit()
     await db.refresh(staff)
 
