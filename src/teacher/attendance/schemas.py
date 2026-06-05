@@ -1,7 +1,7 @@
 from typing import Optional
 
 import uuid
-from datetime import date, datetime
+from datetime import date as date_type, datetime
 from enum import Enum
 
 from pydantic import BaseModel
@@ -23,14 +23,14 @@ class AttendanceRecordInput(BaseModel):
 
 class SubmitAttendanceRequest(BaseModel):
     class_id: uuid.UUID
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     academic_year: str
     records: list[AttendanceRecordInput]
 
 
 class UpdateAttendanceRequest(BaseModel):
     class_id: uuid.UUID
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     records: list[AttendanceRecordInput]
 
 
@@ -56,7 +56,7 @@ class GetAttendanceResponse(BaseModel):
     class_section: str
     class_name: str
     section: str
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     is_submitted: bool
     submitted_at: datetime | None = None
     summary: AttendanceSummary | None = None
@@ -66,7 +66,7 @@ class GetAttendanceResponse(BaseModel):
 class SubmitAttendanceResponse(BaseModel):
     message: str
     class_section: str
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     summary: AttendanceSummary
     submitted_at: datetime
 
@@ -74,7 +74,7 @@ class SubmitAttendanceResponse(BaseModel):
 class UpdateAttendanceResponse(BaseModel):
     message: str
     class_section: str
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     summary: AttendanceSummary
     updated_at: datetime
 
@@ -84,7 +84,7 @@ class AttendanceHistoryItem(BaseModel):
     class_name: str | None = None
     section: str | None = None
     class_section: str | None = None
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     status: str | None = None
     total_students: int = 0
     present: int = 0
@@ -104,7 +104,7 @@ class AttendanceHistoryResponse(BaseModel):
 class CancelAttendanceResponse(BaseModel):
     id: uuid.UUID
     class_section: str
-    date: Optional[date] = None
+    date: Optional[date_type] = None
     status: str
     cancelled_on: date
     message: str

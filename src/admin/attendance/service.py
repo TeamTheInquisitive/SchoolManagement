@@ -128,7 +128,7 @@ async def submit_attendance(db: AsyncSession, school_id: uuid.UUID, user: User, 
 
     session = AttendanceSession(
         school_id=school_id, academic_year_id=ay.id, class_section_id=data.class_id,
-        date=data.date, submitted_by=user.id, submitted_at=now, status="Submitted",
+        date=data.date, submitted_by=None, submitted_at=now, status="Submitted",
         total_present=present, total_absent=absent, total_late=late, created_by=user.id,
     )
     db.add(session)

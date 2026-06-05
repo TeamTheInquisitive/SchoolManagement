@@ -33,8 +33,8 @@ class AttendanceSession(BaseModel):
         UUIDType, ForeignKey("class_sections.id"), nullable=False
     )
     date: Mapped[date] = mapped_column(Date, nullable=False)
-    submitted_by: Mapped[uuid.UUID] = mapped_column(
-        UUIDType, ForeignKey("staff.id"), nullable=False
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType, ForeignKey("staff.id"), nullable=True, default=None
     )
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False

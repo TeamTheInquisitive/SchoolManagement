@@ -60,6 +60,7 @@ class Staff(BaseModel):
     blood_group: Mapped[str | None] = mapped_column(String(5), default=None)
     emergency_contact_name: Mapped[str | None] = mapped_column(String(255), default=None)
     emergency_contact_phone: Mapped[str | None] = mapped_column(String(20), default=None)
+    emergency_contact_relationship: Mapped[str | None] = mapped_column(String(50), default=None)
 
     # Banking
     bank_name: Mapped[str | None] = mapped_column(String(100), default=None)

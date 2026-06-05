@@ -105,6 +105,7 @@ def _build_teacher_response(staff: Staff) -> dict:
         "pincode": staff.pincode,
         "emergency_contact_name": staff.emergency_contact_name,
         "emergency_contact_phone": staff.emergency_contact_phone,
+        "emergency_contact_relationship": staff.emergency_contact_relationship,
         "workload_hours": total_periods,
         "max_workload_hours": staff.max_workload_hours,
         "class_assignments": class_assignments,
@@ -379,6 +380,9 @@ async def create_teacher(
         employment_type=data.get("employment_type"),
         primary_subject_id=primary_subject_id,
         salary=data.get("basic_salary"),
+        emergency_contact_name=data.get("emergency_contact_name"),
+        emergency_contact_phone=data.get("emergency_contact_phone"),
+        emergency_contact_relationship=data.get("emergency_contact_relationship"),
         status="Active",
         created_by=created_by,
     )
@@ -495,7 +499,36 @@ async def get_teacher(
     if not staff:
         raise TeacherNotFound(str(teacher_id))
 
-    return _build_teacher_response(staff)
+    response = _build_teacher_response(staff)
+
+    # Fetch leave balances for current academic year
+    from src.models.leave import LeaveBalance
+
+    ay = await _get_current_academic_year(db, school_id)
+    if ay:
+        lb_result = await db.execute(
+            select(LeaveBalance).where(
+                LeaveBalance.school_id == school_id,
+                LeaveBalance.staff_id == teacher_id,
+                LeaveBalance.academic_year_id == ay.id,
+            )
+        )
+        balances = lb_result.scalars().all()
+        response["leave_balances"] = [
+            {
+                "leave_type": lb.leave_type,
+                "total_allocated": lb.total_allocated,
+                "used": float(lb.used),
+                "pending": float(lb.pending),
+                "remaining": lb.total_allocated + lb.carried_forward - float(lb.used),
+                "carried_forward": lb.carried_forward,
+            }
+            for lb in balances
+        ]
+    else:
+        response["leave_balances"] = []
+
+    return response
 
 
 async def update_teacher(
@@ -544,6 +577,7 @@ async def update_teacher(
         "address": "address_line1",
         "emergency_contact_name": "emergency_contact_name",
         "emergency_contact_phone": "emergency_contact_phone",
+        "emergency_contact_relationship": "emergency_contact_relationship",
     }
 
     for req_field, model_field in field_map.items():
