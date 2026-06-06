@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import NotFound
@@ -227,7 +227,8 @@ async def shuffle_auto_assign(db: AsyncSession, school_id: uuid.UUID, user_id: u
     teachers_result = await db.execute(
         select(Staff.id).where(
             Staff.school_id == school_id,
-            Staff.role == "Teacher",
+            Staff.is_teacher.is_(True),
+            Staff.status == "Active",
             Staff.is_active.is_(True),
         )
     )
@@ -248,15 +249,12 @@ async def shuffle_auto_assign(db: AsyncSession, school_id: uuid.UUID, user_id: u
         return {"message": "No active students found", "assigned": 0}
 
     # Remove all existing mentor assignments for this academic year
-    existing = await db.execute(
-        select(StudentMentor).where(
+    await db.execute(
+        delete(StudentMentor).where(
             StudentMentor.school_id == school_id,
             StudentMentor.academic_year_id == ay.id,
-            StudentMentor.is_active.is_(True),
         )
     )
-    for m in existing.scalars().all():
-        m.is_active = False
 
     # Shuffle students randomly
     random.shuffle(student_ids)

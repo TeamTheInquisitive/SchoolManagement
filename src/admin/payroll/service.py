@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import AppException, NotFound
@@ -182,9 +182,13 @@ async def run_payroll(
 
     # Get all active staff with salary structures
     structures_result = await db.execute(
-        select(SalaryStructure).where(
+        select(SalaryStructure).join(
+            Staff, Staff.id == SalaryStructure.staff_id
+        ).where(
             SalaryStructure.school_id == school_id,
             SalaryStructure.is_active.is_(True),
+            Staff.is_active.is_(True),
+            Staff.status == "Active",
         )
     )
     structures = structures_result.scalars().all()
@@ -348,6 +352,16 @@ async def record_payment(
     payslip.payment_method = data.get("payment_method")
     payslip.paid_on = date.today()
 
+    # Track payment in history
+    history = payslip.payment_history or []
+    history.append({
+        "amount": float(amount),
+        "date": date.today().isoformat(),
+        "method": data.get("payment_method"),
+        "notes": data.get("notes"),
+    })
+    payslip.payment_history = history
+
     if payslip.paid_amount >= payslip.net_salary:
         payslip.status = "Paid"
     elif payslip.paid_amount > Decimal("0"):
@@ -423,6 +437,46 @@ async def undo_all_paid(
 
     await db.commit()
     return {"updated": count, "message": f"Undone {count} payslips back to unpaid"}
+
+
+async def get_payroll_history(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+) -> dict:
+    """Get payroll history grouped by month/year with summary stats."""
+    from sqlalchemy import func
+
+    result = await db.execute(
+        select(
+            Payslip.year,
+            Payslip.month,
+            func.count(Payslip.id).label("total_staff"),
+            func.sum(Payslip.net_salary).label("total_salary"),
+            func.sum(Payslip.paid_amount).label("total_paid"),
+            func.sum(case((Payslip.status == "Paid", 1), else_=0)).label("paid_count"),
+            func.min(Payslip.generated_at).label("processed_on"),
+        ).where(
+            Payslip.school_id == school_id,
+            Payslip.is_active.is_(True),
+        ).group_by(Payslip.year, Payslip.month)
+        .order_by(Payslip.year.desc(), Payslip.month.desc())
+    )
+    rows = result.all()
+
+    return {
+        "history": [
+            {
+                "year": r.year,
+                "month": r.month,
+                "total_staff": r.total_staff,
+                "total_salary": float(r.total_salary or 0),
+                "total_paid": float(r.total_paid or 0),
+                "paid_count": r.paid_count,
+                "processed_on": r.processed_on.isoformat() if r.processed_on else None,
+            }
+            for r in rows
+        ]
+    }
 
 
 async def get_salary_structure(
@@ -794,6 +848,47 @@ async def get_salary_revisions(
         "current_basic": current_basic,
         "revisions": items,
     }
+
+
+async def get_staff_payslips(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    staff_id: uuid.UUID,
+) -> dict:
+    """Get all payslips for a specific staff member."""
+    result = await db.execute(
+        select(Payslip).where(
+            Payslip.school_id == school_id,
+            Payslip.staff_id == staff_id,
+            Payslip.is_active.is_(True),
+        ).order_by(Payslip.year.desc(), Payslip.month.desc())
+    )
+    payslips = result.scalars().all()
+
+    items = []
+    for p in payslips:
+        items.append({
+            "id": str(p.id),
+            "month": p.month,
+            "year": p.year,
+            "basic_salary": p.basic_salary,
+            "hra": getattr(p, 'hra', None) or 0,
+            "da": getattr(p, 'da', None) or 0,
+            "transport_allowance": getattr(p, 'transport_allowance', None) or 0,
+            "total_allowances": p.total_allowances,
+            "total_deductions": p.total_deductions,
+            "net_salary": p.net_salary,
+            "paid_amount": p.paid_amount or Decimal("0"),
+            "working_days": p.working_days or 26,
+            "total_days": p.total_days or 30,
+            "status": p.status,
+            "paid_on": p.paid_on,
+            "payment_method": p.payment_method,
+            "notes": p.notes,
+            "payment_history": p.payment_history or [],
+        })
+
+    return {"results": items}
 
 
 async def create_salary_revision(

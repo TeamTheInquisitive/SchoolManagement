@@ -577,3 +577,50 @@ async def get_next_id(
     if type not in ("student", "teacher", "staff"):
         raise HTTPException(status_code=400, detail="type must be student, teacher, or staff")
     return await service.generate_next_id(db, school.id, type)
+
+
+@router.get("/attendance-config")
+async def get_attendance_config(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Get attendance alert configuration."""
+    from src.models.core import Setting as Settings
+    result = await db.execute(
+        select(Settings.value).where(
+            Settings.school_id == school.id,
+            Settings.category == "attendance",
+            Settings.key == "config",
+            Settings.is_active.is_(True),
+        )
+    )
+    config = result.scalar_one_or_none()
+    return config if isinstance(config, dict) else {"threshold": 75, "min_days": 30}
+
+
+@router.put("/attendance-config")
+async def update_attendance_config(
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Update attendance alert configuration. Body: { threshold: 75, min_days: 30 }"""
+    from src.models.core import Setting as Settings
+    config = {"threshold": data.get("threshold", 75), "min_days": data.get("min_days", 30)}
+    result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school.id,
+            Settings.category == "attendance",
+            Settings.key == "config",
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row:
+        row.value = config
+        row.is_active = True
+    else:
+        db.add(Settings(school_id=school.id, category="attendance", key="config", value=config, created_by=user.id))
+    await db.commit()
+    return {**config, "message": "Attendance config updated"}

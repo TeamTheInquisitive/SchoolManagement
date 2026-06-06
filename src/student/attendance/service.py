@@ -16,6 +16,24 @@ from src.models.student import Student, StudentEnrollment
 
 
 ATTENDANCE_THRESHOLD = 75
+ATTENDANCE_MIN_DAYS = 30
+
+
+async def _get_attendance_settings(db: AsyncSession, school_id: uuid.UUID) -> tuple[int, int]:
+    """Get attendance threshold and min days from school settings."""
+    from src.models.core import Setting
+    result = await db.execute(
+        select(Setting.value).where(
+            Setting.school_id == school_id,
+            Setting.category == "attendance",
+            Setting.key == "config",
+            Setting.is_active.is_(True),
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row and isinstance(row, dict):
+        return row.get("threshold", ATTENDANCE_THRESHOLD), row.get("min_days", ATTENDANCE_MIN_DAYS)
+    return ATTENDANCE_THRESHOLD, ATTENDANCE_MIN_DAYS
 
 
 async def _get_current_academic_year(
@@ -144,7 +162,8 @@ async def get_attendance_overview(
     total = len(records)
 
     percentage = round((present + late) / total * 100, 1) if total > 0 else 0.0
-    status = "above_threshold" if percentage >= ATTENDANCE_THRESHOLD else "below_threshold"
+    threshold, min_days = await _get_attendance_settings(db, school_id)
+    status = "above_threshold" if percentage >= threshold else "below_threshold"
 
     # Subject-wise breakdown - get session -> subject mapping
     # We need the sessions with their subject info (from class_assignments or timetable)
@@ -179,13 +198,13 @@ async def get_attendance_overview(
             }
         ]
 
-    # Warning
+    # Warning - only after minimum days threshold
     warning = None
-    if percentage < ATTENDANCE_THRESHOLD and total > 0:
+    if percentage < threshold and total >= min_days:
         warning = {
             "active": True,
             "type": "low_attendance",
-            "message": f"Your attendance is below {ATTENDANCE_THRESHOLD}%. You need to maintain at least {ATTENDANCE_THRESHOLD}% attendance to be eligible for exams.",
+            "message": f"Your attendance is below {threshold}%. You need to maintain at least {threshold}% attendance to be eligible for exams.",
             "severity": "critical",
         }
 
@@ -239,7 +258,8 @@ async def get_attendance_overview(
             "late_days": late,
             "excused_days": excused,
             "total_days": total,
-            "threshold": ATTENDANCE_THRESHOLD,
+            "threshold": threshold,
+            "min_days": min_days,
             "status": status,
         },
         "stats": {
@@ -391,16 +411,17 @@ async def get_attendance_warnings(
     late = sum(1 for r in records if r.status == "Late")
     total = len(records)
 
+    threshold, min_days = await _get_attendance_settings(db, school_id)
     percentage = round((present + late) / total * 100, 1) if total > 0 else 100.0
-    status = "above_threshold" if percentage >= ATTENDANCE_THRESHOLD else "below_threshold"
+    status = "above_threshold" if percentage >= threshold else "below_threshold"
 
     warnings = []
-    if percentage < ATTENDANCE_THRESHOLD and total > 0:
+    if percentage < threshold and total >= min_days:
         warnings.append({
             "id": f"warn-{student.id}",
             "type": "low_attendance",
             "severity": "critical",
-            "message": f"Your attendance is below {ATTENDANCE_THRESHOLD}%. You need to maintain at least {ATTENDANCE_THRESHOLD}% attendance to be eligible for exams.",
+            "message": f"Your attendance is below {threshold}%. You need to maintain at least {threshold}% attendance to be eligible for exams.",
             "issued_date": date.today(),
             "active": True,
             "acknowledged": False,
@@ -412,7 +433,8 @@ async def get_attendance_warnings(
 
     return {
         "academic_year": ay.name,
-        "threshold": ATTENDANCE_THRESHOLD,
+        "threshold": threshold,
+        "min_days": min_days,
         "current_percentage": percentage,
         "status": status,
         "warnings": warnings,

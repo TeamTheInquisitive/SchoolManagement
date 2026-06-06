@@ -1255,3 +1255,172 @@ async def delete_assignment(
         "deactivated_on": str(date.today()),
         "message": "Assignment removed. Vehicle, driver, and helper are now available.",
     }
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Route Students
+# ────────────────────────────────────────────────────────────────────────────────
+
+
+async def list_route_students(
+    db: AsyncSession, school_id: uuid.UUID, route_id: uuid.UUID
+) -> dict:
+    """List students assigned to a route for current academic year."""
+    from src.models.student import Student, StudentEnrollment
+
+    ay_result = await db.execute(
+        select(AcademicYear.id).where(
+            AcademicYear.school_id == school_id,
+            AcademicYear.is_current.is_(True),
+            AcademicYear.is_active.is_(True),
+        )
+    )
+    ay_id = ay_result.scalar_one_or_none()
+    if not ay_id:
+        return {"students": [], "count": 0}
+
+    result = await db.execute(
+        select(StudentTransport, Student.full_name, Student.admission_number)
+        .join(Student, Student.id == StudentTransport.student_id)
+        .where(
+            StudentTransport.school_id == school_id,
+            StudentTransport.route_id == route_id,
+            StudentTransport.academic_year_id == ay_id,
+            StudentTransport.is_active.is_(True),
+        )
+        .order_by(Student.full_name)
+    )
+    rows = result.all()
+
+    return {
+        "students": [
+            {
+                "id": str(st.id),
+                "student_id": str(st.student_id),
+                "student_name": name,
+                "admission_number": adm,
+                "pickup_point": st.pickup_point,
+                "drop_point": st.drop_point,
+            }
+            for st, name, adm in rows
+        ],
+        "count": len(rows),
+    }
+
+
+async def assign_students_to_route(
+    db: AsyncSession, school_id: uuid.UUID, route_id: uuid.UUID, data: dict, user_id: uuid.UUID
+) -> dict:
+    """Assign students to a route."""
+    ay_result = await db.execute(
+        select(AcademicYear.id).where(
+            AcademicYear.school_id == school_id,
+            AcademicYear.is_current.is_(True),
+            AcademicYear.is_active.is_(True),
+        )
+    )
+    ay_id = ay_result.scalar_one_or_none()
+    if not ay_id:
+        raise AppException(status_code=400, error="No active academic year")
+
+    student_ids = data.get("student_ids", [])
+    pickup = data.get("pickup_point")
+    drop = data.get("drop_point")
+    count = 0
+
+    for sid in student_ids:
+        # Check if already assigned
+        existing = await db.execute(
+            select(StudentTransport).where(
+                StudentTransport.school_id == school_id,
+                StudentTransport.student_id == uuid.UUID(sid),
+                StudentTransport.academic_year_id == ay_id,
+                StudentTransport.is_active.is_(True),
+            )
+        )
+        ex = existing.scalar_one_or_none()
+        if ex:
+            # Update route
+            ex.route_id = route_id
+            ex.pickup_point = pickup
+            ex.drop_point = drop
+        else:
+            db.add(StudentTransport(
+                school_id=school_id,
+                student_id=uuid.UUID(sid),
+                route_id=route_id,
+                academic_year_id=ay_id,
+                pickup_point=pickup,
+                drop_point=drop,
+                created_by=user_id,
+            ))
+        count += 1
+
+    # Update vehicle occupied_seats
+    await _update_route_capacity(db, school_id, route_id, ay_id)
+    await db.commit()
+    return {"assigned": count, "message": f"{count} student(s) assigned to route"}
+
+
+async def remove_student_from_route(
+    db: AsyncSession, school_id: uuid.UUID, route_id: uuid.UUID, student_id: uuid.UUID
+) -> dict:
+    """Remove a student from a route."""
+    ay_result = await db.execute(
+        select(AcademicYear.id).where(
+            AcademicYear.school_id == school_id,
+            AcademicYear.is_current.is_(True),
+            AcademicYear.is_active.is_(True),
+        )
+    )
+    ay_id = ay_result.scalar_one_or_none()
+
+    result = await db.execute(
+        select(StudentTransport).where(
+            StudentTransport.school_id == school_id,
+            StudentTransport.route_id == route_id,
+            StudentTransport.student_id == student_id,
+            StudentTransport.is_active.is_(True),
+        )
+    )
+    record = result.scalar_one_or_none()
+    if record:
+        record.is_active = False
+
+    if ay_id:
+        await _update_route_capacity(db, school_id, route_id, ay_id)
+    await db.commit()
+    return {"message": "Student removed from route"}
+
+
+async def _update_route_capacity(
+    db: AsyncSession, school_id: uuid.UUID, route_id: uuid.UUID, ay_id: uuid.UUID
+):
+    """Update occupied_seats on the vehicle assigned to this route."""
+    # Count active students on this route
+    count_result = await db.execute(
+        select(func.count(StudentTransport.id)).where(
+            StudentTransport.school_id == school_id,
+            StudentTransport.route_id == route_id,
+            StudentTransport.academic_year_id == ay_id,
+            StudentTransport.is_active.is_(True),
+        )
+    )
+    student_count = count_result.scalar() or 0
+
+    # Find vehicle assigned to this route
+    assignment = await db.execute(
+        select(RouteAssignment.vehicle_id).where(
+            RouteAssignment.school_id == school_id,
+            RouteAssignment.route_id == route_id,
+            RouteAssignment.is_active.is_(True),
+        )
+    )
+    vehicle_id = assignment.scalar_one_or_none()
+    if vehicle_id:
+        vehicle = await db.execute(
+            select(Vehicle).where(Vehicle.id == vehicle_id)
+        )
+        v = vehicle.scalar_one_or_none()
+        if v:
+            v.occupied_seats = student_count

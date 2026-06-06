@@ -105,6 +105,8 @@ class Payslip(BaseModel):
     paid_on: Mapped[date | None] = mapped_column(Date, default=None)
     payment_method: Mapped[str | None] = mapped_column(String(50), default=None)
     reference: Mapped[str | None] = mapped_column(String(100), default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    payment_history: Mapped[list | None] = mapped_column(JSON, default=None)
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

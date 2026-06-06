@@ -420,3 +420,43 @@ async def delete_assignment(
     """Soft-delete an assignment. Frees vehicle, driver, and helper."""
     result = await service.delete_assignment(db, school.id, assignment_id, user.id)
     return AssignmentDeleteResponse(**result)
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Route Students
+# ────────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/routes/{route_id}/students")
+async def list_route_students(
+    route_id: uuid.UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """List students assigned to a route."""
+    return await service.list_route_students(db, school.id, route_id)
+
+
+@router.post("/routes/{route_id}/students")
+async def assign_students_to_route(
+    route_id: uuid.UUID,
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Assign students to a route. Body: { student_ids: [], pickup_point?, drop_point? }"""
+    return await service.assign_students_to_route(db, school.id, route_id, data, user.id)
+
+
+@router.delete("/routes/{route_id}/students/{student_id}")
+async def remove_student_from_route(
+    route_id: uuid.UUID,
+    student_id: uuid.UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Remove a student from a route."""
+    return await service.remove_student_from_route(db, school.id, route_id, student_id)

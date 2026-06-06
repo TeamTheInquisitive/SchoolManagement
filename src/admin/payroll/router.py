@@ -121,6 +121,16 @@ async def undo_all_paid(
     return result
 
 
+@router.get("/payroll/history")
+async def get_payroll_history(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get payroll run history - summary per month."""
+    return await service.get_payroll_history(db, school.id)
+
+
 @router.get("/payroll/salary-structure/{employee_id}", response_model=SalaryStructureResponse)
 async def get_salary_structure(
     employee_id: str,
@@ -239,6 +249,17 @@ async def get_salary_revisions(
     """Get salary revision history for a staff member."""
     result = await service.get_salary_revisions(db, school.id, staff_id)
     return SalaryRevisionHistoryResponse(**result)
+
+
+@router.get("/payroll/staff/{staff_id}/payslips")
+async def get_staff_payslips(
+    staff_id: uuid.UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get all payslips for a specific staff member."""
+    return await service.get_staff_payslips(db, school.id, staff_id)
 
 
 @router.post("/payroll/salary-revisions", status_code=201, response_model=SalaryRevisionCreateResponse)

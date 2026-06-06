@@ -58,13 +58,13 @@ class VehicleResponse(BaseModel):
     id: uuid.UUID
     vehicle_number: str
     plate_number: str | None = None
-    type: str
+    type: str = ""
     model: str | None = None
     year: int | None = None
     fuel_type: str | None = None
-    capacity: int
+    capacity: int = 0
     occupied_seats: int = 0
-    status: str
+    status: str = "Operational"
     driver_id: uuid.UUID | None = None
     driver_name: str | None = None
     route_id: uuid.UUID | None = None
@@ -72,7 +72,7 @@ class VehicleResponse(BaseModel):
     next_service_date: date | None = None
     insurance_expiry: date | None = None
     fitness_expiry: date | None = None
-    is_active: bool
+    is_active: bool = True
     created_at: datetime | None = None
     metadata: dict = {}
 
@@ -124,16 +124,16 @@ class DriverUpdateRequest(BaseModel):
 
 class DriverResponse(BaseModel):
     id: uuid.UUID
-    driver_id: str
+    driver_id: str = ""
     full_name: str
     phone: str
     email: str | None = None
-    license_number: str
+    license_number: str = ""
     license_type: str | None = None
     license_expiry: date | None = None
     experience_years: int | None = None
     join_date: date | None = None
-    status: str
+    status: str = "Active"
     assigned_vehicle_id: uuid.UUID | None = None
     assigned_vehicle: str | None = None
     assigned_route: str | None = None
@@ -178,15 +178,15 @@ class HelperUpdateRequest(BaseModel):
 
 class HelperResponse(BaseModel):
     id: uuid.UUID
-    helper_id: str
+    helper_id: str = ""
     full_name: str
     phone: str
     join_date: date | None = None
-    status: str
+    status: str = "Active"
     assigned_vehicle_id: uuid.UUID | None = None
     assigned_vehicle: str | None = None
     assigned_route: str | None = None
-    is_active: bool
+    is_active: bool = True
     created_at: datetime | None = None
     metadata: dict = {}
 
@@ -234,7 +234,7 @@ class RouteUpdateRequest(BaseModel):
 
 class RouteResponse(BaseModel):
     id: uuid.UUID
-    route_code: str
+    route_code: str = ""
     name: str
     area: str | None = None
     shift: str | None = None
@@ -242,7 +242,7 @@ class RouteResponse(BaseModel):
     distance_km: float | None = None
     start_time: time | None = None
     end_time: time | None = None
-    status: str
+    status: str = "Active"
     assigned_vehicle: str | None = None
     assigned_driver: str | None = None
     students_count: int = 0
