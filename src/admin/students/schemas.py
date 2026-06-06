@@ -53,6 +53,7 @@ class CreateStudentRequest(BaseModel):
     token_advance: float | None = None
     token_payment_method: str | None = None
     parent_occupation: str | None = None
+    status: str | None = None
 
     @field_validator('phone', 'parent_phone', mode='before')
     @classmethod

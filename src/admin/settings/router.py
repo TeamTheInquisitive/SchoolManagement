@@ -30,7 +30,7 @@ from src.admin.settings.schemas import (
 from src.auth.dependencies import AdminUser, SchoolDep
 from src.core.config import settings
 from src.core.dependencies import SessionDep
-from src.models.core import School
+from src.models.core import School, Settings
 
 router = APIRouter(prefix="/admin/settings", tags=["Admin Settings"])
 
@@ -488,6 +488,82 @@ async def update_id_generation_config(
 ) -> dict:
     """Update ID auto-generation config."""
     return await service.update_id_generation_config(db, school.id, data, user.id)
+
+
+# ---------------------------------------------------------------------------
+# Holidays
+# ---------------------------------------------------------------------------
+
+
+@router.get("/holidays")
+async def get_holidays(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Get holidays list from settings. Seeds default public holidays if none exist."""
+    result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school.id,
+            Settings.category == "school",
+            Settings.key == "holidays",
+            Settings.is_active.is_(True),
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row:
+        return {"holidays": row.value if row.value else []}
+
+    # Seed default public holidays for the current year
+    from datetime import datetime
+    yr = datetime.now().year
+    defaults = [
+        {"date": f"{yr}-01-26", "name": "Republic Day", "type": "National", "description": "Republic Day of India"},
+        {"date": f"{yr}-03-14", "name": "Holi", "type": "National", "description": "Festival of Colors"},
+        {"date": f"{yr}-04-14", "name": "Ambedkar Jayanti", "type": "National", "description": "Dr. B.R. Ambedkar's Birthday"},
+        {"date": f"{yr}-04-17", "name": "Ram Navami", "type": "National", "description": "Birth of Lord Rama"},
+        {"date": f"{yr}-05-01", "name": "May Day", "type": "National", "description": "International Workers' Day"},
+        {"date": f"{yr}-08-15", "name": "Independence Day", "type": "National", "description": "Independence Day of India"},
+        {"date": f"{yr}-10-02", "name": "Gandhi Jayanti", "type": "National", "description": "Mahatma Gandhi's Birthday"},
+        {"date": f"{yr}-10-12", "name": "Dussehra", "type": "National", "description": "Victory of good over evil"},
+        {"date": f"{yr}-11-01", "name": "Diwali", "type": "National", "description": "Festival of Lights"},
+        {"date": f"{yr}-11-15", "name": "Guru Nanak Jayanti", "type": "National", "description": "Birth of Guru Nanak"},
+        {"date": f"{yr}-12-25", "name": "Christmas", "type": "National", "description": "Christmas Day"},
+    ]
+    return {"holidays": defaults}
+
+
+@router.put("/holidays")
+async def update_holidays(
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Update holidays list in settings."""
+    holidays = data.get("holidays", [])
+    result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school.id,
+            Settings.category == "school",
+            Settings.key == "holidays",
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row:
+        row.value = holidays
+        row.is_active = True
+    else:
+        row = Settings(
+            id=uuid.uuid4(),
+            school_id=school.id,
+            category="school",
+            key="holidays",
+            value=holidays,
+        )
+        db.add(row)
+    await db.commit()
+    return {"holidays": holidays, "message": "Holidays updated successfully"}
 
 
 @router.get("/next-id")

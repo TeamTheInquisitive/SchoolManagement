@@ -127,6 +127,8 @@ async def get_payroll(
             "deductions": payslip.total_deductions,
             "net_salary": payslip.net_salary,
             "paid_amount": payslip.paid_amount or Decimal("0"),
+            "working_days": payslip.working_days or 26,
+            "total_days": payslip.total_days or 30,
             "status": payslip.status,
             "paid_on": payslip.paid_on,
         })
@@ -232,6 +234,8 @@ async def run_payroll(
             total_deductions=total_deductions,
             net_salary=net,
             paid_amount=Decimal("0"),
+            working_days=data.get("working_days", 26),
+            total_days=data.get("total_days", 30),
             status="Unpaid",
             generated_at=now,
             generated_by=user.id,
@@ -388,6 +392,37 @@ async def mark_all_paid(
 
     await db.commit()
     return {"updated": count, "message": f"Marked {count} payslips as paid"}
+
+
+async def undo_all_paid(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    data: dict,
+) -> dict:
+    """Undo all paid payslips back to unpaid for a month."""
+    month = data["month"]
+    year = data["year"]
+
+    result = await db.execute(
+        select(Payslip).where(
+            Payslip.school_id == school_id,
+            Payslip.month == month,
+            Payslip.year == year,
+            Payslip.status == "Paid",
+            Payslip.is_active.is_(True),
+        )
+    )
+    payslips = result.scalars().all()
+    count = 0
+    for p in payslips:
+        p.paid_amount = Decimal("0")
+        p.status = "Unpaid"
+        p.paid_on = None
+        p.payment_method = None
+        count += 1
+
+    await db.commit()
+    return {"updated": count, "message": f"Undone {count} payslips back to unpaid"}
 
 
 async def get_salary_structure(

@@ -210,7 +210,7 @@ async def create_student(
             "token_payment_method": data.get("token_payment_method"),
             "parent_occupation": data.get("parent_occupation"),
         }.items() if v} or {},
-        status="Active",
+        status=data.get("status", "Active"),
         created_by=created_by,
     )
     db.add(student)

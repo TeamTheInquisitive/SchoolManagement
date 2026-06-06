@@ -97,6 +97,8 @@ class Payslip(BaseModel):
     total_deductions: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     net_salary: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     paid_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
+    working_days: Mapped[int] = mapped_column(Integer, default=26)
+    total_days: Mapped[int] = mapped_column(Integer, default=30)
     status: Mapped[str] = mapped_column(
         String(20), default="Generated", nullable=False
     )

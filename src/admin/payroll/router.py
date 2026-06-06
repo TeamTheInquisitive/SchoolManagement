@@ -109,6 +109,18 @@ async def mark_all_paid(
     return result
 
 
+@router.post("/payroll/undo-all-paid")
+async def undo_all_paid(
+    data: MarkAllPaidRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Undo all paid payslips back to unpaid for a given month/year."""
+    result = await service.undo_all_paid(db, school.id, data.model_dump())
+    return result
+
+
 @router.get("/payroll/salary-structure/{employee_id}", response_model=SalaryStructureResponse)
 async def get_salary_structure(
     employee_id: str,
