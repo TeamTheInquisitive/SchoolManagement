@@ -47,6 +47,12 @@ class CreateStudentRequest(BaseModel):
     parent_email: str | None = None
     parent_relationship: str | None = "Parent/Guardian"
     concessions: dict[str, float] | None = None
+    custom_fees: list[dict] | None = None
+    excluded_fee_ids: list[str] | None = None
+    previous_school: str | None = None
+    token_advance: float | None = None
+    token_payment_method: str | None = None
+    parent_occupation: str | None = None
 
     @field_validator('phone', 'parent_phone', mode='before')
     @classmethod
@@ -118,6 +124,10 @@ class StudentListItem(BaseModel):
     gender: str | None = None
     date_of_birth: date | None = None
     admission_date: date | None = None
+    student_type: str | None = None
+    previous_school: str | None = None
+    token_advance: float | None = None
+    token_payment_method: str | None = None
     password_changed: bool = False
 
 
@@ -263,6 +273,10 @@ class MeetingItem(BaseModel):
     conductor: str | None = None
     notes: str | None = None
     status: str | None = None
+    agenda: str | None = None
+    remarks: str | None = None
+    follow_up_required: bool | None = None
+    next_meeting_date: Optional[date] = None
 
 
 class ParentMeetingsResponse(BaseModel):
@@ -274,17 +288,26 @@ class ParentMeetingsResponse(BaseModel):
 class ActivityItem(BaseModel):
     id: UUID | None = None
     name: str
-    since: str | None = None
+    activity_type: str | None = None
+    description: str | None = None
     role: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    achievement: str | None = None
+    since: str | None = None
     status: str | None = None
 
 
 class AwardItem(BaseModel):
     id: UUID | None = None
     name: str
+    title: str | None = None
     category: str | None = None
     year: str | None = None
     description: str | None = None
+    awarded_date: date | None = None
+    awarded_by: str | None = None
+    level: str | None = None
 
 
 class ActivitiesResponse(BaseModel):
@@ -347,6 +370,96 @@ class BulkImportRowResult(BaseModel):
     roll_number: str | None = None
     success: bool
     error: str | None = None
+
+
+class CreateAwardRequest(BaseModel):
+    """Request to create a student award."""
+    title: str
+    category: str | None = None
+    description: str | None = None
+    awarded_date: date | None = None
+    awarded_by: str | None = None
+    level: str | None = None
+    certificate_url: str | None = None
+
+
+class UpdateAwardRequest(BaseModel):
+    """Request to update a student award."""
+    title: str | None = None
+    category: str | None = None
+    description: str | None = None
+    awarded_date: date | None = None
+    awarded_by: str | None = None
+    level: str | None = None
+    certificate_url: str | None = None
+
+
+class CreateActivityRequest(BaseModel):
+    """Request to create a student activity."""
+    name: str
+    activity_type: str
+    description: str | None = None
+    role: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    achievement: str | None = None
+
+
+class UpdateActivityRequest(BaseModel):
+    """Request to update a student activity."""
+    name: str | None = None
+    activity_type: str | None = None
+    description: str | None = None
+    role: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    achievement: str | None = None
+
+
+class CreateParentMeetingRequest(BaseModel):
+    """Request to create a parent meeting."""
+    meeting_date: date
+    meeting_type: str | None = None
+    agenda: str | None = None
+    discussion_notes: str | None = None
+    remarks: str | None = None
+    follow_up_required: bool = False
+    next_meeting_date: date | None = None
+    status: str | None = "Scheduled"
+
+
+class UpdateParentMeetingRequest(BaseModel):
+    """Request to update a parent meeting."""
+    meeting_date: date | None = None
+    meeting_type: str | None = None
+    agenda: str | None = None
+    discussion_notes: str | None = None
+    remarks: str | None = None
+    follow_up_required: bool | None = None
+    next_meeting_date: date | None = None
+    status: str | None = None
+
+
+class CreateDisciplinaryRequest(BaseModel):
+    """Request to create a disciplinary record."""
+    incident_date: date
+    category: str
+    severity: str
+    description: str
+    action_taken: str | None = None
+    parent_notified: bool = False
+    status: str = "Open"
+
+
+class UpdateDisciplinaryRequest(BaseModel):
+    """Request to update a disciplinary record."""
+    incident_date: date | None = None
+    category: str | None = None
+    severity: str | None = None
+    description: str | None = None
+    action_taken: str | None = None
+    parent_notified: bool | None = None
+    status: str | None = None
 
 
 class BulkImportJsonRequest(BaseModel):

@@ -11,6 +11,10 @@ from src.admin.students.schemas import (
     BulkImportJsonRequest,
     BulkImportJsonResponse,
     BulkImportResponse,
+    CreateActivityRequest,
+    CreateAwardRequest,
+    CreateDisciplinaryRequest,
+    CreateParentMeetingRequest,
     DeleteStudentRequest,
     DisciplinaryRecordsResponse,
     ExamResultsResponse,
@@ -20,6 +24,10 @@ from src.admin.students.schemas import (
     StudentListResponse,
     StudentResponse,
     CreateStudentRequest,
+    UpdateActivityRequest,
+    UpdateAwardRequest,
+    UpdateDisciplinaryRequest,
+    UpdateParentMeetingRequest,
     UpdateStudentRequest,
 )
 from src.auth.dependencies import AdminUser, SchoolDep
@@ -253,6 +261,43 @@ async def get_parent_meetings(
     return ParentMeetingsResponse(**result)
 
 
+@router.post("/{student_id}/parent-meetings", status_code=201)
+async def create_parent_meeting(
+    student_id: UUID,
+    data: CreateParentMeetingRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Create a parent meeting."""
+    return await service.create_parent_meeting(db, school.id, student_id, data.model_dump(exclude_none=True), user.id)
+
+
+@router.put("/{student_id}/parent-meetings/{meeting_id}")
+async def update_parent_meeting(
+    student_id: UUID,
+    meeting_id: UUID,
+    data: UpdateParentMeetingRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Update a parent meeting."""
+    return await service.update_parent_meeting(db, school.id, student_id, meeting_id, data.model_dump(exclude_none=True))
+
+
+@router.delete("/{student_id}/parent-meetings/{meeting_id}", status_code=204)
+async def delete_parent_meeting(
+    student_id: UUID,
+    meeting_id: UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Delete a parent meeting."""
+    await service.delete_parent_meeting(db, school.id, student_id, meeting_id)
+
+
 @router.get("/{student_id}/activities", response_model=ActivitiesResponse)
 async def get_activities(
     student_id: UUID,
@@ -263,6 +308,80 @@ async def get_activities(
     """Get extra-curricular activities and awards."""
     result = await service.get_activities(db, school.id, student_id)
     return ActivitiesResponse(**result)
+
+
+@router.post("/{student_id}/activities", status_code=201)
+async def create_activity(
+    student_id: UUID,
+    data: CreateActivityRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Create an activity for a student."""
+    return await service.create_activity(db, school.id, student_id, data.model_dump(exclude_none=True), user.id)
+
+
+@router.put("/{student_id}/activities/{activity_id}")
+async def update_activity(
+    student_id: UUID,
+    activity_id: UUID,
+    data: UpdateActivityRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Update an activity."""
+    return await service.update_activity(db, school.id, student_id, activity_id, data.model_dump(exclude_none=True))
+
+
+@router.delete("/{student_id}/activities/{activity_id}", status_code=204)
+async def delete_activity(
+    student_id: UUID,
+    activity_id: UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Delete an activity."""
+    await service.delete_activity(db, school.id, student_id, activity_id)
+
+
+@router.post("/{student_id}/awards", status_code=201)
+async def create_award(
+    student_id: UUID,
+    data: CreateAwardRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Create an award for a student."""
+    return await service.create_award(db, school.id, student_id, data.model_dump(exclude_none=True), user.id)
+
+
+@router.put("/{student_id}/awards/{award_id}")
+async def update_award(
+    student_id: UUID,
+    award_id: UUID,
+    data: UpdateAwardRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Update an award."""
+    return await service.update_award(db, school.id, student_id, award_id, data.model_dump(exclude_none=True))
+
+
+@router.delete("/{student_id}/awards/{award_id}", status_code=204)
+async def delete_award(
+    student_id: UUID,
+    award_id: UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Delete an award."""
+    await service.delete_award(db, school.id, student_id, award_id)
 
 
 @router.get("/{student_id}/fee-history", response_model=FeeHistoryResponse)
@@ -287,3 +406,40 @@ async def get_disciplinary_records(
     """Get disciplinary records."""
     result = await service.get_disciplinary_records(db, school.id, student_id)
     return DisciplinaryRecordsResponse(**result)
+
+
+@router.post("/{student_id}/disciplinary-records", status_code=201)
+async def create_disciplinary_record(
+    student_id: UUID,
+    data: CreateDisciplinaryRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Create a disciplinary record."""
+    return await service.create_disciplinary_record(db, school.id, student_id, data.model_dump(exclude_none=True), user.id)
+
+
+@router.put("/{student_id}/disciplinary-records/{record_id}")
+async def update_disciplinary_record(
+    student_id: UUID,
+    record_id: UUID,
+    data: UpdateDisciplinaryRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Update a disciplinary record."""
+    return await service.update_disciplinary_record(db, school.id, student_id, record_id, data.model_dump(exclude_none=True))
+
+
+@router.delete("/{student_id}/disciplinary-records/{record_id}", status_code=204)
+async def delete_disciplinary_record(
+    student_id: UUID,
+    record_id: UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Delete a disciplinary record."""
+    await service.delete_disciplinary_record(db, school.id, student_id, record_id)

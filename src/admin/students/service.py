@@ -16,6 +16,8 @@ from src.models.academic import Class, ClassSection, Section
 from src.models.core import AcademicYear, User
 from src.models.staff import Staff
 from src.models.student import Parent, Student, StudentEnrollment, StudentMentor, StudentParent
+from src.models.attendance import AttendanceRecord, AttendanceSession
+from src.models.examination import Exam, ExamResult
 from src.models.fee import FeeRecord, FeeStructure
 
 
@@ -121,6 +123,10 @@ async def list_students(
             "gender": student.gender,
             "date_of_birth": student.date_of_birth,
             "admission_date": student.admission_date,
+            "student_type": (student.metadata_ or {}).get("student_type"),
+            "previous_school": (student.metadata_ or {}).get("previous_school"),
+            "token_advance": (student.metadata_ or {}).get("token_advance"),
+            "token_payment_method": (student.metadata_ or {}).get("token_payment_method"),
             "password_changed": False,
         })
 
@@ -197,6 +203,13 @@ async def create_student(
         city=data.get("city"),
         state=data.get("state"),
         pincode=data.get("pincode"),
+        metadata_={k: v for k, v in {
+            "student_type": data.get("student_type"),
+            "previous_school": data.get("previous_school"),
+            "token_advance": data.get("token_advance"),
+            "token_payment_method": data.get("token_payment_method"),
+            "parent_occupation": data.get("parent_occupation"),
+        }.items() if v} or {},
         status="Active",
         created_by=created_by,
     )
@@ -342,6 +355,10 @@ async def create_student(
                 )
             )
             for fs in fee_structures.scalars().all():
+                # Skip excluded fees
+                excluded_ids = data.get("excluded_fee_ids") or []
+                if str(fs.id) in excluded_ids:
+                    continue
                 due = date.today() + timedelta(days=30)
                 concession_amount = float(concessions.get(str(fs.id), 0))
                 total = float(fs.amount)
@@ -363,6 +380,29 @@ async def create_student(
                     created_by=created_by,
                 )
                 db.add(fee_record)
+
+            # Create custom fee records
+            custom_fees = data.get("custom_fees") or []
+            for cf in custom_fees:
+                due = date.today() + timedelta(days=30)
+                amount = float(cf.get("amount", 0))
+                if amount > 0:
+                    fee_record = FeeRecord(
+                        school_id=school_id,
+                        academic_year_id=current_ay2.id,
+                        student_id=student.id,
+                        fee_type=cf.get("fee_type", "Custom Fee"),
+                        fee_category=cf.get("fee_category", "other"),
+                        total_amount=amount,
+                        paid=0,
+                        pending=amount,
+                        due_date=due,
+                        status="Pending",
+                        is_active=True,
+                        description="Custom fee component (student-specific)",
+                        created_by=created_by,
+                    )
+                    db.add(fee_record)
 
     await db.commit()
     await db.refresh(student)
@@ -388,6 +428,78 @@ async def create_student(
         "parent_email": data.get("parent_email"),
         "created_at": student.created_at,
     }
+
+
+# ---------------------------------------------------------------------------
+# Student stats helper
+# ---------------------------------------------------------------------------
+
+
+async def _compute_student_stats(
+    db: AsyncSession, student_id: UUID, school_id: UUID, current_ay
+) -> dict:
+    """Compute attendance, grade, and fee stats for a student."""
+    stats = {
+        "attendance_percentage": None,
+        "average_grade": None,
+        "assignments_submitted": None,
+        "assignments_total": None,
+        "fee_due": None,
+        "class_rank": None,
+        "class_strength": None,
+    }
+    if not current_ay:
+        return stats
+
+    # Attendance: (present + late) / total * 100
+    from sqlalchemy import case
+    att_result = await db.execute(
+        select(
+            func.count().label("total"),
+            func.sum(case((AttendanceRecord.status.in_(["Present", "Late"]), 1), else_=0)).label("attended"),
+        )
+        .select_from(AttendanceRecord)
+        .join(AttendanceSession, AttendanceRecord.attendance_session_id == AttendanceSession.id)
+        .where(
+            AttendanceRecord.student_id == student_id,
+            AttendanceSession.academic_year_id == current_ay.id,
+            AttendanceSession.school_id == school_id,
+        )
+    )
+    row = att_result.one()
+    if row.total > 0:
+        stats["attendance_percentage"] = round(row.attended / row.total * 100, 1)
+
+    # Average grade: AVG(marks_obtained / exam.total_marks * 100)
+    grade_result = await db.execute(
+        select(
+            func.avg(ExamResult.marks_obtained / Exam.total_marks * 100)
+        )
+        .select_from(ExamResult)
+        .join(Exam, ExamResult.exam_id == Exam.id)
+        .where(
+            ExamResult.student_id == student_id,
+            Exam.academic_year_id == current_ay.id,
+            Exam.school_id == school_id,
+            ExamResult.marks_obtained.is_not(None),
+        )
+    )
+    avg_grade = grade_result.scalar()
+    if avg_grade is not None:
+        stats["average_grade"] = round(float(avg_grade), 1)
+
+    # Fee due: sum of pending for current academic year
+    fee_result = await db.execute(
+        select(func.coalesce(func.sum(FeeRecord.pending), 0)).where(
+            FeeRecord.student_id == student_id,
+            FeeRecord.academic_year_id == current_ay.id,
+            FeeRecord.school_id == school_id,
+            FeeRecord.status == "Pending",
+        )
+    )
+    stats["fee_due"] = float(fee_result.scalar())
+
+    return stats
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +579,7 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
 
     # Get mentor info
     mentor_info = None
+    class_teacher_info = None
     if current_ay:
         mentor_result = await db.execute(
             select(StudentMentor).where(
@@ -492,6 +605,27 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
                     "phone": staff.phone,
                 }
 
+        # Get class teacher for this student's class-section
+        from src.models.staff import ClassAssignment
+        enrollments = student.enrollments or []
+        active_enrollment = next((e for e in enrollments if e.academic_year_id == current_ay.id and e.is_active), None)
+        if active_enrollment:
+            ct_result = await db.execute(
+                select(Staff).join(ClassAssignment, ClassAssignment.staff_id == Staff.id).where(
+                    ClassAssignment.class_section_id == active_enrollment.class_section_id,
+                    ClassAssignment.is_class_teacher.is_(True),
+                    ClassAssignment.is_active.is_(True),
+                    ClassAssignment.school_id == school_id,
+                )
+            )
+            ct_staff = ct_result.scalar_one_or_none()
+            if ct_staff:
+                class_teacher_info = {
+                    "name": ct_staff.full_name,
+                    "email": ct_staff.email,
+                    "phone": ct_staff.phone,
+                }
+
     return {
         "id": student.id,
         "roll_number": student.admission_number,
@@ -501,7 +635,7 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
         "class_name": class_name_val,
         "section": section_val,
         "status": student.status,
-        "type": None,
+        "type": (student.metadata_ or {}).get("student_type"),
         "gender": student.gender,
         "date_of_birth": student.date_of_birth,
         "admission_date": student.admission_date,
@@ -517,15 +651,8 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
             "allergies": student.allergies.split(",") if student.allergies else [],
         },
         "mentor": mentor_info,
-        "stats": {
-            "attendance_percentage": None,
-            "average_grade": None,
-            "assignments_submitted": None,
-            "assignments_total": None,
-            "fee_due": None,
-            "class_rank": None,
-            "class_strength": None,
-        },
+        "class_teacher": class_teacher_info,
+        "stats": await _compute_student_stats(db, student.id, school_id, current_ay),
         "behavior": {
             "overall_rating": None,
             "discipline_score": None,
@@ -565,6 +692,7 @@ async def update_student(
         "email": "email",
         "phone": "phone",
         "date_of_birth": "date_of_birth",
+        "admission_date": "admission_date",
         "gender": "gender",
         "blood_group": "blood_group",
         "religion": "religion",
@@ -579,6 +707,12 @@ async def update_student(
     for req_field, model_field in field_map.items():
         if req_field in data and data[req_field] is not None:
             setattr(student, model_field, data[req_field])
+
+    # Store student_type in metadata
+    if "student_type" in data:
+        meta = student.metadata_ or {}
+        meta["student_type"] = data["student_type"]
+        student.metadata_ = meta
 
     # Update name parts if full_name changed
     if "full_name" in data and data["full_name"]:
@@ -686,8 +820,10 @@ async def delete_student(
 async def get_exam_results(
     db: AsyncSession, school_id: UUID, student_id: UUID, academic_year: str | None = None
 ) -> dict:
-    """Get student exam results."""
-    # Validate student exists
+    """Get student exam results grouped by exam."""
+    from src.models.examination import Exam, ExamResult
+    from src.models.academic import Subject
+
     result = await db.execute(
         select(Student).where(
             Student.id == student_id, Student.school_id == school_id, Student.is_active.is_(True)
@@ -696,13 +832,52 @@ async def get_exam_results(
     if not result.scalar_one_or_none():
         raise StudentNotFound(str(student_id))
 
-    return {"exams": [], "trend": []}
+    # Get current academic year
+    ay = await db.execute(
+        select(AcademicYear).where(AcademicYear.school_id == school_id, AcademicYear.is_current.is_(True))
+    )
+    current_ay = ay.scalar_one_or_none()
+    if not current_ay:
+        return {"exams": [], "trend": []}
+
+    # Get all exam results for this student in the current year
+    results = await db.execute(
+        select(ExamResult, Exam, Subject)
+        .join(Exam, ExamResult.exam_id == Exam.id)
+        .outerjoin(Subject, Exam.subject_id == Subject.id)
+        .where(
+            ExamResult.student_id == student_id,
+            ExamResult.school_id == school_id,
+            Exam.academic_year_id == current_ay.id,
+            ExamResult.is_active.is_(True),
+        )
+        .order_by(Exam.name, Exam.date)
+    )
+    rows = results.all()
+
+    # Group by exam name
+    exam_groups = {}
+    for er, exam, subject in rows:
+        key = exam.name
+        if key not in exam_groups:
+            exam_groups[key] = {"name": exam.name, "date": str(exam.date) if exam.date else None, "subjects": []}
+        exam_groups[key]["subjects"].append({
+            "name": subject.name if subject else exam.subject_id or "Unknown",
+            "marks": float(er.marks_obtained or 0),
+            "total": float(er.total_marks or exam.total_marks or 100),
+            "grade": er.grade,
+        })
+
+    exams = list(exam_groups.values())
+    return {"exams": exams, "trend": []}
 
 
 async def get_parent_meetings(
     db: AsyncSession, school_id: UUID, student_id: UUID
 ) -> dict:
     """Get parent meeting history for a student."""
+    from src.models.meeting import ParentMeeting
+
     result = await db.execute(
         select(Student).where(
             Student.id == student_id, Student.school_id == school_id, Student.is_active.is_(True)
@@ -711,13 +886,153 @@ async def get_parent_meetings(
     if not result.scalar_one_or_none():
         raise StudentNotFound(str(student_id))
 
-    return {"total_meetings": 0, "attended": 0, "meetings": []}
+    meetings_result = await db.execute(
+        select(ParentMeeting).where(
+            ParentMeeting.student_id == student_id,
+            ParentMeeting.school_id == school_id,
+            ParentMeeting.is_active.is_(True),
+        ).order_by(ParentMeeting.meeting_date.desc())
+    )
+    meetings = meetings_result.scalars().all()
+    total = len(meetings)
+    attended = sum(1 for m in meetings if m.status == "Completed")
+
+    return {
+        "total_meetings": total,
+        "attended": attended,
+        "meetings": [
+            {
+                "id": m.id,
+                "type": m.meeting_type,
+                "date": m.meeting_date,
+                "notes": m.discussion_notes,
+                "status": m.status,
+                "agenda": m.agenda,
+                "remarks": m.remarks,
+                "follow_up_required": m.follow_up_required,
+                "next_meeting_date": m.next_meeting_date,
+            }
+            for m in meetings
+        ],
+    }
+
+
+async def create_parent_meeting(
+    db: AsyncSession, school_id: UUID, student_id: UUID, data: dict, user_id: UUID
+) -> dict:
+    """Create a parent meeting for a student."""
+    from src.models.meeting import ParentMeeting
+
+    result = await db.execute(
+        select(Student).where(Student.id == student_id, Student.school_id == school_id, Student.is_active.is_(True))
+    )
+    if not result.scalar_one_or_none():
+        raise StudentNotFound(str(student_id))
+
+    ay_result = await db.execute(
+        select(AcademicYear).where(AcademicYear.school_id == school_id, AcademicYear.is_current.is_(True))
+    )
+    ay = ay_result.scalar_one_or_none()
+
+    # Try to resolve staff_id from user
+    staff_result = await db.execute(select(Staff).where(Staff.user_id == user_id, Staff.school_id == school_id))
+    staff = staff_result.scalar_one_or_none()
+
+    meeting = ParentMeeting(
+        school_id=school_id,
+        student_id=student_id,
+        academic_year_id=ay.id if ay else None,
+        meeting_date=data["meeting_date"],
+        meeting_type=data.get("meeting_type"),
+        agenda=data.get("agenda"),
+        discussion_notes=data.get("discussion_notes"),
+        remarks=data.get("remarks"),
+        follow_up_required=data.get("follow_up_required", False),
+        next_meeting_date=data.get("next_meeting_date"),
+        status=data.get("status", "Scheduled"),
+        conducted_by=staff.id if staff else user_id,
+        created_by=user_id,
+    )
+    db.add(meeting)
+    await db.commit()
+    await db.refresh(meeting)
+
+    return {
+        "id": meeting.id,
+        "type": meeting.meeting_type,
+        "date": meeting.meeting_date,
+        "notes": meeting.discussion_notes,
+        "status": meeting.status,
+        "agenda": meeting.agenda,
+        "remarks": meeting.remarks,
+        "follow_up_required": meeting.follow_up_required,
+        "next_meeting_date": meeting.next_meeting_date,
+    }
+
+
+async def update_parent_meeting(
+    db: AsyncSession, school_id: UUID, student_id: UUID, meeting_id: UUID, data: dict
+) -> dict:
+    """Update a parent meeting."""
+    from src.models.meeting import ParentMeeting
+
+    result = await db.execute(
+        select(ParentMeeting).where(
+            ParentMeeting.id == meeting_id, ParentMeeting.student_id == student_id,
+            ParentMeeting.school_id == school_id, ParentMeeting.is_active.is_(True),
+        )
+    )
+    meeting = result.scalar_one_or_none()
+    if not meeting:
+        from src.core.exceptions import NotFound
+        raise NotFound("Parent Meeting")
+
+    for field in ("meeting_date", "meeting_type", "agenda", "discussion_notes", "remarks", "follow_up_required", "next_meeting_date", "status"):
+        if field in data and data[field] is not None:
+            setattr(meeting, field, data[field])
+
+    await db.commit()
+    await db.refresh(meeting)
+    return {
+        "id": meeting.id,
+        "type": meeting.meeting_type,
+        "date": meeting.meeting_date,
+        "notes": meeting.discussion_notes,
+        "status": meeting.status,
+        "agenda": meeting.agenda,
+        "remarks": meeting.remarks,
+        "follow_up_required": meeting.follow_up_required,
+        "next_meeting_date": meeting.next_meeting_date,
+    }
+
+
+async def delete_parent_meeting(
+    db: AsyncSession, school_id: UUID, student_id: UUID, meeting_id: UUID
+) -> None:
+    """Soft-delete a parent meeting."""
+    from src.models.meeting import ParentMeeting
+
+    result = await db.execute(
+        select(ParentMeeting).where(
+            ParentMeeting.id == meeting_id, ParentMeeting.student_id == student_id,
+            ParentMeeting.school_id == school_id, ParentMeeting.is_active.is_(True),
+        )
+    )
+    meeting = result.scalar_one_or_none()
+    if not meeting:
+        from src.core.exceptions import NotFound
+        raise NotFound("Parent Meeting")
+
+    meeting.is_active = False
+    await db.commit()
 
 
 async def get_activities(
     db: AsyncSession, school_id: UUID, student_id: UUID
 ) -> dict:
     """Get activities and awards for a student."""
+    from src.models.activity import Activity, Award
+
     result = await db.execute(
         select(Student).where(
             Student.id == student_id, Student.school_id == school_id, Student.is_active.is_(True)
@@ -726,7 +1041,257 @@ async def get_activities(
     if not result.scalar_one_or_none():
         raise StudentNotFound(str(student_id))
 
-    return {"extra_curricular": [], "awards": []}
+    activities_result = await db.execute(
+        select(Activity).where(
+            Activity.student_id == student_id, Activity.school_id == school_id, Activity.is_active.is_(True)
+        ).order_by(Activity.start_date.desc())
+    )
+    extra_curricular = [
+        {
+            "id": a.id,
+            "name": a.name,
+            "activity_type": a.activity_type,
+            "description": a.description,
+            "role": a.role,
+            "start_date": a.start_date,
+            "end_date": a.end_date,
+            "achievement": a.achievement,
+            "since": str(a.start_date.year) if a.start_date else None,
+            "status": a.status,
+        }
+        for a in activities_result.scalars().all()
+    ]
+
+    awards_result = await db.execute(
+        select(Award).where(
+            Award.student_id == student_id, Award.school_id == school_id, Award.is_active.is_(True)
+        ).order_by(Award.awarded_date.desc())
+    )
+    awards = [
+        {
+            "id": a.id,
+            "name": a.title,
+            "title": a.title,
+            "category": a.category,
+            "year": str(a.awarded_date.year) if a.awarded_date else None,
+            "awarded_date": a.awarded_date,
+            "awarded_by": a.awarded_by,
+            "level": a.level,
+            "description": a.description,
+        }
+        for a in awards_result.scalars().all()
+    ]
+
+    return {"extra_curricular": extra_curricular, "awards": awards}
+
+
+async def create_award(
+    db: AsyncSession, school_id: UUID, student_id: UUID, data: dict, user_id: UUID
+) -> dict:
+    """Create an award for a student."""
+    from src.models.activity import Award
+
+    # Validate student
+    result = await db.execute(
+        select(Student).where(Student.id == student_id, Student.school_id == school_id, Student.is_active.is_(True))
+    )
+    if not result.scalar_one_or_none():
+        raise StudentNotFound(str(student_id))
+
+    # Get current academic year
+    ay_result = await db.execute(
+        select(AcademicYear).where(AcademicYear.school_id == school_id, AcademicYear.is_current.is_(True))
+    )
+    ay = ay_result.scalar_one_or_none()
+
+    award = Award(
+        school_id=school_id,
+        student_id=student_id,
+        academic_year_id=ay.id if ay else None,
+        title=data["title"],
+        category=data.get("category"),
+        description=data.get("description"),
+        awarded_date=data.get("awarded_date"),
+        awarded_by=data.get("awarded_by"),
+        level=data.get("level"),
+        certificate_url=data.get("certificate_url"),
+        recorded_by=user_id,
+        created_by=user_id,
+    )
+    db.add(award)
+    await db.commit()
+    await db.refresh(award)
+
+    return {
+        "id": award.id,
+        "title": award.title,
+        "category": award.category,
+        "description": award.description,
+        "awarded_date": award.awarded_date,
+        "awarded_by": award.awarded_by,
+        "level": award.level,
+    }
+
+
+async def update_award(
+    db: AsyncSession, school_id: UUID, student_id: UUID, award_id: UUID, data: dict
+) -> dict:
+    """Update an award."""
+    from src.models.activity import Award
+
+    result = await db.execute(
+        select(Award).where(
+            Award.id == award_id, Award.student_id == student_id,
+            Award.school_id == school_id, Award.is_active.is_(True),
+        )
+    )
+    award = result.scalar_one_or_none()
+    if not award:
+        from src.core.exceptions import NotFound
+        raise NotFound("Award")
+
+    for field in ("title", "category", "description", "awarded_date", "awarded_by", "level", "certificate_url"):
+        if field in data and data[field] is not None:
+            setattr(award, field, data[field])
+
+    await db.commit()
+    await db.refresh(award)
+    return {
+        "id": award.id,
+        "title": award.title,
+        "category": award.category,
+        "description": award.description,
+        "awarded_date": award.awarded_date,
+        "awarded_by": award.awarded_by,
+        "level": award.level,
+    }
+
+
+async def delete_award(
+    db: AsyncSession, school_id: UUID, student_id: UUID, award_id: UUID
+) -> None:
+    """Soft-delete an award."""
+    from src.models.activity import Award
+
+    result = await db.execute(
+        select(Award).where(
+            Award.id == award_id, Award.student_id == student_id,
+            Award.school_id == school_id, Award.is_active.is_(True),
+        )
+    )
+    award = result.scalar_one_or_none()
+    if not award:
+        from src.core.exceptions import NotFound
+        raise NotFound("Award")
+
+    award.is_active = False
+    await db.commit()
+
+
+async def create_activity(
+    db: AsyncSession, school_id: UUID, student_id: UUID, data: dict, user_id: UUID
+) -> dict:
+    """Create an activity for a student."""
+    from src.models.activity import Activity
+
+    result = await db.execute(
+        select(Student).where(Student.id == student_id, Student.school_id == school_id, Student.is_active.is_(True))
+    )
+    if not result.scalar_one_or_none():
+        raise StudentNotFound(str(student_id))
+
+    ay_result = await db.execute(
+        select(AcademicYear).where(AcademicYear.school_id == school_id, AcademicYear.is_current.is_(True))
+    )
+    ay = ay_result.scalar_one_or_none()
+
+    activity = Activity(
+        school_id=school_id,
+        student_id=student_id,
+        academic_year_id=ay.id if ay else None,
+        name=data["name"],
+        activity_type=data["activity_type"],
+        description=data.get("description"),
+        role=data.get("role"),
+        start_date=data.get("start_date"),
+        end_date=data.get("end_date"),
+        achievement=data.get("achievement"),
+        recorded_by=user_id,
+        status="Active",
+        created_by=user_id,
+    )
+    db.add(activity)
+    await db.commit()
+    await db.refresh(activity)
+
+    return {
+        "id": activity.id,
+        "name": activity.name,
+        "activity_type": activity.activity_type,
+        "description": activity.description,
+        "role": activity.role,
+        "start_date": activity.start_date,
+        "end_date": activity.end_date,
+        "achievement": activity.achievement,
+        "status": activity.status,
+    }
+
+
+async def update_activity(
+    db: AsyncSession, school_id: UUID, student_id: UUID, activity_id: UUID, data: dict
+) -> dict:
+    """Update an activity."""
+    from src.models.activity import Activity
+
+    result = await db.execute(
+        select(Activity).where(
+            Activity.id == activity_id, Activity.student_id == student_id,
+            Activity.school_id == school_id, Activity.is_active.is_(True),
+        )
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        from src.core.exceptions import NotFound
+        raise NotFound("Activity")
+
+    for field in ("name", "activity_type", "description", "role", "start_date", "end_date", "achievement"):
+        if field in data and data[field] is not None:
+            setattr(activity, field, data[field])
+
+    await db.commit()
+    await db.refresh(activity)
+    return {
+        "id": activity.id,
+        "name": activity.name,
+        "activity_type": activity.activity_type,
+        "description": activity.description,
+        "role": activity.role,
+        "start_date": activity.start_date,
+        "end_date": activity.end_date,
+        "achievement": activity.achievement,
+        "status": activity.status,
+    }
+
+
+async def delete_activity(
+    db: AsyncSession, school_id: UUID, student_id: UUID, activity_id: UUID
+) -> None:
+    """Soft-delete an activity."""
+    from src.models.activity import Activity
+
+    result = await db.execute(
+        select(Activity).where(
+            Activity.id == activity_id, Activity.student_id == student_id,
+            Activity.school_id == school_id, Activity.is_active.is_(True),
+        )
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        from src.core.exceptions import NotFound
+        raise NotFound("Activity")
+
+    activity.is_active = False
+    await db.commit()
 
 
 async def get_fee_history(
@@ -787,6 +1352,8 @@ async def get_disciplinary_records(
     db: AsyncSession, school_id: UUID, student_id: UUID
 ) -> dict:
     """Get disciplinary records for a student."""
+    from src.models.activity import DisciplinaryRecord
+
     result = await db.execute(
         select(Student).where(
             Student.id == student_id, Student.school_id == school_id, Student.is_active.is_(True)
@@ -795,7 +1362,135 @@ async def get_disciplinary_records(
     if not result.scalar_one_or_none():
         raise StudentNotFound(str(student_id))
 
-    return {"records": [], "status": "Clean"}
+    records_result = await db.execute(
+        select(DisciplinaryRecord).where(
+            DisciplinaryRecord.student_id == student_id,
+            DisciplinaryRecord.school_id == school_id,
+            DisciplinaryRecord.is_active.is_(True),
+        ).order_by(DisciplinaryRecord.incident_date.desc())
+    )
+    records = [
+        {
+            "id": r.id,
+            "incident_date": r.incident_date,
+            "category": r.category,
+            "severity": r.severity,
+            "description": r.description,
+            "action_taken": r.action_taken,
+            "parent_notified": r.parent_notified,
+            "status": r.status,
+        }
+        for r in records_result.scalars().all()
+    ]
+    status = "Clean" if not records else "Has Records"
+    return {"records": records, "status": status}
+
+
+async def create_disciplinary_record(
+    db: AsyncSession, school_id: UUID, student_id: UUID, data: dict, user_id: UUID
+) -> dict:
+    """Create a disciplinary record for a student."""
+    from src.models.activity import DisciplinaryRecord
+
+    result = await db.execute(
+        select(Student).where(Student.id == student_id, Student.school_id == school_id, Student.is_active.is_(True))
+    )
+    if not result.scalar_one_or_none():
+        raise StudentNotFound(str(student_id))
+
+    ay_result = await db.execute(
+        select(AcademicYear).where(AcademicYear.school_id == school_id, AcademicYear.is_current.is_(True))
+    )
+    ay = ay_result.scalar_one_or_none()
+
+    # Resolve staff_id from user
+    staff_result = await db.execute(select(Staff).where(Staff.user_id == user_id, Staff.school_id == school_id))
+    staff = staff_result.scalar_one_or_none()
+
+    record = DisciplinaryRecord(
+        school_id=school_id,
+        student_id=student_id,
+        academic_year_id=ay.id if ay else None,
+        incident_date=data["incident_date"],
+        category=data["category"],
+        severity=data["severity"],
+        description=data["description"],
+        action_taken=data.get("action_taken"),
+        reported_by=staff.id if staff else user_id,
+        parent_notified=data.get("parent_notified", False),
+        status=data.get("status", "Open"),
+        created_by=user_id,
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+
+    return {
+        "id": record.id,
+        "incident_date": record.incident_date,
+        "category": record.category,
+        "severity": record.severity,
+        "description": record.description,
+        "action_taken": record.action_taken,
+        "parent_notified": record.parent_notified,
+        "status": record.status,
+    }
+
+
+async def update_disciplinary_record(
+    db: AsyncSession, school_id: UUID, student_id: UUID, record_id: UUID, data: dict
+) -> dict:
+    """Update a disciplinary record."""
+    from src.models.activity import DisciplinaryRecord
+
+    result = await db.execute(
+        select(DisciplinaryRecord).where(
+            DisciplinaryRecord.id == record_id, DisciplinaryRecord.student_id == student_id,
+            DisciplinaryRecord.school_id == school_id, DisciplinaryRecord.is_active.is_(True),
+        )
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        from src.core.exceptions import NotFound
+        raise NotFound("Disciplinary Record")
+
+    for field in ("incident_date", "category", "severity", "description", "action_taken", "parent_notified", "status"):
+        if field in data and data[field] is not None:
+            setattr(record, field, data[field])
+
+    await db.commit()
+    await db.refresh(record)
+    return {
+        "id": record.id,
+        "incident_date": record.incident_date,
+        "category": record.category,
+        "severity": record.severity,
+        "description": record.description,
+        "action_taken": record.action_taken,
+        "parent_notified": record.parent_notified,
+        "status": record.status,
+    }
+
+
+async def delete_disciplinary_record(
+    db: AsyncSession, school_id: UUID, student_id: UUID, record_id: UUID
+) -> None:
+    """Soft-delete a disciplinary record."""
+    from src.models.activity import DisciplinaryRecord
+
+    result = await db.execute(
+        select(DisciplinaryRecord).where(
+            DisciplinaryRecord.id == record_id, DisciplinaryRecord.student_id == student_id,
+            DisciplinaryRecord.school_id == school_id, DisciplinaryRecord.is_active.is_(True),
+        )
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        from src.core.exceptions import NotFound
+        raise NotFound("Disciplinary Record")
+
+    record.is_active = False
+    await db.commit()
 
 
 # ---------------------------------------------------------------------------

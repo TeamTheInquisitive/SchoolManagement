@@ -308,6 +308,54 @@ async def remove_assignment(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/{teacher_id}/awards")
+async def get_teacher_awards(
+    teacher_id: UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get awards for a teacher."""
+    return await service.get_teacher_awards(db, school.id, teacher_id)
+
+
+@router.post("/{teacher_id}/awards", status_code=201)
+async def create_teacher_award(
+    teacher_id: UUID,
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Add an award to a teacher."""
+    return await service.add_teacher_award(db, school.id, teacher_id, data)
+
+
+@router.put("/{teacher_id}/awards/{award_id}")
+async def update_teacher_award(
+    teacher_id: UUID,
+    award_id: str,
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Update a teacher award."""
+    return await service.update_teacher_award(db, school.id, teacher_id, award_id, data)
+
+
+@router.delete("/{teacher_id}/awards/{award_id}", status_code=204)
+async def delete_teacher_award(
+    teacher_id: UUID,
+    award_id: str,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Delete a teacher award."""
+    await service.delete_teacher_award(db, school.id, teacher_id, award_id)
+
+
 @router.get("/{teacher_id}/history", response_model=TeacherHistoryResponse)
 async def get_teacher_history(
     teacher_id: UUID,

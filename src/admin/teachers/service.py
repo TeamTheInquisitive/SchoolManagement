@@ -122,6 +122,7 @@ def _build_teacher_response(staff: Staff) -> dict:
         "account_number": getattr(staff, 'bank_account_number', None),
         "ifsc_code": getattr(staff, 'bank_ifsc', None),
         "pan_number": getattr(staff, 'pan_number', None),
+        "awards": (staff.metadata_ or {}).get("awards", []),
     }
 
 
@@ -683,9 +684,10 @@ async def update_teacher(
             staff.salary = float(salary_data["basic_salary"])
 
     # Bank details
-    for bk in ("bank_name", "account_number", "ifsc_code", "pan_number"):
-        if bk in data and data[bk] is not None:
-            setattr(staff, bk, data[bk])
+    bank_map = {"bank_name": "bank_name", "account_number": "bank_account_number", "ifsc_code": "bank_ifsc", "pan_number": "pan_number"}
+    for req_field, model_field in bank_map.items():
+        if req_field in data and data[req_field] is not None:
+            setattr(staff, model_field, data[req_field])
 
     await db.commit()
     await db.refresh(staff)
@@ -1164,6 +1166,95 @@ async def get_teacher_history(
         "subjects_taught": subjects_taught,
         "assignment_history": assignment_history,
     }
+
+
+# ---------------------------------------------------------------------------
+# Awards (stored in Staff.metadata_['awards'])
+# ---------------------------------------------------------------------------
+
+
+async def get_teacher_awards(
+    db: AsyncSession, school_id: uuid.UUID, teacher_id: uuid.UUID
+) -> list[dict]:
+    result = await db.execute(
+        select(Staff).where(Staff.id == teacher_id, Staff.school_id == school_id, Staff.is_teacher.is_(True))
+    )
+    staff = result.scalar_one_or_none()
+    if not staff:
+        raise TeacherNotFound(str(teacher_id))
+    return (staff.metadata_ or {}).get("awards", [])
+
+
+async def add_teacher_award(
+    db: AsyncSession, school_id: uuid.UUID, teacher_id: uuid.UUID, data: dict
+) -> dict:
+    result = await db.execute(
+        select(Staff).where(Staff.id == teacher_id, Staff.school_id == school_id, Staff.is_teacher.is_(True))
+    )
+    staff = result.scalar_one_or_none()
+    if not staff:
+        raise TeacherNotFound(str(teacher_id))
+
+    meta = dict(staff.metadata_ or {})
+    awards = list(meta.get("awards", []))
+    award = {
+        "id": str(uuid.uuid4()),
+        "title": data["title"],
+        "category": data.get("category"),
+        "description": data.get("description"),
+        "awarded_date": data.get("awarded_date"),
+        "awarded_by": data.get("awarded_by"),
+        "level": data.get("level"),
+    }
+    awards.append(award)
+    meta["awards"] = awards
+    staff.metadata_ = meta
+    await db.commit()
+    return award
+
+
+async def update_teacher_award(
+    db: AsyncSession, school_id: uuid.UUID, teacher_id: uuid.UUID, award_id: str, data: dict
+) -> dict:
+    result = await db.execute(
+        select(Staff).where(Staff.id == teacher_id, Staff.school_id == school_id, Staff.is_teacher.is_(True))
+    )
+    staff = result.scalar_one_or_none()
+    if not staff:
+        raise TeacherNotFound(str(teacher_id))
+
+    meta = dict(staff.metadata_ or {})
+    awards = list(meta.get("awards", []))
+    for i, a in enumerate(awards):
+        if a.get("id") == award_id:
+            for field in ("title", "category", "description", "awarded_date", "awarded_by", "level"):
+                if field in data and data[field] is not None:
+                    awards[i][field] = data[field]
+            meta["awards"] = awards
+            staff.metadata_ = meta
+            await db.commit()
+            return awards[i]
+    raise NotFound("Award")
+
+
+async def delete_teacher_award(
+    db: AsyncSession, school_id: uuid.UUID, teacher_id: uuid.UUID, award_id: str
+) -> None:
+    result = await db.execute(
+        select(Staff).where(Staff.id == teacher_id, Staff.school_id == school_id, Staff.is_teacher.is_(True))
+    )
+    staff = result.scalar_one_or_none()
+    if not staff:
+        raise TeacherNotFound(str(teacher_id))
+
+    meta = dict(staff.metadata_ or {})
+    awards = list(meta.get("awards", []))
+    new_awards = [a for a in awards if a.get("id") != award_id]
+    if len(new_awards) == len(awards):
+        raise NotFound("Award")
+    meta["awards"] = new_awards
+    staff.metadata_ = meta
+    await db.commit()
 
 
 # ---------------------------------------------------------------------------

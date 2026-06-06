@@ -205,6 +205,8 @@ class TeacherResponse(BaseModel):
     account_number: str | None = None
     ifsc_code: str | None = None
     pan_number: str | None = None
+    leave_balances: list[dict] = Field(default_factory=list)
+    awards: list[dict] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

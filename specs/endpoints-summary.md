@@ -1,169 +1,168 @@
-# School ERP — Endpoints Summary (All Modules)
+# API Endpoints Summary
 
-## Overview
+**Total Endpoints: 327** | **Last Updated: 2026-06-06**
 
-| Module | V1 Endpoints | V2 Endpoints | Total |
-|--------|-------------|-------------|-------|
-| Admin | 143 | 9 (Library) | 152 |
-| Teacher | 66 | 9 (Quizzes) | 75 |
-| Student | 53 | 7 (Quiz Portal) | 60 |
-| **Shared (Auth)** | **7** | — | **7** |
-| **Grand Total** | **262 V1** | **25 V2** | **287** |
+## Auth (8 endpoints)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | /api/v1/auth/login | Login with email/password |
+| POST | /api/v1/auth/logout | Logout |
+| GET | /api/v1/auth/me | Current user profile |
+| POST | /api/v1/auth/refresh-token | Refresh JWT |
+| POST | /api/v1/auth/change-password | Change own password |
+| POST | /api/v1/auth/forgot-password | Initiate reset |
+| POST | /api/v1/auth/reset-password | Reset with token |
+| GET | /api/v1/auth/school-profile | School info (any auth user) |
 
-> Note: Auth (7 endpoints) is shared across all 3 modules — counted once in the grand total.
-> Total unique: Admin 152 + Teacher 75 + Student 60 = 287 designed endpoints.
+## Admin - Students (25 endpoints)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /admin/students | List (paginated, filtered by status/class/section/search) |
+| POST | /admin/students | Create student + user account |
+| POST | /admin/students/bulk-import | CSV import |
+| POST | /admin/students/bulk-import-json | JSON bulk import |
+| GET | /admin/students/export | Export CSV |
+| GET | /admin/students/{id} | Detail with stats (attendance%, grade avg, fee due) |
+| PUT | /admin/students/{id} | Update |
+| DELETE | /admin/students/{id} | Soft-delete |
+| GET | /admin/students/{id}/exam-results | Exam results grouped by exam |
+| GET | /admin/students/{id}/fee-history | Fee structure + payment transactions |
+| GET | /admin/students/{id}/activities | Activities + Awards |
+| POST | /admin/students/{id}/activities | Create activity |
+| PUT | /admin/students/{id}/activities/{aid} | Update activity |
+| DELETE | /admin/students/{id}/activities/{aid} | Delete activity |
+| POST | /admin/students/{id}/awards | Create award |
+| PUT | /admin/students/{id}/awards/{aid} | Update award |
+| DELETE | /admin/students/{id}/awards/{aid} | Delete award |
+| GET | /admin/students/{id}/disciplinary-records | List records |
+| POST | /admin/students/{id}/disciplinary-records | Create |
+| PUT | /admin/students/{id}/disciplinary-records/{rid} | Update |
+| DELETE | /admin/students/{id}/disciplinary-records/{rid} | Delete |
+| GET | /admin/students/{id}/parent-meetings | List meetings |
+| POST | /admin/students/{id}/parent-meetings | Create |
+| PUT | /admin/students/{id}/parent-meetings/{mid} | Update |
+| DELETE | /admin/students/{id}/parent-meetings/{mid} | Delete |
+| POST | /admin/students/{id}/reset-password | Reset/create password |
 
----
+## Admin - Teachers (18 endpoints)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /admin/teachers | List (paginated) |
+| POST | /admin/teachers | Create teacher + user + salary |
+| POST | /admin/teachers/bulk-import | JSON bulk import |
+| GET | /admin/teachers/by-class | Teachers by class |
+| GET | /admin/teachers/export | Export CSV |
+| GET | /admin/teachers/{id} | Detail + leave balances + awards |
+| PUT | /admin/teachers/{id} | Update all fields + salary |
+| DELETE | /admin/teachers/{id} | Soft-delete |
+| POST | /admin/teachers/{id}/assign-class | Assign class/subject/class-teacher |
+| GET | /admin/teachers/{id}/assignments | Class assignments |
+| GET | /admin/teachers/{id}/awards | List awards |
+| POST | /admin/teachers/{id}/awards | Create award |
+| PUT | /admin/teachers/{id}/awards/{aid} | Update award |
+| DELETE | /admin/teachers/{id}/awards/{aid} | Delete award |
+| POST | /admin/teachers/{id}/bulk-assign | Bulk assign classes |
+| DELETE | /admin/teachers/{id}/class-assignment/{aid} | Remove assignment |
+| GET | /admin/teachers/{id}/history | Teacher history |
+| POST | /admin/teachers/{id}/reset-password | Reset password |
 
-## V1 Breakdown by Module
+## Admin - Fees (14 endpoints)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /admin/fees | List grouped by student |
+| POST | /admin/fees | Create fee record |
+| GET | /admin/fees/export | Export CSV |
+| POST | /admin/fees/generate-due | Generate dues |
+| POST | /admin/fees/send-reminder | Send reminders |
+| POST | /admin/fees/bulk-apply-late-fees | Bulk late fees |
+| GET | /admin/fees/student/{id} | Student fee components |
+| GET | /admin/fees/student/{id}/receipt | Consolidated receipt |
+| GET | /admin/fees/{id} | Fee record detail + payment history |
+| PUT | /admin/fees/{id} | Update fee record |
+| POST | /admin/fees/{id}/record-payment | Record payment |
+| POST | /admin/fees/{id}/apply-late-fee | Apply late fee |
+| GET | /admin/fees/{id}/receipt | Fee receipt |
 
-### Admin Portal — 143 V1 endpoints
+## Admin - Staff & Payroll (16 endpoints)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /admin/staff | List staff |
+| POST | /admin/staff | Create staff |
+| GET | /admin/staff/export | Export |
+| PUT | /admin/staff/{id} | Update |
+| DELETE | /admin/staff/{id} | Delete |
+| GET | /admin/staff/payroll | Get payslips (month/year) |
+| POST | /admin/staff/payroll/run | Generate payroll |
+| POST | /admin/staff/payroll/mark-all-paid | Bulk mark paid |
+| PUT | /admin/staff/payroll/{id} | Update payslip components |
+| POST | /admin/staff/payroll/{id}/pay | Record payment |
+| GET | /admin/staff/payroll/salary-structure/{id} | Get salary |
+| PUT | /admin/staff/payroll/salary-structure/{id} | Update salary |
+| GET | /admin/staff/payroll/salary-revisions/{id} | Revision history |
+| POST | /admin/staff/payroll/salary-revisions | Create revision |
+| GET | /admin/staff/salary-advances | List advances |
+| POST | /admin/staff/salary-advances | Create advance |
 
-| Module | Endpoints | Type |
-|--------|-----------|------|
-| Auth | 7 | Shared |
-| Dashboard | 7 | Read |
-| Students | 12 | CRUD |
-| Teachers | 12 | CRUD + Assign |
-| Leaves | 10 | CRUD + Approve |
-| Timetable | 11 | CRUD + Config |
-| Examinations | 16 | CRUD + Results + Analytics |
-| Fees | 12 | CRUD + Payments + Receipts |
-| Transport | 24 | CRUD (Vehicles + Drivers + Helpers + Routes + Assignments) |
-| Staff | 5 | CRUD |
-| Payroll | 6 | Run + Generate + Salary Revisions |
-| Salary Advances | 5 | CRUD + Approve |
-| Notifications | 5 | CRUD + Send |
-| Settings | 11 | Config + Bulk Create (classes/sections/subjects) |
+## Admin - Settings (20 endpoints)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET/PUT | /admin/settings | General settings |
+| GET/PUT | /admin/settings/school-profile | School profile |
+| GET/PUT | /admin/settings/academic-year | Current year |
+| CRUD | /admin/settings/academic-years | Academic years |
+| GET | /admin/settings/class-sections | Classes + sections |
+| POST | /admin/settings/classes/bulk | Bulk create classes |
+| POST | /admin/settings/sections/bulk | Bulk create sections |
+| CRUD | /admin/settings/subjects | Subjects |
+| GET/PUT | /admin/settings/class-subjects | Class-subject mapping |
+| CRUD | /admin/settings/fee-structures | Fee structures |
+| GET/PUT | /admin/settings/id-generation | ID config |
+| GET | /admin/settings/next-id?type= | Generate next ID |
+| POST | /admin/settings/upload-logo | Upload logo |
 
-### Teacher Portal — 66 V1 endpoints
+## Admin - Examinations (12 endpoints)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /admin/examinations | List (paginated by exam name groups) |
+| POST | /admin/examinations | Create exam |
+| GET/PUT | /admin/examinations/grade-system | Grade config |
+| GET/PUT/DELETE | /admin/examinations/{id} | Exam CRUD |
+| POST | /admin/examinations/{id}/publish | Publish results |
+| GET/POST | /admin/examinations/{id}/results | Results CRUD |
+| POST | /admin/examinations/{id}/results/bulk-upload | Bulk upload |
 
-| Module | Endpoints | Type |
-|--------|-----------|------|
-| Auth | 7 | Shared |
-| Dashboard | 8 | Read |
-| My Classes | 4 | Read |
-| Student Details | 9 | Read (mentor/class teacher only) |
-| Attendance | 6 | Read + Write (Present/Absent/Late) |
-| Assignments | 8 | CRUD + Grade + Export |
-| Grades | 8 | CRUD + Report + Leaderboard + Import/Export |
-| Notifications | 4 | Read + Send (WhatsApp) |
-| Timetable | 2 | Read |
-| Adhoc Classes | 4 | CRUD |
-| Leaves | 6 | Read + Apply + Cancel |
+## Admin - Attendance (3 endpoints)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /admin/attendance | Get attendance (class + date) |
+| POST | /admin/attendance | Submit attendance |
+| PUT | /admin/attendance | Update attendance |
 
-### Student Portal — 53 V1 endpoints
+## Admin - Leaves (9 endpoints)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /admin/leaves | List applications |
+| GET/PUT | /admin/leaves/policy | Leave policy |
+| POST | /admin/leaves/allocate | Allocate to staff |
+| GET | /admin/leaves/balances | All balances |
+| POST | /admin/leaves/{id}/approve | Approve |
+| POST | /admin/leaves/{id}/reject | Reject |
+| POST | /admin/leaves/{id}/cancel | Cancel |
 
-| Module | Endpoints | Type |
-|--------|-----------|------|
-| Auth | 7 | Shared |
-| Dashboard | 10 | Read |
-| Timetable | 2 | Read |
-| Attendance | 3 | Read |
-| Assignments | 4 | Read + Submit |
-| Results | 5 | Read + Leaderboard + Download |
-| Fees | 6 | Read + Receipt + Reminders |
-| Library | 4 | Read |
-| Notifications | 3 | Read + Mark as read |
-| My Profile | 10 | Read + Edit + Export |
+## Admin - Transport (18 endpoints)
+Full CRUD for vehicles, drivers, helpers, routes, assignments + stats + exports.
 
----
+## Admin - Timetable (10 endpoints)
+Periods CRUD, slots CRUD, bulk-assign, teacher-availability, conflicts.
 
-## V2 (Deferred)
+## Admin - Dashboard (8 endpoints)
+Stats, attendance-trends, fee-collection, student-distribution, recent-activities, leave-overview, low-attendance, subscription-banner.
 
-| Module | Portal | Endpoints | Reason |
-|--------|--------|-----------|--------|
-| Library | Admin | 9 | Full library management deferred to V2 |
-| Quizzes | Teacher | 9 | Quiz creation/management deferred to V2 |
-| Quiz Portal | Student | 7 | Quiz taking deferred to V2 |
+## Teacher Module (40+ endpoints)
+Attendance, assignments, grades, leaves, students, timetable, dashboard, notifications.
 
----
+## Student Module (30+ endpoints)
+Profile, attendance, assignments, fees, results, timetable, library, notifications, dashboard.
 
-## Statistics
-
-### By HTTP Method (V1 only)
-
-| Method | Admin | Teacher | Student | Total |
-|--------|-------|---------|---------|-------|
-| GET | 87 | 47 | 46 | 180 |
-| POST | 37 | 14 | 2 | 53 |
-| PUT | 19 | 5 | 1 | 25 |
-| DELETE | 14 | 4 | 0 | 18 |
-| **Total** | **157** | **70** | **49** | **276** |
-
-### By Access Pattern
-
-| Pattern | Count | Description |
-|---------|-------|-------------|
-| Read-only (GET) | 167 | List, detail, stats, export |
-| Create (POST) | 51 | New records, submissions, actions |
-| Update (PUT) | 24 | Modify existing records |
-| Soft-delete (DELETE) | 18 | Deactivate records (never hard delete) |
-| File download | 12 | CSV exports, PDF receipts, reports |
-| File upload | 3 | Bulk import (CSV), assignment submit |
-
-### By Feature Area (V1, across all modules)
-
-| Feature | Admin | Teacher | Student | Total |
-|---------|-------|---------|---------|-------|
-| Attendance | 0 | 6 | 3 | 9 |
-| Assignments | 0 | 8 | 4 | 12 |
-| Examinations/Results | 16 | 8 | 5 | 29 |
-| Fees/Payments | 12 | 0 | 6 | 18 |
-| Leave Management | 10 | 6 | 0 | 16 |
-| Timetable | 11 | 2 | 2 | 15 |
-| Transport | 24 | 0 | 0 | 24 |
-| Notifications | 5 | 4 | 3 | 12 |
-| Student Management | 12 | 9 | 10 | 31 |
-| Staff/Teacher Mgmt | 12 | 4 | 0 | 16 |
-| Settings/Config | 11 | 0 | 0 | 11 |
-| Payroll/Salary | 11 | 0 | 0 | 11 |
-| Library | 0 | 0 | 4 | 4 |
-| Dashboard | 7 | 8 | 10 | 25 |
-| Adhoc Classes | 0 | 4 | 0 | 4 |
-
----
-
-## Shared Infrastructure
-
-These are NOT counted as separate endpoints but are cross-cutting concerns:
-
-| Concern | Implementation |
-|---------|----------------|
-| Authentication | 7 shared endpoints (`/api/v1/auth/...`) |
-| Multi-tenancy | `X-School-Code` header on every request |
-| Pagination | `page` + `page_size` on all list endpoints |
-| Soft Delete | `is_active` + `status` on all deletable entities |
-| Academic Year | `academic_year` param scopes all transactional data |
-| Metadata | `metadata: {}` JSON field on every entity |
-| Error Format | Consistent `{ error, code, details }` |
-| File Exports | CSV/PDF via download URLs |
-
----
-
-## Key Design Decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| Teacher = Staff (same table) | Shared payroll, leaves, HR. Teaching extensions via extra fields. |
-| Academic year scoping | Schools operate in cycles — data partitioned per year. |
-| Soft deletes everywhere | Full audit trail, rollback capability, no data loss. |
-| UUIDs as primary keys | Multi-tenant safe, merge-friendly, no collisions. |
-| `metadata: {}` on every entity | Future features without schema migrations. |
-| Configurable enums (Settings) | Admin manages all dropdowns — no code changes needed. |
-| Student details restricted | Only mentor/class teacher can view full profiles. |
-| WhatsApp for teacher notifications | Primary communication channel for Indian schools. |
-| No chat in V1 | Messages/chat deferred; only announcements (one-way) in V1. |
-
----
-
-## API Versioning
-
-| Path | Status |
-|------|--------|
-| `/api/v1/auth/...` | Shared auth — all roles |
-| `/api/v1/admin/...` | Admin portal (role: admin, super_admin) |
-| `/api/v1/teacher/...` | Teacher portal (role: teacher) |
-| `/api/v1/student/...` | Student portal (role: student) |
-
-All V1. If breaking changes ever needed → deploy under `/api/v2/` while keeping V1 alive.
+## SuperAdmin (15 endpoints)
+Schools CRUD, subscriptions, payments, settings, users.
