@@ -166,3 +166,54 @@ Profile, attendance, assignments, fees, results, timetable, library, notificatio
 
 ## SuperAdmin (15 endpoints)
 Schools CRUD, subscriptions, payments, settings, users.
+
+
+---
+
+## Recent Additions (2026-06-06)
+
+**Total Endpoints: 332**
+
+### New Endpoints Added:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /admin/students/{id}/attendance?month=X&year=Y | Student monthly attendance records |
+| GET | /admin/settings/holidays | Get holidays (seeds defaults for new schools) |
+| PUT | /admin/settings/holidays | Update holidays list |
+| POST | /admin/staff/payroll/undo-all-paid | Bulk undo all paid payslips for month |
+| GET | /admin/teachers/{id}/awards | List teacher awards |
+| POST | /admin/teachers/{id}/awards | Create teacher award |
+| PUT | /admin/teachers/{id}/awards/{aid} | Update teacher award |
+| DELETE | /admin/teachers/{id}/awards/{aid} | Delete teacher award |
+| POST | /admin/students/{id}/activities | Create activity |
+| PUT | /admin/students/{id}/activities/{aid} | Update activity |
+| DELETE | /admin/students/{id}/activities/{aid} | Delete activity |
+| POST | /admin/students/{id}/awards | Create student award |
+| PUT | /admin/students/{id}/awards/{aid} | Update award |
+| DELETE | /admin/students/{id}/awards/{aid} | Delete award |
+| POST | /admin/students/{id}/disciplinary-records | Create record |
+| PUT | /admin/students/{id}/disciplinary-records/{rid} | Update record |
+| DELETE | /admin/students/{id}/disciplinary-records/{rid} | Delete record |
+| POST | /admin/students/{id}/parent-meetings | Create meeting |
+| PUT | /admin/students/{id}/parent-meetings/{mid} | Update meeting |
+| DELETE | /admin/students/{id}/parent-meetings/{mid} | Delete meeting |
+
+### New Features:
+- **Holidays Management** — Admin can configure holidays per academic year (default Indian public holidays seeded)
+- **Payroll Undo** — Bulk undo all paid payslips back to unpaid
+- **Payroll Working Days** — Admin sets working days during payroll processing (stored per payslip)
+- **Student Attendance Calendar** — Monthly view with color-coded days, stats, pie chart
+- **Student CRUD Sections** — Full CRUD for Activities, Awards, Disciplinary Records, Parent Meetings
+- **Teacher Awards CRUD** — Awards stored in staff metadata
+- **New Admissions Page** — Track new student admissions with token advance
+- **ID Auto-Generation** — Configurable patterns (STU260001, TCH260001)
+
+### Data Model Changes:
+- `payslips` — Added `working_days` (int), `total_days` (int), `hra`, `da`, `transport_allowance`, `paid_amount` columns
+- `leave_policies` — Added `display_name`, `applicable_to`, `members` columns
+- `class_assignments` — `subject_id` made nullable (for class teacher without subject)
+- `attendance_sessions` — `submitted_by` made nullable (admin submissions)
+- `grade_scales` — `description` changed from VARCHAR(100) to TEXT
+- `staff` — Added `emergency_contact_relationship` column
+- `users` — Added `password_changed` column

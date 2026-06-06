@@ -1603,3 +1603,43 @@ async def bulk_import_students(
 
     await db.commit()
     return {"imported": imported, "skipped": skipped, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# Student Attendance Calendar
+# ---------------------------------------------------------------------------
+
+
+async def get_student_attendance(
+    db: AsyncSession, school_id: UUID, student_id: UUID, month: int, year: int
+) -> dict:
+    """Get attendance records for a student for a given month/year."""
+    from calendar import monthrange
+
+    start_date = date(year, month, 1)
+    _, last_day = monthrange(year, month)
+    end_date = date(year, month, last_day)
+
+    result = await db.execute(
+        select(AttendanceRecord.id, AttendanceSession.date, AttendanceRecord.status)
+        .select_from(AttendanceRecord)
+        .join(AttendanceSession, AttendanceRecord.attendance_session_id == AttendanceSession.id)
+        .where(
+            AttendanceRecord.student_id == student_id,
+            AttendanceSession.school_id == school_id,
+            AttendanceSession.date >= start_date,
+            AttendanceSession.date <= end_date,
+            AttendanceRecord.is_active.is_(True),
+            AttendanceSession.is_active.is_(True),
+        )
+    )
+    rows = result.all()
+
+    records = []
+    for row in rows:
+        records.append({
+            "date": row.date.isoformat() if row.date else None,
+            "status": row.status,
+        })
+
+    return {"month": month, "year": year, "records": records}

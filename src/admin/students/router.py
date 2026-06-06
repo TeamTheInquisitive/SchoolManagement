@@ -443,3 +443,25 @@ async def delete_disciplinary_record(
 ):
     """Delete a disciplinary record."""
     await service.delete_disciplinary_record(db, school.id, student_id, record_id)
+
+
+# ---------------------------------------------------------------------------
+# Attendance Calendar
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{student_id}/attendance")
+async def get_student_attendance(
+    student_id: UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+    month: int = Query(default=None),
+    year: int = Query(default=None),
+):
+    """Get attendance records for a student for a given month."""
+    from datetime import date as _date
+    today = _date.today()
+    m = month or today.month
+    y = year or today.year
+    return await service.get_student_attendance(db, school.id, student_id, m, y)

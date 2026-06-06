@@ -180,3 +180,24 @@ helpers ─┘                              └── student_transport
 | timetable_slots | class_section_id, period_config_id, day, subject_id, staff_id |
 | users | email, password_hash, role, password_changed |
 | vehicles | vehicle_number, type, capacity, status |
+
+
+---
+
+## Recent Schema Changes (2026-06-06)
+
+### Modified Tables:
+- **payslips**: +working_days (INT, default 26), +total_days (INT, default 30), +hra, +da, +transport_allowance, +paid_amount
+- **leave_policies**: +display_name (VARCHAR 50), +applicable_to (VARCHAR), +members (JSON)
+- **class_assignments**: subject_id changed to NULLABLE (class teacher without subject)
+- **attendance_sessions**: submitted_by changed to NULLABLE (admin submissions)
+- **grade_scales**: description changed VARCHAR(100) → TEXT (stores class applicability JSON)
+- **staff**: +emergency_contact_relationship (VARCHAR 50)
+- **users**: +password_changed (BOOL, default false)
+- **schools**: +enrollment_date, +subscription_status, +trial_start_date, +trial_end_date
+
+### New Features Using Existing Tables:
+- **Holidays**: Stored in `settings` table (category='school', key='holidays', value=JSON array)
+- **Teacher Awards**: Stored in `staff.metadata_` JSON field (awards array)
+- **ID Generation Config**: Stored in `settings` table (category='id_generation', key='config')
+- **Student Admissions**: Uses `students` table with status='Admission Pending', metadata stores token_advance
