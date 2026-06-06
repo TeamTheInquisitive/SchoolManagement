@@ -182,6 +182,7 @@ Schools CRUD, subscriptions, payments, settings, users.
 | GET | /admin/settings/holidays | Get holidays (seeds defaults for new schools) |
 | PUT | /admin/settings/holidays | Update holidays list |
 | POST | /admin/staff/payroll/undo-all-paid | Bulk undo all paid payslips for month |
+| POST | /admin/mentoring/shuffle-assign | Shuffle all students & auto-assign evenly across teachers |
 | GET | /admin/teachers/{id}/awards | List teacher awards |
 | POST | /admin/teachers/{id}/awards | Create teacher award |
 | PUT | /admin/teachers/{id}/awards/{aid} | Update teacher award |
@@ -204,6 +205,7 @@ Schools CRUD, subscriptions, payments, settings, users.
 - **Payroll Undo** — Bulk undo all paid payslips back to unpaid
 - **Payroll Working Days** — Admin sets working days during payroll processing (stored per payslip)
 - **Student Attendance Calendar** — Monthly view with color-coded days, stats, pie chart
+- **Mentoring Shuffle & Auto Assign** — Randomly distributes all students evenly across all teachers
 - **Student CRUD Sections** — Full CRUD for Activities, Awards, Disciplinary Records, Parent Meetings
 - **Teacher Awards CRUD** — Awards stored in staff metadata
 - **New Admissions Page** — Track new student admissions with token advance

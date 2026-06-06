@@ -215,3 +215,65 @@ async def remove_assignment(db: AsyncSession, school_id: uuid.UUID, assignment_i
     await db.delete(assignment)
     await db.commit()
     return {"deleted": True}
+
+
+async def shuffle_auto_assign(db: AsyncSession, school_id: uuid.UUID, user_id: uuid.UUID) -> dict:
+    """Shuffle all active students and distribute evenly across all active teachers."""
+    import random
+
+    ay = await _get_current_academic_year(db, school_id)
+
+    # Get all active teachers
+    teachers_result = await db.execute(
+        select(Staff.id).where(
+            Staff.school_id == school_id,
+            Staff.role == "Teacher",
+            Staff.is_active.is_(True),
+        )
+    )
+    teacher_ids = [r[0] for r in teachers_result.all()]
+    if not teacher_ids:
+        return {"message": "No active teachers found", "assigned": 0}
+
+    # Get all active students
+    students_result = await db.execute(
+        select(StudentEnrollment.student_id).where(
+            StudentEnrollment.school_id == school_id,
+            StudentEnrollment.academic_year_id == ay.id,
+            StudentEnrollment.is_active.is_(True),
+        )
+    )
+    student_ids = [r[0] for r in students_result.all()]
+    if not student_ids:
+        return {"message": "No active students found", "assigned": 0}
+
+    # Remove all existing mentor assignments for this academic year
+    existing = await db.execute(
+        select(StudentMentor).where(
+            StudentMentor.school_id == school_id,
+            StudentMentor.academic_year_id == ay.id,
+            StudentMentor.is_active.is_(True),
+        )
+    )
+    for m in existing.scalars().all():
+        m.is_active = False
+
+    # Shuffle students randomly
+    random.shuffle(student_ids)
+
+    # Distribute evenly
+    count = 0
+    for i, sid in enumerate(student_ids):
+        teacher_id = teacher_ids[i % len(teacher_ids)]
+        db.add(StudentMentor(
+            school_id=school_id,
+            staff_id=teacher_id,
+            student_id=sid,
+            academic_year_id=ay.id,
+            assigned_date=date.today(),
+            created_by=user_id,
+        ))
+        count += 1
+
+    await db.commit()
+    return {"message": f"Shuffled & assigned {count} students across {len(teacher_ids)} teachers", "assigned": count}

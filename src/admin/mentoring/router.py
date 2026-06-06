@@ -50,3 +50,9 @@ async def assign_mentor(data: AssignRequest, db: SessionDep, school: SchoolDep, 
 @router.delete("/{assignment_id}")
 async def remove_assignment(assignment_id: uuid.UUID, db: SessionDep, school: SchoolDep, user: AdminUser) -> dict:
     return await service.remove_assignment(db, school.id, assignment_id)
+
+
+@router.post("/shuffle-assign")
+async def shuffle_auto_assign(db: SessionDep, school: SchoolDep, user: AdminUser) -> dict:
+    """Shuffle all students and auto-assign evenly across all teachers."""
+    return await service.shuffle_auto_assign(db, school.id, user.id)
