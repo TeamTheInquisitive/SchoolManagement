@@ -1267,6 +1267,7 @@ async def list_route_students(
 ) -> dict:
     """List students assigned to a route for current academic year."""
     from src.models.student import Student, StudentEnrollment
+    from src.models.academic import ClassSection, Class, Section
 
     ay_result = await db.execute(
         select(AcademicYear.id).where(
@@ -1292,6 +1293,24 @@ async def list_route_students(
     )
     rows = result.all()
 
+    # Get class/section for each student
+    student_ids = [st.student_id for st, _, _ in rows]
+    class_map = {}
+    if student_ids:
+        enr_result = await db.execute(
+            select(StudentEnrollment.student_id, Class.name, Section.name)
+            .join(ClassSection, ClassSection.id == StudentEnrollment.class_section_id)
+            .join(Class, Class.id == ClassSection.class_id)
+            .join(Section, Section.id == ClassSection.section_id)
+            .where(
+                StudentEnrollment.student_id.in_(student_ids),
+                StudentEnrollment.academic_year_id == ay_id,
+                StudentEnrollment.is_active.is_(True),
+            )
+        )
+        for sid, cls_name, sec_name in enr_result.all():
+            class_map[sid] = {"class_name": cls_name, "section": sec_name}
+
     return {
         "students": [
             {
@@ -1299,6 +1318,8 @@ async def list_route_students(
                 "student_id": str(st.student_id),
                 "student_name": name,
                 "admission_number": adm,
+                "class_name": class_map.get(st.student_id, {}).get("class_name", ""),
+                "section": class_map.get(st.student_id, {}).get("section", ""),
                 "pickup_point": st.pickup_point,
                 "drop_point": st.drop_point,
             }
@@ -1424,3 +1445,94 @@ async def _update_route_capacity(
         v = vehicle.scalar_one_or_none()
         if v:
             v.occupied_seats = student_count
+
+
+async def shuffle_assign_students(
+    db: AsyncSession, school_id: uuid.UUID, user_id: uuid.UUID
+) -> dict:
+    """Shuffle day-scholar students and assign to routes based on vehicle capacity."""
+    import random
+    from src.models.student import Student, StudentEnrollment
+
+    ay_result = await db.execute(
+        select(AcademicYear.id).where(
+            AcademicYear.school_id == school_id, AcademicYear.is_current.is_(True), AcademicYear.is_active.is_(True),
+        )
+    )
+    ay_id = ay_result.scalar_one_or_none()
+    if not ay_id:
+        return {"message": "No active academic year", "assigned": 0}
+
+    # Get all routes with their vehicle capacity (only Operational vehicles)
+    routes_result = await db.execute(
+        select(Route.id, RouteAssignment.vehicle_id)
+        .outerjoin(RouteAssignment, and_(RouteAssignment.route_id == Route.id, RouteAssignment.is_active.is_(True)))
+        .where(Route.school_id == school_id, Route.status == "Active", Route.is_active.is_(True))
+    )
+    route_capacities = []
+    for route_id, vehicle_id in routes_result.all():
+        capacity = 0
+        if vehicle_id:
+            v_r = await db.execute(select(Vehicle.capacity, Vehicle.status).where(Vehicle.id == vehicle_id))
+            row = v_r.one_or_none()
+            if row and row.status == "Operational":
+                capacity = row.capacity or 0
+        if capacity > 0:
+            route_capacities.append({"route_id": route_id, "capacity": capacity})
+
+    if not route_capacities:
+        return {"message": "No routes with operational vehicles found", "assigned": 0}
+
+    # Get all active day-scholar students (exclude hostellers)
+    students_result = await db.execute(
+        select(StudentEnrollment.student_id, Student.metadata_)
+        .join(Student, Student.id == StudentEnrollment.student_id)
+        .where(
+            StudentEnrollment.school_id == school_id,
+            StudentEnrollment.academic_year_id == ay_id,
+            StudentEnrollment.status == "Active",
+            StudentEnrollment.is_active.is_(True),
+            Student.is_active.is_(True),
+            Student.status == "Active",
+        )
+    )
+    all_students = [(sid, meta) for sid, meta in students_result.all()]
+    # Filter: only Day Scholar (exclude Hosteller)
+    day_scholars = [sid for sid, meta in all_students if (meta or {}).get("student_type") != "Hosteller"]
+
+    if not day_scholars:
+        return {"message": "No day-scholar students found", "assigned": 0}
+
+    # Remove existing transport assignments
+    from sqlalchemy import delete as sa_delete
+    await db.execute(
+        sa_delete(StudentTransport).where(
+            StudentTransport.school_id == school_id,
+            StudentTransport.academic_year_id == ay_id,
+        )
+    )
+
+    # Shuffle and distribute based on capacity
+    random.shuffle(day_scholars)
+    count = 0
+    student_idx = 0
+    for route_info in route_capacities:
+        slots = route_info["capacity"]
+        for _ in range(slots):
+            if student_idx >= len(day_scholars):
+                break
+            db.add(StudentTransport(
+                school_id=school_id,
+                student_id=day_scholars[student_idx],
+                route_id=route_info["route_id"],
+                academic_year_id=ay_id,
+                created_by=user_id,
+            ))
+            student_idx += 1
+            count += 1
+        # Update vehicle occupied_seats
+        await _update_route_capacity(db, school_id, route_info["route_id"], ay_id)
+
+    await db.commit()
+    unassigned = len(day_scholars) - count
+    return {"message": f"Assigned {count} students across {len(route_capacities)} routes" + (f" ({unassigned} unassigned - capacity full)" if unassigned > 0 else ""), "assigned": count}

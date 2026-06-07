@@ -123,6 +123,9 @@ async def list_students(
             "gender": student.gender,
             "date_of_birth": student.date_of_birth,
             "admission_date": student.admission_date,
+            "blood_group": student.blood_group,
+            "religion": student.religion,
+            "address": student.address_line1,
             "student_type": (student.metadata_ or {}).get("student_type"),
             "previous_school": (student.metadata_ or {}).get("previous_school"),
             "token_advance": (student.metadata_ or {}).get("token_advance"),
@@ -139,8 +142,18 @@ async def list_students(
             )
         )
         pw_changed_map = {row.student_id: row.password_changed for row in user_result}
+
+        # Lookup parent info
+        sp_result = await db.execute(
+            select(StudentParent.student_id, Parent.full_name, Parent.phone, Parent.email, Parent.relation)
+            .join(Parent, Parent.id == StudentParent.parent_id)
+            .where(StudentParent.student_id.in_(student_ids), StudentParent.is_active.is_(True))
+        )
+        parent_map = {row.student_id: {"parent_name": row.full_name, "parent_phone": row.phone, "parent_email": row.email, "parent_relationship": row.relation} for row in sp_result}
+
         for item in items:
             item["password_changed"] = pw_changed_map.get(item["id"], False)
+            item.update(parent_map.get(item["id"], {}))
 
     # Compute summary
     active_count = sum(1 for i in items if i["status"] == "Active")
@@ -371,6 +384,7 @@ async def create_student(
                     fee_type=fs.fee_type,
                     fee_category=fs.fee_category,
                     total_amount=net_amount,
+                    concession_amount=concession_amount,
                     paid=0,
                     pending=net_amount,
                     due_date=due,
@@ -381,28 +395,29 @@ async def create_student(
                 )
                 db.add(fee_record)
 
-            # Create custom fee records
-            custom_fees = data.get("custom_fees") or []
-            for cf in custom_fees:
-                due = date.today() + timedelta(days=30)
-                amount = float(cf.get("amount", 0))
-                if amount > 0:
-                    fee_record = FeeRecord(
-                        school_id=school_id,
-                        academic_year_id=current_ay2.id,
-                        student_id=student.id,
-                        fee_type=cf.get("fee_type", "Custom Fee"),
-                        fee_category=cf.get("fee_category", "other"),
-                        total_amount=amount,
-                        paid=0,
-                        pending=amount,
-                        due_date=due,
-                        status="Pending",
-                        is_active=True,
-                        description="Custom fee component (student-specific)",
-                        created_by=created_by,
-                    )
-                    db.add(fee_record)
+        # Create custom fee records (outside cs_for_fee - always create)
+        custom_fees = data.get("custom_fees") or []
+        for cf in custom_fees:
+            due = date.today() + timedelta(days=30)
+            amount = float(cf.get("amount", 0))
+            if amount > 0:
+                fee_record = FeeRecord(
+                    school_id=school_id,
+                    academic_year_id=current_ay2.id,
+                    student_id=student.id,
+                    fee_type=cf.get("fee_type", "Custom Fee"),
+                    fee_category=cf.get("fee_category", "other"),
+                    total_amount=amount,
+                    concession_amount=0,
+                    paid=0,
+                    pending=amount,
+                    due_date=due,
+                    status="Pending",
+                    is_active=True,
+                    description="Custom fee component (student-specific)",
+                    created_by=created_by,
+                )
+                db.add(fee_record)
 
     await db.commit()
     await db.refresh(student)
@@ -626,6 +641,28 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
                     "phone": ct_staff.phone,
                 }
 
+    # Get transport info
+    transport_info = {"enrolled": False}
+    from src.models.transport import StudentTransport as ST2, Route as Route2, Vehicle as Vehicle2, RouteAssignment as RA2
+    if current_ay:
+        st_result = await db.execute(
+            select(ST2).where(
+                ST2.student_id == student.id, ST2.school_id == school_id,
+                ST2.academic_year_id == current_ay.id, ST2.is_active.is_(True),
+            )
+        )
+        st_record = st_result.scalar_one_or_none()
+        if st_record:
+            route_r = await db.execute(select(Route2).where(Route2.id == st_record.route_id))
+            route_obj = route_r.scalar_one_or_none()
+            bus_number = None
+            ra_r = await db.execute(select(RA2.vehicle_id).where(RA2.route_id == st_record.route_id, RA2.is_active.is_(True)))
+            vid = ra_r.scalar_one_or_none()
+            if vid:
+                v_r = await db.execute(select(Vehicle2.vehicle_number).where(Vehicle2.id == vid))
+                bus_number = v_r.scalar_one_or_none()
+            transport_info = {"enrolled": True, "route_name": route_obj.name if route_obj else None, "route_code": getattr(route_obj, 'route_code', None), "bus_number": bus_number, "pickup_point": st_record.pickup_point, "drop_point": st_record.drop_point}
+
     return {
         "id": student.id,
         "roll_number": student.admission_number,
@@ -644,6 +681,13 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
         "state": student.state,
         "pincode": student.pincode,
         "parent": parent_info,
+        "parent_name": parent_info.get("name") if parent_info else None,
+        "parent_phone": parent_info.get("phone") if parent_info else None,
+        "parent_email": parent_info.get("email") if parent_info else None,
+        "parent_relationship": parent_info.get("relationship") if parent_info else None,
+        "parent_occupation": (student.metadata_ or {}).get("parent_occupation"),
+        "previous_school": (student.metadata_ or {}).get("previous_school"),
+        "token_advance": (student.metadata_ or {}).get("token_advance"),
         "medical": {
             "blood_group": student.blood_group,
             "religion": student.religion,
@@ -659,6 +703,7 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
             "punctuality_score": None,
         },
         "created_at": student.created_at,
+        "transport": transport_info,
     }
 
 
@@ -712,6 +757,11 @@ async def update_student(
     if "student_type" in data:
         meta = student.metadata_ or {}
         meta["student_type"] = data["student_type"]
+        student.metadata_ = meta
+
+    if "parent_occupation" in data:
+        meta = student.metadata_ or {}
+        meta["parent_occupation"] = data["parent_occupation"]
         student.metadata_ = meta
 
     # Update name parts if full_name changed
@@ -806,6 +856,38 @@ async def delete_student(
     student.left_date = date.today()
     student.left_reason = reason
     student.updated_by = updated_by
+
+    # Free transport capacity
+    from src.models.transport import StudentTransport, RouteAssignment, Vehicle
+    transport_result = await db.execute(
+        select(StudentTransport).where(
+            StudentTransport.student_id == student_id,
+            StudentTransport.school_id == school_id,
+            StudentTransport.is_active.is_(True),
+        )
+    )
+    for st in transport_result.scalars().all():
+        st.is_active = False
+        # Update vehicle occupied_seats
+        assign_r = await db.execute(
+            select(RouteAssignment.vehicle_id).where(
+                RouteAssignment.route_id == st.route_id, RouteAssignment.is_active.is_(True)
+            )
+        )
+        vid = assign_r.scalar_one_or_none()
+        if vid:
+            from sqlalchemy import func
+            count_r = await db.execute(
+                select(func.count(StudentTransport.id)).where(
+                    StudentTransport.route_id == st.route_id,
+                    StudentTransport.is_active.is_(True),
+                    StudentTransport.student_id != student_id,
+                )
+            )
+            v_result = await db.execute(select(Vehicle).where(Vehicle.id == vid))
+            v = v_result.scalar_one_or_none()
+            if v:
+                v.occupied_seats = count_r.scalar() or 0
 
     await db.commit()
     await db.refresh(student)
@@ -1343,7 +1425,7 @@ async def get_fee_history(
 
     return {
         "summary": {"total_fees": total_fees, "total_paid": total_paid, "total_due": total_fees - total_paid},
-        "fee_structure": [{"component": r.fee_type, "amount": float(r.total_amount), "frequency": r.fee_category} for r in records],
+        "fee_structure": [{"component": r.fee_type, "amount": float(r.total_amount), "concession": float(r.concession_amount or 0), "original_amount": float(r.total_amount) + float(r.concession_amount or 0), "frequency": r.fee_category, "status": r.status, "paid": float(r.paid or 0), "pending": float(r.pending or 0)} for r in records],
         "payments": payments,
     }
 

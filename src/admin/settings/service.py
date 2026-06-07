@@ -1120,27 +1120,39 @@ async def create_fee_structure(
             )
         )
         enrollments = enrollment_result.scalars().all()
-
-        due_date = date.today() + timedelta(days=30)
-        amount = Decimal(str(data["amount"]))
-
-        for enrollment in enrollments:
-            record = FeeRecord(
-                school_id=school_id,
-                academic_year_id=academic_year.id,
-                student_id=enrollment.student_id,
-                fee_structure_id=fs.id,
-                fee_type=fs.fee_type,
-                fee_category=fs.fee_category,
-                total_amount=amount,
-                paid=Decimal("0"),
-                pending=amount,
-                total_late_fee=Decimal("0"),
-                due_date=due_date,
-                status="Pending",
-                created_by=created_by,
+    else:
+        # All classes - get all enrolled students
+        enrollment_result = await db.execute(
+            select(StudentEnrollment).where(
+                StudentEnrollment.school_id == school_id,
+                StudentEnrollment.academic_year_id == academic_year.id,
+                StudentEnrollment.status == "Active",
+                StudentEnrollment.is_active.is_(True),
             )
-            db.add(record)
+        )
+        enrollments = enrollment_result.scalars().all()
+
+    due_date = date.today() + timedelta(days=30)
+    amount = Decimal(str(data["amount"]))
+
+    for enrollment in enrollments:
+        record = FeeRecord(
+            school_id=school_id,
+            academic_year_id=academic_year.id,
+            student_id=enrollment.student_id,
+            fee_structure_id=fs.id,
+            fee_type=fs.fee_type,
+            fee_category=fs.fee_category,
+            total_amount=amount,
+            concession_amount=Decimal("0"),
+            paid=Decimal("0"),
+            pending=amount,
+            total_late_fee=Decimal("0"),
+            due_date=due_date,
+            status="Pending",
+            created_by=created_by,
+        )
+        db.add(record)
 
     await db.commit()
     await db.refresh(fs)

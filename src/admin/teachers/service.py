@@ -507,28 +507,36 @@ async def get_teacher(
     response = _build_teacher_response(staff)
 
     # Fetch leave balances for current academic year
-    from src.models.leave import LeaveBalance
+    from src.models.leave import LeaveBalance, LeavePolicy
 
     ay = await _get_current_academic_year(db, school_id)
     if ay:
         lb_result = await db.execute(
-            select(LeaveBalance).where(
+            select(LeaveBalance, LeavePolicy.display_name)
+            .outerjoin(LeavePolicy, and_(
+                LeavePolicy.school_id == LeaveBalance.school_id,
+                LeavePolicy.academic_year_id == LeaveBalance.academic_year_id,
+                LeavePolicy.leave_type == LeaveBalance.leave_type,
+                LeavePolicy.is_active.is_(True),
+            ))
+            .where(
                 LeaveBalance.school_id == school_id,
                 LeaveBalance.staff_id == teacher_id,
                 LeaveBalance.academic_year_id == ay.id,
             )
         )
-        balances = lb_result.scalars().all()
+        rows = lb_result.all()
         response["leave_balances"] = [
             {
                 "leave_type": lb.leave_type,
+                "display_name": dn or lb.leave_type,
                 "total_allocated": lb.total_allocated,
                 "used": float(lb.used),
                 "pending": float(lb.pending),
                 "remaining": lb.total_allocated + lb.carried_forward - float(lb.used),
                 "carried_forward": lb.carried_forward,
             }
-            for lb in balances
+            for lb, dn in rows
         ]
     else:
         response["leave_balances"] = []

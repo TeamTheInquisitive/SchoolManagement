@@ -95,6 +95,7 @@ class FeeRecord(BaseModel):
         String(20), default="Pending", nullable=False
     )
     description: Mapped[str | None] = mapped_column(String(255), default=None)
+    concession_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0, nullable=False)
 
     # Relationships
     academic_year: Mapped["AcademicYear"] = relationship("AcademicYear", lazy="selectin")

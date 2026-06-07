@@ -89,6 +89,20 @@ class CreateTeacherRequest(BaseModel):
         return _clean_phone(v)
 
 
+    @field_validator("date_of_birth", "joining_date", mode="before")
+    @classmethod
+    def validate_dates(cls, v):
+        if v is None or v == "":
+            return None
+        return v
+
+    @field_validator("max_workload_hours", "basic_salary", "hra", "da", "ta", "other_allowances", "pf_deduction", "tax_deduction", "other_deductions", mode="before")
+    @classmethod
+    def validate_numerics(cls, v):
+        if v is None or v == "":
+            return None
+        return v
+
 class UpdateTeacherRequest(BaseModel):
     full_name: str | None = None
     email: str | None = None
@@ -103,6 +117,7 @@ class UpdateTeacherRequest(BaseModel):
     employment_type: str | None = None
     date_of_birth: date | None = None
     address: str | None = None
+    joining_date: date | None = None
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
     emergency_contact_relationship: str | None = None
@@ -130,6 +145,20 @@ class UpdateTeacherRequest(BaseModel):
     def validate_emergency_phone(cls, v):
         return _clean_phone(v)
 
+
+    @field_validator("date_of_birth", "joining_date", mode="before")
+    @classmethod
+    def validate_dates(cls, v):
+        if v is None or v == "":
+            return None
+        return v
+
+    @field_validator("max_workload_hours", "basic_salary", "hra", "da", "ta", "other_allowances", "pf_deduction", "tax_deduction", "other_deductions", mode="before")
+    @classmethod
+    def validate_numerics(cls, v):
+        if v is None or v == "":
+            return None
+        return v
 
 class DeleteTeacherRequest(BaseModel):
     reason: str | None = None

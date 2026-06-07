@@ -63,14 +63,20 @@ async def get_dashboard_stats(db: AsyncSession, school_id: uuid.UUID) -> dict:
             select(
                 func.coalesce(func.sum(FeeRecord.paid), 0),
                 func.coalesce(func.sum(FeeRecord.total_amount), 0),
+                func.coalesce(func.sum(FeeRecord.concession_amount), 0),
             ).where(
                 FeeRecord.school_id == school_id,
                 FeeRecord.academic_year_id == ay.id,
                 FeeRecord.is_active.is_(True),
             )
         )).one_or_none()
-        if fee_stats and fee_stats[1] > 0:
-            fee_pct = round((fee_stats[0] / fee_stats[1]) * 100, 1)
+        if fee_stats:
+            total_paid = float(fee_stats[0])
+            total_payable = float(fee_stats[1])
+            total_concession = float(fee_stats[2])
+            total_original = total_payable + total_concession
+            if total_payable > 0:
+                fee_pct = round(total_paid / total_payable * 100, 1)
 
     return {
         "total_students": student_count,

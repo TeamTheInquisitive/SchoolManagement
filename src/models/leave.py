@@ -31,6 +31,7 @@ class LeavePolicy(BaseModel):
             "school_id",
             "academic_year_id",
             "leave_type",
+            "applicable_to",
             name="uq_leave_policies_year_type",
         ),
         Index("idx_leave_policies_year", "school_id", "academic_year_id"),

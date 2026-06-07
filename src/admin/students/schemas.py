@@ -61,6 +61,20 @@ class CreateStudentRequest(BaseModel):
         return _clean_phone(v)
 
 
+    @field_validator('date_of_birth', 'admission_date', mode='before')
+    @classmethod
+    def validate_dates(cls, v):
+        if v is None or v == "":
+            return None
+        return v
+
+    @field_validator('token_advance', mode='before')
+    @classmethod
+    def validate_numerics(cls, v):
+        if v is None or v == "":
+            return None
+        return v
+
 class UpdateStudentRequest(BaseModel):
     """Request to update a student."""
 
@@ -84,13 +98,15 @@ class UpdateStudentRequest(BaseModel):
     parent_phone: str | None = None
     parent_email: str | None = None
     parent_relationship: str | None = None
+    parent_occupation: str | None = None
+    admission_date: date | None = None
 
     @field_validator('phone', 'parent_phone', mode='before')
     @classmethod
     def validate_phone(cls, v):
         return _clean_phone(v)
 
-    @field_validator('date_of_birth', mode='before')
+    @field_validator('date_of_birth', 'admission_date', mode='before')
     @classmethod
     def clean_date(cls, v):
         if v == '' or v is None:
@@ -125,11 +141,18 @@ class StudentListItem(BaseModel):
     gender: str | None = None
     date_of_birth: date | None = None
     admission_date: date | None = None
+    blood_group: str | None = None
+    religion: str | None = None
+    address: str | None = None
     student_type: str | None = None
     previous_school: str | None = None
     token_advance: float | None = None
     token_payment_method: str | None = None
     password_changed: bool = False
+    parent_name: str | None = None
+    parent_phone: str | None = None
+    parent_email: str | None = None
+    parent_relationship: str | None = None
 
 
 class StudentListSummary(BaseModel):

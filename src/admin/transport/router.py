@@ -460,3 +460,13 @@ async def remove_student_from_route(
 ):
     """Remove a student from a route."""
     return await service.remove_student_from_route(db, school.id, route_id, student_id)
+
+
+@router.post("/routes/shuffle-assign")
+async def shuffle_assign_students(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Shuffle all day-scholar students and distribute across routes based on vehicle capacity."""
+    return await service.shuffle_assign_students(db, school.id, user.id)
