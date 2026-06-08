@@ -124,19 +124,70 @@ async def get_teacher_profile(
             select(Staff).options(selectinload(Staff.subjects)).where(Staff.id == user.staff_id, Staff.is_active.is_(True))
         )
         staff = result.scalar_one_or_none()
+    subjects = [ss.subject.name for ss in (staff.subjects if staff else []) if ss.subject] if staff else []
+    primary_subject = next((ss.subject.name for ss in (staff.subjects if staff else []) if ss.is_primary and ss.subject), subjects[0] if subjects else None)
     return {
         "id": user.id,
-        "full_name": user.full_name,
-        "email": user.email,
-        "phone": user.phone,
+        "staff_id": staff.id if staff else None,
+        "full_name": user.full_name or (staff.full_name if staff else ''),
+        "email": user.email or (staff.email if staff else ''),
+        "phone": user.phone or (staff.phone if staff else ''),
         "role": user.role,
         "employee_id": staff.employee_id if staff else None,
         "department": staff.department if staff else None,
         "designation": staff.designation if staff else None,
         "qualification": staff.qualification if staff else None,
         "joining_date": staff.joining_date if staff else None,
-        "subject": next(
-            (ss.subject.name for ss in staff.subjects if ss.is_primary and ss.subject),
-            staff.subjects[0].subject.name if staff.subjects and staff.subjects[0].subject else None,
-        ) if staff else None,
+        "date_of_birth": staff.date_of_birth if staff else None,
+        "gender": staff.gender if staff else None,
+        "employment_type": staff.employment_type if staff else None,
+        "address": staff.address_line1 if staff else None,
+        "city": staff.city if staff else None,
+        "state": staff.state if staff else None,
+        "pincode": staff.pincode if staff else None,
+        "emergency_contact_name": staff.emergency_contact_name if staff else None,
+        "emergency_contact_phone": staff.emergency_contact_phone if staff else None,
+        "emergency_contact_relationship": staff.emergency_contact_relationship if staff else None,
+        "blood_group": staff.blood_group if staff else None,
+        "primary_subject": primary_subject,
+        "subjects": subjects,
+        "max_workload_hours": staff.max_workload_hours if staff else None,
+        "experience_years": float(staff.experience_years) if staff and staff.experience_years else None,
     }
+
+
+@router.put("/profile")
+async def update_teacher_profile(
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+) -> dict:
+    """Update teacher's own profile."""
+    from sqlalchemy import select
+    from src.models.staff import Staff
+    if not user.staff_id:
+        return {"error": "No staff record linked"}
+    result = await db.execute(select(Staff).where(Staff.id == user.staff_id, Staff.is_active.is_(True)))
+    staff = result.scalar_one_or_none()
+    if not staff:
+        return {"error": "Staff not found"}
+
+    field_map = {
+        "phone": "phone", "address": "address_line1", "city": "city", "state": "state",
+        "pincode": "pincode", "emergency_contact_name": "emergency_contact_name",
+        "emergency_contact_phone": "emergency_contact_phone",
+        "emergency_contact_relationship": "emergency_contact_relationship",
+        "blood_group": "blood_group", "date_of_birth": "date_of_birth",
+        "gender": "gender", "qualification": "qualification",
+    }
+    for req_field, model_field in field_map.items():
+        if req_field in data and data[req_field] is not None and data[req_field] != '':
+            setattr(staff, model_field, data[req_field])
+
+    # Also update user phone if changed
+    if "phone" in data and data["phone"]:
+        user.phone = data["phone"]
+
+    await db.commit()
+    return {"message": "Profile updated successfully"}

@@ -60,14 +60,21 @@ async def get_leave_balance(
     ay = await _get_current_academic_year(db, school_id)
 
     result = await db.execute(
-        select(LeaveBalance).where(
+        select(LeaveBalance, LeavePolicy.display_name)
+        .outerjoin(LeavePolicy, and_(
+            LeavePolicy.school_id == LeaveBalance.school_id,
+            LeavePolicy.academic_year_id == LeaveBalance.academic_year_id,
+            LeavePolicy.leave_type == LeaveBalance.leave_type,
+            LeavePolicy.is_active.is_(True),
+        ))
+        .where(
             LeaveBalance.school_id == school_id,
             LeaveBalance.staff_id == staff.id,
             LeaveBalance.academic_year_id == ay.id,
             LeaveBalance.is_active.is_(True),
         )
     )
-    balances = result.scalars().all()
+    rows = result.all()
 
     balance_items = []
     total_leaves = 0
@@ -75,12 +82,13 @@ async def get_leave_balance(
     total_used = Decimal("0")
     total_pending = Decimal("0")
 
-    for bal in balances:
+    for bal, display_name in rows:
         total = bal.total_allocated + bal.carried_forward
         available = Decimal(total) - bal.used - bal.pending
         balance_items.append(
             {
                 "leave_type": bal.leave_type,
+                "display_name": display_name or bal.leave_type,
                 "total_allocated": total,
                 "available": available,
                 "used": bal.used,

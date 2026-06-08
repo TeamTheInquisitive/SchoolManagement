@@ -282,7 +282,7 @@ async def get_classes_summary(db: AsyncSession, school_id: uuid.UUID, user: User
             .join(ClassSection, ClassAssignment.class_section_id == ClassSection.id)
             .join(Class, ClassSection.class_id == Class.id)
             .join(Section, ClassSection.section_id == Section.id)
-            .join(Subject, ClassAssignment.subject_id == Subject.id)
+            .outerjoin(Subject, ClassAssignment.subject_id == Subject.id)
             .where(
                 ClassAssignment.school_id == school_id,
                 ClassAssignment.staff_id == staff_id,
@@ -294,6 +294,16 @@ async def get_classes_summary(db: AsyncSession, school_id: uuid.UUID, user: User
         rows = result.all()
 
         for row in rows:
+            cs_id_str = str(row[1])
+            # Skip duplicate class_section entries (teacher may have multiple assignments)
+            if any(c["class_section_id"] == cs_id_str for c in classes):
+                existing = next(c for c in classes if c["class_section_id"] == cs_id_str)
+                if row[0]:  # is_class_teacher
+                    existing["is_class_teacher"] = True
+                if row[4] and not existing.get("subject"):
+                    existing["subject"] = row[4]
+                continue
+
             # Count students enrolled in this class section
             count_result = await db.execute(
                 select(func.count(StudentEnrollment.id)).where(
@@ -304,8 +314,10 @@ async def get_classes_summary(db: AsyncSession, school_id: uuid.UUID, user: User
             student_count = count_result.scalar() or 0
 
             classes.append({
+                "class_section_id": cs_id_str,
                 "class_name": row[2],
                 "section": row[3],
+                "class_section": f"{row[2]}-{row[3]}",
                 "subject": row[4],
                 "student_count": student_count,
                 "is_class_teacher": row[0],

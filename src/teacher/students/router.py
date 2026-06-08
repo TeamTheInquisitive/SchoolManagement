@@ -157,3 +157,15 @@ async def get_assignments(
     """Get assignment submissions."""
     result = await service.get_assignments(db, school.id, student_id, user, academic_year)
     return TeacherStudentAssignmentsResponse(**result)
+
+
+@router.put("/{student_id}")
+async def update_student_by_mentor(
+    student_id: uuid.UUID,
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+):
+    """Update a mentee student's details (mentor access)."""
+    return await service.update_student_by_mentor(db, school.id, user, student_id, data)

@@ -435,8 +435,33 @@ async def get_student_detail(
                 "phone": mentor_staff.phone,
             }
 
+    # Check if teacher is mentor or class teacher (can edit)
+    mentor_result = await db.execute(
+        select(StudentMentor).where(
+            StudentMentor.staff_id == staff.id, StudentMentor.student_id == student_id,
+            StudentMentor.academic_year_id == current_ay.id, StudentMentor.is_active.is_(True),
+        )
+    )
+    is_mentor = mentor_result.scalar_one_or_none() is not None
+
+    # Also check if class teacher of this student's class
+    is_class_teacher = False
+    enr_r = await db.execute(
+        select(StudentEnrollment.class_section_id).where(
+            StudentEnrollment.student_id == student_id,
+            StudentEnrollment.academic_year_id == current_ay.id,
+            StudentEnrollment.is_active.is_(True),
+        )
+    )
+    cs_id = enr_r.scalar_one_or_none()
+    if cs_id:
+        is_class_teacher = await _is_class_teacher_of(db, school_id, staff.id, current_ay.id, cs_id)
+
+    can_edit = is_mentor or is_class_teacher
+
     return {
         "id": student.id,
+        "can_edit": can_edit,
         "roll_number": student.admission_number,
         "full_name": student.full_name,
         "email": student.email,
@@ -633,3 +658,82 @@ async def get_assignments(
         "total_pages": 0,
         "results": [],
     }
+
+
+async def update_student_by_mentor(
+    db: AsyncSession, school_id: UUID, user: User, student_id: UUID, data: dict
+) -> dict:
+    """Update a student's details by their mentor."""
+    staff = await _get_staff_for_user(db, user)
+    if not staff:
+        raise AccessDenied("No staff record")
+
+    # Verify this teacher is the student's mentor
+    # Verify teacher is mentor or class teacher
+    current_ay = await _get_current_academic_year(db, school_id)
+    has_access = False
+    if current_ay:
+        mentor_check = await db.execute(
+            select(StudentMentor).where(
+                StudentMentor.staff_id == staff.id,
+                StudentMentor.student_id == student_id,
+                StudentMentor.academic_year_id == current_ay.id,
+                StudentMentor.is_active.is_(True),
+            )
+        )
+        if mentor_check.scalar_one_or_none():
+            has_access = True
+        else:
+            # Check class teacher
+            enr_r = await db.execute(
+                select(StudentEnrollment.class_section_id).where(
+                    StudentEnrollment.student_id == student_id,
+                    StudentEnrollment.academic_year_id == current_ay.id,
+                    StudentEnrollment.is_active.is_(True),
+                )
+            )
+            cs_id = enr_r.scalar_one_or_none()
+            if cs_id:
+                has_access = await _is_class_teacher_of(db, school_id, staff.id, current_ay.id, cs_id)
+    if not has_access:
+        raise AccessDenied("You don't have permission to edit this student")
+
+    # Get student
+    result = await db.execute(
+        select(Student).where(Student.id == student_id, Student.school_id == school_id, Student.is_active.is_(True))
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise AccessDenied("Student not found")
+
+    # Update allowed fields
+    field_map = {
+        "phone": "phone", "email": "email", "address": "address_line1",
+        "date_of_birth": "date_of_birth", "gender": "gender",
+        "blood_group": "blood_group", "religion": "religion",
+    }
+    for req_field, model_field in field_map.items():
+        if req_field in data and data[req_field] is not None and data[req_field] != '':
+            setattr(student, model_field, data[req_field])
+
+    # Update parent info
+    from src.models.student import StudentParent, Parent
+    parent_fields = ["parent_name", "parent_phone", "parent_email"]
+    if any(f in data for f in parent_fields):
+        sp_r = await db.execute(
+            select(StudentParent).where(StudentParent.student_id == student_id, StudentParent.is_active.is_(True))
+        )
+        sp = sp_r.scalar_one_or_none()
+        if sp:
+            p_r = await db.execute(select(Parent).where(Parent.id == sp.parent_id))
+            parent = p_r.scalar_one_or_none()
+            if parent:
+                if "parent_name" in data and data["parent_name"]:
+                    parent.full_name = data["parent_name"]
+                if "parent_phone" in data and data["parent_phone"]:
+                    parent.phone = data["parent_phone"]
+                if "parent_email" in data and data["parent_email"]:
+                    parent.email = data["parent_email"]
+
+    await db.commit()
+    return {"message": "Student updated successfully"}

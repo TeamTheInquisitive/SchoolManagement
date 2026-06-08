@@ -24,7 +24,7 @@ class AttendanceRecordInput(BaseModel):
 class SubmitAttendanceRequest(BaseModel):
     class_id: uuid.UUID
     date: Optional[date_type] = None
-    academic_year: str
+    academic_year: Optional[str] = None
     records: list[AttendanceRecordInput]
 
 
