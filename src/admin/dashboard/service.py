@@ -303,9 +303,9 @@ async def get_leave_overview(db: AsyncSession, school_id: uuid.UUID) -> dict:
 
 
 async def get_low_attendance(
-    db: AsyncSession, school_id: uuid.UUID, threshold: int = 75, limit: int = 10
+    db: AsyncSession, school_id: uuid.UUID, threshold: int = 75, limit: int = 10, min_days: int = 30
 ) -> dict:
-    """Get students below attendance threshold."""
+    """Get students below attendance threshold, only after min_days of attendance recorded."""
     ay = await _get_current_academic_year(db, school_id)
     if not ay:
         return {"data": []}
@@ -325,6 +325,7 @@ async def get_low_attendance(
             AttendanceSession.is_active.is_(True),
         )
         .group_by(AttendanceRecord.student_id)
+        .having(func.count(AttendanceRecord.id) >= min_days)
         .subquery()
     )
 

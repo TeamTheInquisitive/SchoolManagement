@@ -161,7 +161,7 @@ async def get_assignments(
 
 @router.put("/{student_id}")
 async def update_student_by_mentor(
-    student_id: uuid.UUID,
+    student_id: UUID,
     data: dict,
     db: SessionDep,
     school: SchoolDep,
@@ -169,3 +169,78 @@ async def update_student_by_mentor(
 ):
     """Update a mentee student's details (mentor access)."""
     return await service.update_student_by_mentor(db, school.id, user, student_id, data)
+
+
+# ─── CRUD for student sub-resources (meetings, activities, awards, disciplinary) ───
+
+@router.post("/{student_id}/parent-meetings")
+async def create_meeting(student_id: UUID, data: dict, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import create_parent_meeting
+    return await create_parent_meeting(db, school.id, student_id, data, user.id)
+
+@router.put("/{student_id}/parent-meetings/{meeting_id}")
+async def update_meeting(student_id: UUID, meeting_id: UUID, data: dict, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import update_parent_meeting
+    return await update_parent_meeting(db, school.id, student_id, meeting_id, data)
+
+@router.delete("/{student_id}/parent-meetings/{meeting_id}")
+async def delete_meeting(student_id: UUID, meeting_id: UUID, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import delete_parent_meeting
+    return await delete_parent_meeting(db, school.id, student_id, meeting_id)
+
+@router.post("/{student_id}/activities")
+async def create_activity(student_id: UUID, data: dict, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import create_activity
+    if "activity_name" in data:
+        data["name"] = data.pop("activity_name")
+    if "date" in data:
+        data["start_date"] = data.pop("date")
+    return await create_activity(db, school.id, student_id, data, user.id)
+
+@router.put("/{student_id}/activities/{activity_id}")
+async def update_activity(student_id: UUID, activity_id: UUID, data: dict, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import update_activity
+    if "activity_name" in data:
+        data["name"] = data.pop("activity_name")
+    if "date" in data:
+        data["start_date"] = data.pop("date")
+    return await update_activity(db, school.id, student_id, activity_id, data)
+
+@router.delete("/{student_id}/activities/{activity_id}")
+async def delete_activity(student_id: UUID, activity_id: UUID, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import delete_activity
+    return await delete_activity(db, school.id, student_id, activity_id)
+
+@router.post("/{student_id}/awards")
+async def create_award(student_id: UUID, data: dict, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import create_award
+    if "award_date" in data:
+        data["awarded_date"] = data.pop("award_date")
+    return await create_award(db, school.id, student_id, data, user.id)
+
+@router.put("/{student_id}/awards/{award_id}")
+async def update_award(student_id: UUID, award_id: UUID, data: dict, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import update_award
+    if "award_date" in data:
+        data["awarded_date"] = data.pop("award_date")
+    return await update_award(db, school.id, student_id, award_id, data)
+
+@router.delete("/{student_id}/awards/{award_id}")
+async def delete_award(student_id: UUID, award_id: UUID, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import delete_award
+    return await delete_award(db, school.id, student_id, award_id)
+
+@router.post("/{student_id}/disciplinary-records")
+async def create_disciplinary(student_id: UUID, data: dict, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import create_disciplinary_record
+    return await create_disciplinary_record(db, school.id, student_id, data, user.id)
+
+@router.put("/{student_id}/disciplinary-records/{record_id}")
+async def update_disciplinary(student_id: UUID, record_id: UUID, data: dict, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import update_disciplinary_record
+    return await update_disciplinary_record(db, school.id, student_id, record_id, data)
+
+@router.delete("/{student_id}/disciplinary-records/{record_id}")
+async def delete_disciplinary(student_id: UUID, record_id: UUID, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    from src.admin.students.service import delete_disciplinary_record
+    return await delete_disciplinary_record(db, school.id, student_id, record_id)

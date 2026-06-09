@@ -5,6 +5,7 @@ import io
 from datetime import date
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -19,6 +20,32 @@ from src.models.student import Parent, Student, StudentEnrollment, StudentMentor
 from src.models.attendance import AttendanceRecord, AttendanceSession
 from src.models.examination import Exam, ExamResult
 from src.models.fee import FeeRecord, FeeStructure
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_staff_id(db: AsyncSession, user_id: UUID, school_id: UUID) -> UUID:
+    """Resolve staff.id from a user_id. Tries user_id link first, then email fallback."""
+    staff_result = await db.execute(select(Staff).where(Staff.user_id == user_id, Staff.school_id == school_id))
+    staff = staff_result.scalar_one_or_none()
+    if staff:
+        return staff.id
+    # Fallback: match by email
+    from src.models.core import User as UserModel
+    user_result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+    user_obj = user_result.scalar_one_or_none()
+    if user_obj:
+        staff_result = await db.execute(
+            select(Staff).where(Staff.email == user_obj.email, Staff.school_id == school_id, Staff.is_active.is_(True))
+        )
+        staff = staff_result.scalar_one_or_none()
+        if staff:
+            staff.user_id = user_id
+            return staff.id
+    raise HTTPException(status_code=400, detail="No staff record found for this user")
 
 
 # ---------------------------------------------------------------------------
@@ -1016,9 +1043,8 @@ async def create_parent_meeting(
     )
     ay = ay_result.scalar_one_or_none()
 
-    # Try to resolve staff_id from user
-    staff_result = await db.execute(select(Staff).where(Staff.user_id == user_id, Staff.school_id == school_id))
-    staff = staff_result.scalar_one_or_none()
+    # Resolve staff_id from user
+    staff_id = await _resolve_staff_id(db, user_id, school_id)
 
     meeting = ParentMeeting(
         school_id=school_id,
@@ -1032,7 +1058,7 @@ async def create_parent_meeting(
         follow_up_required=data.get("follow_up_required", False),
         next_meeting_date=data.get("next_meeting_date"),
         status=data.get("status", "Scheduled"),
-        conducted_by=staff.id if staff else user_id,
+        conducted_by=staff_id,
         created_by=user_id,
     )
     db.add(meeting)
@@ -1197,7 +1223,7 @@ async def create_award(
         awarded_by=data.get("awarded_by"),
         level=data.get("level"),
         certificate_url=data.get("certificate_url"),
-        recorded_by=user_id,
+        recorded_by=await _resolve_staff_id(db, user_id, school_id),
         created_by=user_id,
     )
     db.add(award)
@@ -1287,6 +1313,9 @@ async def create_activity(
     )
     ay = ay_result.scalar_one_or_none()
 
+    # Resolve staff_id from user
+    staff_id = await _resolve_staff_id(db, user_id, school_id)
+
     activity = Activity(
         school_id=school_id,
         student_id=student_id,
@@ -1298,7 +1327,7 @@ async def create_activity(
         start_date=data.get("start_date"),
         end_date=data.get("end_date"),
         achievement=data.get("achievement"),
-        recorded_by=user_id,
+        recorded_by=staff_id,
         status="Active",
         created_by=user_id,
     )
@@ -1486,8 +1515,7 @@ async def create_disciplinary_record(
     ay = ay_result.scalar_one_or_none()
 
     # Resolve staff_id from user
-    staff_result = await db.execute(select(Staff).where(Staff.user_id == user_id, Staff.school_id == school_id))
-    staff = staff_result.scalar_one_or_none()
+    staff_id = await _resolve_staff_id(db, user_id, school_id)
 
     record = DisciplinaryRecord(
         school_id=school_id,
@@ -1498,7 +1526,7 @@ async def create_disciplinary_record(
         severity=data["severity"],
         description=data["description"],
         action_taken=data.get("action_taken"),
-        reported_by=staff.id if staff else user_id,
+        reported_by=staff_id,
         parent_notified=data.get("parent_notified", False),
         status=data.get("status", "Open"),
         created_by=user_id,

@@ -78,7 +78,7 @@ async def _verify_class_assignment(
             ClassAssignment.class_section_id == class_section_id,
             ClassAssignment.academic_year_id == academic_year_id,
             ClassAssignment.is_active.is_(True),
-        )
+        ).limit(1)
     )
     assignment = result.scalar_one_or_none()
     if not assignment:

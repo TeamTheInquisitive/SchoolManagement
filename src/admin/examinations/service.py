@@ -1071,6 +1071,18 @@ async def update_grade_system(
             await db.delete(scale)
         await db.flush()
 
+    # Validate no overlapping ranges
+    sorted_grades = sorted(data.grades, key=lambda g: g.min_percentage)
+    for i in range(len(sorted_grades) - 1):
+        current = sorted_grades[i]
+        next_grade = sorted_grades[i + 1]
+        if current.max_percentage > next_grade.min_percentage:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail=f"Grade ranges overlap: '{current.grade}' ({current.min_percentage}%-{current.max_percentage}%) overlaps with '{next_grade.grade}' ({next_grade.min_percentage}%-{next_grade.max_percentage}%)",
+            )
+
     # Add new scales
     for idx, g in enumerate(data.grades):
         scale = GradeScale(

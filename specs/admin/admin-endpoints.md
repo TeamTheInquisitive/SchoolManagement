@@ -1,434 +1,428 @@
-# School ERP Backend - API Endpoints
+# School ERP Backend - Admin API Endpoints
 
 ## Architecture Overview
 
 ```
-Tech Stack (Recommended):
-├── Runtime: Node.js / Python (Django/FastAPI)
-├── Database: MySQL
+Tech Stack:
+├── Runtime: Python (FastAPI)
+├── Database: PostgreSQL
 ├── Auth: JWT (httpOnly cookies) + Refresh Token rotation
-├── Multi-tenancy: School code in header → DB schema/filter
+├── Multi-tenancy: X-School-Code header → DB schema/filter
 ├── API Style: RESTful, JSON
 └── Base URL: /api/v1
 ```
 
 ### Forward & Backward Compatibility Principles
 
-These rules apply across ALL modules and endpoints:
+1. **`metadata` field on every entity** — Every model includes a `metadata: {}` JSON field for future extensions without schema migrations.
 
-1. **`metadata` field on every entity** — Every model includes a `metadata: {}` JSON field. Future features (e.g., online exam proctoring, biometric attendance, parent app integration) can store data here without schema migrations or breaking existing clients.
+2. **Additive-only API changes** — New fields are always optional and nullable. Existing fields are never removed or renamed.
 
-2. **Additive-only API changes** — New fields are always optional and nullable. Existing fields are never removed or renamed. Clients that don't know about new fields simply ignore them.
+3. **Versioned API path (`/api/v1/`)** — Breaking changes go under `/api/v2/` while keeping `/api/v1/` alive.
 
-3. **Versioned API path (`/api/v1/`)** — If a breaking change is ever needed, deploy it under `/api/v2/` while keeping `/api/v1/` alive. Both versions coexist.
+4. **Configurable enums, not hardcoded** — Exam types, leave types, fee types, etc. are stored in config tables. Admin can add new values via API.
 
-4. **Configurable enums, not hardcoded** — Exam types, leave types, fee types, notification types, grade scales, departments, designations are all stored in config tables. Admin can add new values via API without code changes.
+5. **Soft deletes everywhere** — No data is permanently removed. Every entity has `is_active`, `status`, and deactivation timestamp.
 
-5. **Soft deletes everywhere** — No data is ever permanently removed. Every entity has `is_active`, `status`, and a deactivation timestamp. Allows full audit trail and rollback.
+6. **Pagination on all list endpoints** — All lists support `page` + `page_size`. Responses include `count`, `total_pages`.
 
-6. **Pagination on all list endpoints** — All lists support `page` + `page_size`. Responses always include `count`, `total_pages`. This ensures the API works at any scale.
+7. **Filter parameters are always optional** — Omitting a filter returns all records (of that scope).
 
-7. **Filter parameters are always optional** — Omitting a filter returns all records (of that scope). Adding new filter params in the future won't break existing queries.
+8. **ISO 8601 dates everywhere** — `YYYY-MM-DD` or `YYYY-MM-DDTHH:mm:ssZ`.
 
-8. **ISO 8601 dates everywhere** — All date/time fields use `YYYY-MM-DD` or `YYYY-MM-DDTHH:mm:ssZ`. Never locale-specific formats.
+9. **UUIDs as primary keys** — Avoids collision across schools, allows safe cross-system references.
 
-9. **UUIDs as primary keys** — Avoids collision across schools, allows safe cross-system references, and is merge-friendly if schools consolidate.
-
-10. **Idempotent operations** — PUT and DELETE are idempotent. Calling them multiple times produces the same result. POST endpoints that create resources return 409 on duplicates rather than creating duplicates.
+10. **Idempotent operations** — PUT and DELETE are idempotent. POST returns 409 on duplicates.
 
 ### Multi-Tenancy
 
-Every request includes `X-School-Code` header. The backend resolves the school context from this header and scopes all queries to that school.
+Every request includes `X-School-Code` header. The backend resolves the school context from this header.
 
 ### Authentication
 
 - Access token: short-lived (15 min), stored in httpOnly cookie
 - Refresh token: long-lived (7 days), stored in httpOnly cookie
-- On 401, client calls `/auth/refresh-token/` automatically
+- On 401, client calls `/auth/refresh-token` automatically
 
-### Soft Delete & Active Flag Convention
-
-All DELETE operations across the application are **soft deletes**. No data is ever permanently removed.
-
-Every entity that supports deletion includes these fields in responses:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `is_active` | boolean | `true` = currently active, `false` = deactivated/former |
-| `status` | string | Human-readable status: `Active`, `Inactive`, `Alumni`, `Archived` |
-| `left_date` / `deactivated_on` / `archived_on` | string (date) | When the record was deactivated (null if active) |
-| `left_reason` / `reason` | string | Why the record was deactivated (null if active) |
-
-**Frontend usage:** When displaying a record where `is_active === false`, show a visual indicator (badge, greyed-out row, "Former" tag) so admins can clearly distinguish active vs. inactive records.
-
-**Default behavior:** All list endpoints return only active records by default. Use `?include_inactive=true` or `?status=Inactive` to retrieve deactivated records.
-
----
-
-## Database Models (High-Level)
-
-```
-School, User, Staff, Student, Parent
-ClassSection, Subject, AcademicYear
-Attendance, Exam, ExamResult
-Leave, Timetable, FeeStructure, FeePayment
-Book, BookIssue
-Vehicle, Driver, Helper, Route, RouteAssignment
-Notification, Activity, SalaryStructure, Payslip, SalaryAdvance
-```
-
-### Academic Year Scoping
-
-> **IMPORTANT FOR ALL MODULES:**
->
-> Everything operational is scoped to an **academic year**. The academic year is the top-level filter that partitions transactional data.
->
-> **What is scoped to academic year:**
-> - Students → class/section enrollment (a student is in 10-A for AY 2025-2026, promoted to 11-A for 2026-2027)
-> - Teachers → class assignments, workload, privileges (reassigned each year)
-> - Leaves → leave balance, leave history (resets/carries over per year)
-> - Timetable → entire timetable is per academic year (rebuilt each year)
-> - Exams → all exams, results, report cards belong to an academic year
-> - Fees → fee assignments, payments, dues are per academic year
-> - Staff → salary structure can change per year
-> - Payroll → payslips are year/month scoped
->
-> **What is NOT scoped (basic/permanent details):**
-> - Student profile (name, DOB, parent info, medical, address)
-> - Staff/Teacher profile (name, email, phone, qualification, joining_date)
-> - Vehicle, Driver, Route master data
-> - Book catalog
-> - School settings
->
-> **How it works:**
-> - Every transactional table has an `academic_year` column (e.g., `"2025-2026"`)
-> - The "current" academic year is set in Settings → all queries default to it
-> - Admin can switch academic year to view historical data
-> - All list APIs accept `?academic_year=2025-2026` param (defaults to current if omitted)
-> - At year rollover: students get promoted, leaves reset, timetable is rebuilt, new fee dues are generated — old year data is preserved and queryable
-
----
-
-### Key Relationship: Staff → Teacher
-
-> **IMPORTANT FOR MODELLING:**
->
-> `Teacher` is NOT a separate table — it is derived from `Staff`.
-> A Teacher is a Staff member with `department = 'Teaching'` (or a role flag like `is_teacher = true`).
->
-> **Inheritance model:**
-> ```
-> Staff (base)
->   ├── employee_id, full_name, email, phone, department, designation,
->   │   employment_type, joining_date, left_date, salary, status, is_active
->   │
->   └── Teacher (extension / same table with extra fields)
->         ├── subjects[] (qualified subjects)
->         ├── primary_subject
->         ├── qualification
->         ├── max_workload_hours
->         ├── class_assignments[] (FK → ClassAssignment)
->         └── is_class_teacher_of[]
-> ```
->
-> **Implementation options:**
-> 1. **Single table (recommended):** `staff` table with nullable teacher-specific columns. Filter by `department = 'Teaching'` or `is_teacher = true` to get teachers.
-> 2. **Joined table:** `staff` base + `teacher_profile` extension table (1:1 FK to staff).
->
-> **Why this matters:**
-> - Payroll, leaves, salary advances all reference `staff_id` — teachers share the same payroll/leave system as non-teaching staff.
-> - Teacher-specific features (class assignments, privileges, timetable, exams) reference the same `staff_id` with teacher extensions.
-> - When a teacher is listed in Staff Directory, they appear as any other staff member. When viewed in Teachers module, their teaching-specific data (subjects, assignments) is shown additionally.
-> - `employee_id` is shared: EMP001 is the same person in Staff and Teachers modules.
-
----
-
-## Request Headers
+### Request Headers
 
 | Header | Description | Required |
 |--------|-------------|----------|
 | `Content-Type` | `application/json` | Yes |
-| `X-School-Code` | School tenant identifier | Yes (except /auth/login/) |
-| `Cookie` | httpOnly auth cookies (sent automatically) | Yes (after login) |
+| `X-School-Code` | School tenant identifier | Yes (except /auth/login) |
+| `Cookie` | httpOnly auth cookies | Yes (after login) |
 
-## Pagination Convention
-
-All list endpoints support pagination:
-
-| Param | Default | Description |
-|-------|---------|-------------|
-| `page` | 1 | Page number |
-| `page_size` | 20 | Items per page (max 100) |
-
-Response includes: `count`, `page`, `page_size`, `total_pages`, `results[]`
-
-## HTTP Status Codes
+### HTTP Status Codes
 
 | Code | Meaning |
 |------|---------|
-| 200  | Success / Soft-delete successful |
+| 200  | Success |
 | 201  | Created |
-| 207  | Partial success (bulk operations) |
+| 204  | No Content (successful delete) |
 | 400  | Bad Request (validation error) |
-| 401  | Unauthorized (not logged in / token expired) |
-| 403  | Forbidden (insufficient permissions) |
+| 401  | Unauthorized |
+| 403  | Forbidden |
 | 404  | Not Found |
-| 409  | Conflict (e.g., timetable conflict, duplicate entry) |
-| 422  | Unprocessable Entity |
+| 409  | Conflict (duplicate) |
 | 500  | Internal Server Error |
 
-## Error Response Format
+---
 
-```json
-{
-  "error": "Human-readable error message",
-  "code": "ERROR_CODE",
-  "details": {
-    "field_name": ["Field-specific error messages"]
-  }
-}
-```
+## All Endpoints (212 Admin-specific + 8 Shared Auth = 220 total)
 
 ---
 
-## All Endpoints (143 V1 + 9 V2 = 152 total)
+### Auth — Shared (8)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/auth/login` | Login with email/password |
+| POST | `/api/v1/auth/logout` | Logout and clear cookies |
+| POST | `/api/v1/auth/refresh-token` | Refresh access token |
+| GET | `/api/v1/auth/me` | Get current user profile |
+| GET | `/api/v1/auth/school-profile` | Get school profile |
+| POST | `/api/v1/auth/forgot-password` | Send password reset email |
+| POST | `/api/v1/auth/reset-password` | Reset password via token |
+| POST | `/api/v1/auth/change-password` | Change password (authenticated) |
 
 ---
 
-### Auth (7)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/auth/login/` | Login with email/password |
-| POST | `/api/v1/auth/refresh-token/` | Refresh access token |
-| GET | `/api/v1/auth/me/` | Get current user profile |
-| POST | `/api/v1/auth/logout/` | Logout and clear cookies |
-| POST | `/api/v1/auth/forgot-password/` | Send password reset email |
-| POST | `/api/v1/auth/reset-password/` | Reset password via token |
-| POST | `/api/v1/auth/change-password/` | Change password (authenticated) |
+### Dashboard (8)
 
-### Dashboard (7)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/admin/dashboard/stats/` | KPI summary cards |
-| GET | `/api/v1/admin/dashboard/attendance-trends/` | Monthly attendance chart data |
-| GET | `/api/v1/admin/dashboard/fee-collection-status/` | Fee pie chart data |
-| GET | `/api/v1/admin/dashboard/student-distribution/` | Class/gender bar chart data |
-| GET | `/api/v1/admin/dashboard/recent-activities/` | Recent activity feed |
-| GET | `/api/v1/admin/dashboard/leave-overview/` | Teacher leave summary + pending |
-| GET | `/api/v1/admin/dashboard/low-attendance/` | Low attendance alerts |
+| GET | `/api/v1/admin/dashboard/stats` | KPI cards (students, teachers, classes, fee%) |
+| GET | `/api/v1/admin/dashboard/attendance-trends` | Monthly attendance trend data |
+| GET | `/api/v1/admin/dashboard/fee-collection-status` | Fee collection pie chart data |
+| GET | `/api/v1/admin/dashboard/student-distribution` | Student distribution by class/gender |
+| GET | `/api/v1/admin/dashboard/recent-activities` | Recent activity feed |
+| GET | `/api/v1/admin/dashboard/leave-overview` | Leave overview with pending approvals |
+| GET | `/api/v1/admin/dashboard/low-attendance` | Students with low attendance |
+| GET | `/api/v1/admin/dashboard/subscription-banner` | Subscription status banner |
 
-### Students (12)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/admin/students/` | List students (filtered, paginated) |
-| POST | `/api/v1/admin/students/` | Create student |
-| GET | `/api/v1/admin/students/:id/` | Get student full details |
-| PUT | `/api/v1/admin/students/:id/` | Update student |
-| DELETE | `/api/v1/admin/students/:id/` | Soft-delete student |
-| GET | `/api/v1/admin/students/:id/exam-results/` | Student exam results + trends |
-| GET | `/api/v1/admin/students/:id/parent-meetings/` | Meeting history |
-| GET | `/api/v1/admin/students/:id/activities/` | Activities + awards |
-| GET | `/api/v1/admin/students/:id/fee-history/` | Fee structure + payments |
-| GET | `/api/v1/admin/students/:id/disciplinary-records/` | Disciplinary records |
-| GET | `/api/v1/admin/students/export/` | Export CSV |
-| POST | `/api/v1/admin/students/bulk-import/` | Bulk import via CSV |
+---
 
-### Teachers (12)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/admin/teachers/` | List teachers (multi-class, multi-subject) |
-| POST | `/api/v1/admin/teachers/` | Create teacher (subjects array) |
-| GET | `/api/v1/admin/teachers/:id/` | Get teacher full profile + all assignments |
-| PUT | `/api/v1/admin/teachers/:id/` | Update teacher |
-| DELETE | `/api/v1/admin/teachers/:id/` | Soft-delete teacher (preserves history) |
-| POST | `/api/v1/admin/teachers/:id/assign-class/` | Assign one class-subject combo |
-| POST | `/api/v1/admin/teachers/:id/bulk-assign/` | Assign multiple classes at once |
-| GET | `/api/v1/admin/teachers/:id/assignments/` | List all assignments for a teacher |
-| DELETE | `/api/v1/admin/teachers/:id/class-assignment/:assignment_id/` | Soft-remove assignment (preserves history) |
-| GET | `/api/v1/admin/teachers/export/` | Export CSV |
-| GET | `/api/v1/admin/teachers/by-class/` | Get teachers for a class/section |
-| GET | `/api/v1/admin/teachers/:id/history/` | Get teacher's historical records |
+### Settings (35)
 
-### Leaves (10)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/admin/leaves/` | List all leave applications (filtered) |
-| GET | `/api/v1/admin/leaves/teacher/:teacher_id/` | Teacher-wise balance + history |
-| GET | `/api/v1/admin/leaves/balances/` | All teachers' leave balances overview |
-| GET | `/api/v1/admin/leaves/policy/` | Get leave policy config |
-| PUT | `/api/v1/admin/leaves/policy/` | Update leave policy |
-| POST | `/api/v1/admin/leaves/:id/approve/` | Approve leave (+ assign substitute) |
-| POST | `/api/v1/admin/leaves/:id/reject/` | Reject leave |
-| POST | `/api/v1/admin/leaves/:id/cancel/` | Cancel approved leave |
-| POST | `/api/v1/admin/leaves/bulk-action/` | Bulk approve/reject |
-| GET | `/api/v1/admin/leaves/calendar/` | Calendar view (who's on leave when) |
+| GET | `/api/v1/admin/settings` | Get all settings |
+| PUT | `/api/v1/admin/settings` | Update settings |
+| GET | `/api/v1/admin/settings/school-profile` | Get school profile |
+| PUT | `/api/v1/admin/settings/school-profile` | Update school profile |
+| GET | `/api/v1/admin/settings/academic-year` | Get current academic year |
+| GET | `/api/v1/admin/settings/academic-years` | List all academic years |
+| POST | `/api/v1/admin/settings/academic-years` | Create academic year |
+| PUT | `/api/v1/admin/settings/academic-years/{year_id}` | Update academic year |
+| DELETE | `/api/v1/admin/settings/academic-years/{year_id}` | Delete academic year |
+| POST | `/api/v1/admin/settings/academic-years/{year_id}/set-current` | Set as current year |
+| PUT | `/api/v1/admin/settings/academic-year` | Update academic year (legacy) |
+| GET | `/api/v1/admin/settings/enums/{category}` | Get enum category values |
+| PUT | `/api/v1/admin/settings/enums/{category}` | Update enum category values |
+| POST | `/api/v1/admin/settings/classes/bulk` | Bulk create classes |
+| POST | `/api/v1/admin/settings/sections/bulk` | Bulk create sections |
+| POST | `/api/v1/admin/settings/subjects/bulk` | Bulk create subjects |
+| GET | `/api/v1/admin/settings/class-sections` | Get all class-sections |
+| GET | `/api/v1/admin/settings/subjects` | List all subjects |
+| PUT | `/api/v1/admin/settings/subjects/{subject_id}` | Update subject |
+| DELETE | `/api/v1/admin/settings/subjects/{subject_id}` | Delete subject |
+| POST | `/api/v1/admin/settings/upload-logo` | Upload school logo |
+| PUT | `/api/v1/admin/settings/subjects/{subject_id}/classes` | Assign subject to classes |
+| GET | `/api/v1/admin/settings/class-subjects` | Get class-subject mapping |
+| PUT | `/api/v1/admin/settings/class-subjects/{class_id}` | Update class subjects |
+| GET | `/api/v1/admin/settings/fee-structures` | List fee structures |
+| POST | `/api/v1/admin/settings/fee-structures` | Create fee structure |
+| PUT | `/api/v1/admin/settings/fee-structures/{structure_id}` | Update fee structure |
+| DELETE | `/api/v1/admin/settings/fee-structures/{structure_id}` | Delete fee structure |
+| GET | `/api/v1/admin/settings/id-generation` | Get ID generation config |
+| PUT | `/api/v1/admin/settings/id-generation` | Update ID generation config |
+| GET | `/api/v1/admin/settings/holidays` | Get holidays |
+| PUT | `/api/v1/admin/settings/holidays` | Update holidays |
+| GET | `/api/v1/admin/settings/next-id` | Get next generated ID |
+| GET | `/api/v1/admin/settings/attendance-config` | Get attendance config |
+| PUT | `/api/v1/admin/settings/attendance-config` | Update attendance config |
 
-### Timetable (11)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/admin/timetable/periods/` | Get period configuration (time slots) |
-| POST | `/api/v1/admin/timetable/periods/` | Add new period |
-| PUT | `/api/v1/admin/timetable/periods/:id/` | Update period timing |
-| DELETE | `/api/v1/admin/timetable/periods/:id/` | Soft-delete period |
-| GET | `/api/v1/admin/timetable/` | Get full timetable grid for class/section |
-| POST | `/api/v1/admin/timetable/slot/` | Assign subject+teacher to a slot |
-| PUT | `/api/v1/admin/timetable/slot/:id/` | Update a slot assignment |
-| DELETE | `/api/v1/admin/timetable/slot/:id/` | Clear a slot |
-| POST | `/api/v1/admin/timetable/bulk-assign/` | Bulk assign multiple slots |
-| GET | `/api/v1/admin/timetable/teacher/:teacher_id/` | Get teacher's weekly schedule |
-| GET | `/api/v1/admin/timetable/conflicts/` | Detect scheduling conflicts |
+---
 
-### Examinations (16)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/admin/examinations/` | List exams (filtered, paginated) |
-| POST | `/api/v1/admin/examinations/` | Create exam |
-| GET | `/api/v1/admin/examinations/:id/` | Get exam details + summary |
-| PUT | `/api/v1/admin/examinations/:id/` | Update exam |
-| DELETE | `/api/v1/admin/examinations/:id/` | Soft-delete (cancel) exam |
-| GET | `/api/v1/admin/examinations/:id/results/` | Get all results for an exam |
-| POST | `/api/v1/admin/examinations/:id/results/` | Enter results (single/bulk) |
-| POST | `/api/v1/admin/examinations/:id/results/bulk-upload/` | Upload results via CSV |
-| PUT | `/api/v1/admin/examinations/:id/results/:result_id/` | Update a student's result |
-| POST | `/api/v1/admin/examinations/:id/publish/` | Publish results + notify |
-| GET | `/api/v1/admin/examinations/grade-system/` | Get grade scale config |
-| PUT | `/api/v1/admin/examinations/grade-system/` | Update grade scale |
-| GET | `/api/v1/admin/examinations/analytics/` | Class/subject performance analytics |
-| GET | `/api/v1/admin/examinations/report-card/:student_id/` | Get student report card |
-| POST | `/api/v1/admin/examinations/report-card/generate/` | Batch generate report cards |
-| GET | `/api/v1/admin/examinations/schedule/` | Get exam timetable for a class |
+### Students (27)
 
-### Fees (12)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/admin/fees/` | List fee records (filter: status, class, fee_type) |
-| GET | `/api/v1/admin/fees/:id/` | Get fee record + payment history |
-| POST | `/api/v1/admin/fees/` | Create fee record (assign to student) |
-| POST | `/api/v1/admin/fees/generate-due/` | Bulk generate due fees for a class |
-| POST | `/api/v1/admin/fees/:id/record-payment/` | Record payment (partial/full) |
-| POST | `/api/v1/admin/fees/:id/apply-late-fee/` | Apply late fee (fixed or %) |
-| POST | `/api/v1/admin/fees/bulk-apply-late-fees/` | Bulk apply late fees to overdue |
-| POST | `/api/v1/admin/fees/send-reminder/` | Send fee reminders |
-| GET | `/api/v1/admin/fees/:id/receipt/` | Generate receipt per fee record |
-| GET | `/api/v1/admin/fees/student/:student_id/` | Student's fee records + summary |
-| GET | `/api/v1/admin/fees/student/:student_id/receipt/` | Consolidated receipt per student |
-| GET | `/api/v1/admin/fees/export/` | Export CSV |
+| GET | `/api/v1/admin/students` | List students (paginated, filterable) |
+| POST | `/api/v1/admin/students` | Create student |
+| GET | `/api/v1/admin/students/export` | Export students CSV |
+| POST | `/api/v1/admin/students/bulk-import` | Bulk import students (CSV) |
+| POST | `/api/v1/admin/students/bulk-import-json` | Bulk import students (JSON) |
+| GET | `/api/v1/admin/students/{student_id}` | Get student detail |
+| PUT | `/api/v1/admin/students/{student_id}` | Update student |
+| DELETE | `/api/v1/admin/students/{student_id}` | Delete (deactivate) student |
+| POST | `/api/v1/admin/students/{student_id}/reset-password` | Reset student password |
+| GET | `/api/v1/admin/students/{student_id}/exam-results` | Student exam results |
+| GET | `/api/v1/admin/students/{student_id}/parent-meetings` | List parent meetings |
+| POST | `/api/v1/admin/students/{student_id}/parent-meetings` | Create parent meeting |
+| PUT | `/api/v1/admin/students/{student_id}/parent-meetings/{meeting_id}` | Update meeting |
+| DELETE | `/api/v1/admin/students/{student_id}/parent-meetings/{meeting_id}` | Delete meeting |
+| GET | `/api/v1/admin/students/{student_id}/activities` | List activities |
+| POST | `/api/v1/admin/students/{student_id}/activities` | Create activity |
+| PUT | `/api/v1/admin/students/{student_id}/activities/{activity_id}` | Update activity |
+| DELETE | `/api/v1/admin/students/{student_id}/activities/{activity_id}` | Delete activity |
+| POST | `/api/v1/admin/students/{student_id}/awards` | Create award |
+| PUT | `/api/v1/admin/students/{student_id}/awards/{award_id}` | Update award |
+| DELETE | `/api/v1/admin/students/{student_id}/awards/{award_id}` | Delete award |
+| GET | `/api/v1/admin/students/{student_id}/fee-history` | Fee history |
+| GET | `/api/v1/admin/students/{student_id}/disciplinary-records` | List disciplinary records |
+| POST | `/api/v1/admin/students/{student_id}/disciplinary-records` | Create disciplinary record |
+| PUT | `/api/v1/admin/students/{student_id}/disciplinary-records/{record_id}` | Update record |
+| DELETE | `/api/v1/admin/students/{student_id}/disciplinary-records/{record_id}` | Delete record |
+| GET | `/api/v1/admin/students/{student_id}/attendance` | Student attendance |
 
-### Transport (22)
+---
+
+### Teachers (18)
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/admin/transport/stats/` | KPI summary (vehicles, drivers, routes) |
-| GET | `/api/v1/admin/transport/vehicles/` | List vehicles (filter: type, status) |
-| POST | `/api/v1/admin/transport/vehicles/` | Add vehicle |
-| GET | `/api/v1/admin/transport/vehicles/:id/` | Get vehicle details |
-| PUT | `/api/v1/admin/transport/vehicles/:id/` | Update vehicle |
-| DELETE | `/api/v1/admin/transport/vehicles/:id/` | Soft-delete vehicle |
-| GET | `/api/v1/admin/transport/drivers/` | List drivers (filter: status, license) |
-| POST | `/api/v1/admin/transport/drivers/` | Add driver |
-| PUT | `/api/v1/admin/transport/drivers/:id/` | Update driver |
-| DELETE | `/api/v1/admin/transport/drivers/:id/` | Soft-delete driver |
-| GET | `/api/v1/admin/transport/helpers/` | List helpers/attendants |
-| POST | `/api/v1/admin/transport/helpers/` | Add helper |
-| PUT | `/api/v1/admin/transport/helpers/:id/` | Update helper |
-| DELETE | `/api/v1/admin/transport/helpers/:id/` | Soft-delete helper |
-| GET | `/api/v1/admin/transport/routes/` | List routes |
-| POST | `/api/v1/admin/transport/routes/` | Create route |
-| PUT | `/api/v1/admin/transport/routes/:id/` | Update route |
-| DELETE | `/api/v1/admin/transport/routes/:id/` | Soft-delete route |
-| GET | `/api/v1/admin/transport/assignments/` | List operational mappings |
-| POST | `/api/v1/admin/transport/assignments/` | Create assignment (route+vehicle+driver+helper) |
-| PUT | `/api/v1/admin/transport/assignments/:id/` | Update assignment |
-| DELETE | `/api/v1/admin/transport/assignments/:id/` | Remove assignment |
-| GET | `/api/v1/admin/transport/vehicles/export/` | Export vehicles CSV |
-| GET | `/api/v1/admin/transport/drivers/export/` | Export drivers CSV |
+| GET | `/api/v1/admin/teachers` | List teachers (paginated, filterable) |
+| POST | `/api/v1/admin/teachers` | Create teacher |
+| GET | `/api/v1/admin/teachers/export` | Export teachers CSV |
+| POST | `/api/v1/admin/teachers/bulk-import` | Bulk import teachers (CSV) |
+| GET | `/api/v1/admin/teachers/by-class` | Get teachers by class |
+| GET | `/api/v1/admin/teachers/{teacher_id}` | Get teacher detail |
+| PUT | `/api/v1/admin/teachers/{teacher_id}` | Update teacher |
+| DELETE | `/api/v1/admin/teachers/{teacher_id}` | Delete (deactivate) teacher |
+| POST | `/api/v1/admin/teachers/{teacher_id}/reset-password` | Reset password |
+| POST | `/api/v1/admin/teachers/{teacher_id}/assign-class` | Assign class to teacher |
+| POST | `/api/v1/admin/teachers/{teacher_id}/bulk-assign` | Bulk assign classes |
+| GET | `/api/v1/admin/teachers/{teacher_id}/assignments` | Get class assignments |
+| DELETE | `/api/v1/admin/teachers/{teacher_id}/assignments/{assignment_id}` | Remove assignment |
+| GET | `/api/v1/admin/teachers/{teacher_id}/awards` | List awards |
+| POST | `/api/v1/admin/teachers/{teacher_id}/awards` | Create award |
+| PUT | `/api/v1/admin/teachers/{teacher_id}/awards/{award_id}` | Update award |
+| DELETE | `/api/v1/admin/teachers/{teacher_id}/awards/{award_id}` | Delete award |
+| GET | `/api/v1/admin/teachers/{teacher_id}/history` | Teacher history |
+
+---
 
 ### Staff (5)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/admin/staff/` | List staff |
-| POST | `/api/v1/admin/staff/` | Create staff |
-| PUT | `/api/v1/admin/staff/:id/` | Update staff |
-| DELETE | `/api/v1/admin/staff/:id/` | Soft-delete staff (preserves history) |
-| GET | `/api/v1/admin/staff/export/` | Export CSV |
 
-### Payroll (6)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/admin/payroll/` | Get payroll for month/year |
-| POST | `/api/v1/admin/payroll/run/` | Run payroll generation |
-| POST | `/api/v1/admin/payroll/generate-payslips/` | Generate payslip PDFs |
-| GET | `/api/v1/admin/payroll/salary-structure/:employee_id/` | Get salary breakdown |
-| GET | `/api/v1/admin/payroll/salary-revisions/:staff_id/` | Get salary revision history |
-| POST | `/api/v1/admin/payroll/salary-revisions/` | Create salary revision/hike |
-
-### Salary Advances (5)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/admin/salary-advances/` | List advance requests |
-| POST | `/api/v1/admin/salary-advances/` | Create advance request |
-| POST | `/api/v1/admin/salary-advances/:id/approve/` | Approve advance |
-| POST | `/api/v1/admin/salary-advances/:id/reject/` | Reject advance |
-| POST | `/api/v1/admin/salary-advances/:id/disburse/` | Disburse advance |
-
-### Notifications (5)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/admin/notifications/` | List notifications |
-| POST | `/api/v1/admin/notifications/` | Create/send notification |
-| GET | `/api/v1/admin/notifications/:id/` | Get notification details |
-| PUT | `/api/v1/admin/notifications/:id/` | Update notification |
-| DELETE | `/api/v1/admin/notifications/:id/` | Soft-delete (archive) notification |
-
-### Settings (11)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/admin/settings/` | Get all settings (grouped by category) |
-| PUT | `/api/v1/admin/settings/` | Update settings (partial update) |
-| GET | `/api/v1/admin/settings/school-profile/` | Get school info (name, logo, address, contact) |
-| PUT | `/api/v1/admin/settings/school-profile/` | Update school profile |
-| GET | `/api/v1/admin/settings/academic-year/` | Get academic year config |
-| PUT | `/api/v1/admin/settings/academic-year/` | Update academic year |
-| GET | `/api/v1/admin/settings/enums/:category/` | Get configurable enum values (fee types, leave types, etc.) |
-| PUT | `/api/v1/admin/settings/enums/:category/` | Add/update enum values for a category |
-| POST | `/api/v1/admin/settings/classes/bulk/` | Bulk create classes |
-| POST | `/api/v1/admin/settings/sections/bulk/` | Bulk create sections |
-| POST | `/api/v1/admin/settings/subjects/bulk/` | Bulk create subjects |
+| GET | `/api/v1/admin/staff` | List staff (paginated, filterable) |
+| GET | `/api/v1/admin/staff/export` | Export staff CSV |
+| POST | `/api/v1/admin/staff` | Create staff member |
+| PUT | `/api/v1/admin/staff/{staff_id}` | Update staff |
+| DELETE | `/api/v1/admin/staff/{staff_id}` | Delete (deactivate) staff |
 
 ---
 
-### Library (9) — Moved to V2
+### Payroll (18) — prefix: `/admin/staff`
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/admin/library/books/` | List books (filter: category, available, search) |
-| GET | `/api/v1/admin/library/books/:id/` | Get book details + current holders |
-| GET | `/api/v1/admin/library/books/:id/history/` | Book's complete issue history |
-| GET | `/api/v1/admin/library/issued/` | List issued books (filter: user_type, class, overdue) |
-| GET | `/api/v1/admin/library/overdue/` | List overdue books + fines |
-| GET | `/api/v1/admin/library/user-history/:user_id/` | Student/teacher wise borrow history |
-| POST | `/api/v1/admin/library/issue/` | Issue book to student or teacher |
-| POST | `/api/v1/admin/library/return/` | Return a book |
-| POST | `/api/v1/admin/library/renew/` | Renew/extend due date |
+| GET | `/api/v1/admin/staff/payroll` | List payroll records |
+| POST | `/api/v1/admin/staff/payroll/run` | Run payroll for a month |
+| POST | `/api/v1/admin/staff/payroll/generate-payslips` | Generate payslips |
+| PUT | `/api/v1/admin/staff/payroll/{payslip_id}` | Update payslip |
+| POST | `/api/v1/admin/staff/payroll/{payslip_id}/pay` | Mark payslip as paid |
+| POST | `/api/v1/admin/staff/payroll/mark-all-paid` | Mark all as paid |
+| POST | `/api/v1/admin/staff/payroll/undo-all-paid` | Undo mark all paid |
+| GET | `/api/v1/admin/staff/payroll/history` | Payroll history |
+| GET | `/api/v1/admin/staff/payroll/salary-structure/{employee_id}` | Get salary structure |
+| PUT | `/api/v1/admin/staff/payroll/salary-structure/{staff_id}` | Update salary structure |
+| GET | `/api/v1/admin/staff/salary-advances` | List salary advances |
+| POST | `/api/v1/admin/staff/salary-advances` | Create salary advance |
+| POST | `/api/v1/admin/staff/salary-advances/{advance_id}/approve` | Approve advance |
+| POST | `/api/v1/admin/staff/salary-advances/{advance_id}/reject` | Reject advance |
+| POST | `/api/v1/admin/staff/salary-advances/{advance_id}/disburse` | Disburse advance |
+| GET | `/api/v1/admin/staff/payroll/salary-revisions/{staff_id}` | Salary revision history |
+| GET | `/api/v1/admin/staff/payroll/staff/{staff_id}/payslips` | Staff payslip history |
+| POST | `/api/v1/admin/staff/payroll/salary-revisions` | Create salary revision |
+
+---
+
+### Fees (13)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/admin/fees` | List fee records (paginated, filterable) |
+| GET | `/api/v1/admin/fees/export` | Export fees CSV |
+| GET | `/api/v1/admin/fees/student/{student_id}` | Student fee records |
+| GET | `/api/v1/admin/fees/student/{student_id}/receipt` | Consolidated receipt |
+| GET | `/api/v1/admin/fees/{fee_id}` | Fee record detail |
+| GET | `/api/v1/admin/fees/{fee_id}/receipt` | Individual fee receipt |
+| PUT | `/api/v1/admin/fees/{fee_id}` | Update fee record |
+| POST | `/api/v1/admin/fees` | Create fee record |
+| POST | `/api/v1/admin/fees/generate-due` | Generate due fees for class/month |
+| POST | `/api/v1/admin/fees/{fee_id}/record-payment` | Record a payment |
+| POST | `/api/v1/admin/fees/{fee_id}/apply-late-fee` | Apply late fee |
+| POST | `/api/v1/admin/fees/bulk-apply-late-fees` | Bulk apply late fees |
+| POST | `/api/v1/admin/fees/send-reminder` | Send fee reminder |
+
+---
+
+### Examinations (16)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/admin/examinations` | List exams (paginated, filterable) |
+| POST | `/api/v1/admin/examinations` | Create exam |
+| GET | `/api/v1/admin/examinations/grade-system` | Get grading system |
+| PUT | `/api/v1/admin/examinations/grade-system` | Update grading system |
+| GET | `/api/v1/admin/examinations/analytics` | Exam analytics |
+| GET | `/api/v1/admin/examinations/report-card/{student_id}` | Student report card |
+| POST | `/api/v1/admin/examinations/report-card/generate` | Generate report cards |
+| GET | `/api/v1/admin/examinations/schedule` | Exam schedule |
+| GET | `/api/v1/admin/examinations/{exam_id}` | Get exam detail |
+| PUT | `/api/v1/admin/examinations/{exam_id}` | Update exam |
+| DELETE | `/api/v1/admin/examinations/{exam_id}` | Cancel exam |
+| GET | `/api/v1/admin/examinations/{exam_id}/results` | Get exam results |
+| POST | `/api/v1/admin/examinations/{exam_id}/results` | Enter results |
+| POST | `/api/v1/admin/examinations/{exam_id}/results/bulk-upload` | Bulk upload results |
+| PUT | `/api/v1/admin/examinations/{exam_id}/results/{result_id}` | Update individual result |
+| POST | `/api/v1/admin/examinations/{exam_id}/publish` | Publish exam results |
+
+---
+
+### Leaves (11)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/admin/leaves` | List leave applications (paginated) |
+| GET | `/api/v1/admin/leaves/teacher/{teacher_id}` | Teacher leave detail |
+| GET | `/api/v1/admin/leaves/balances` | All teacher leave balances |
+| GET | `/api/v1/admin/leaves/policy` | Get leave policy |
+| PUT | `/api/v1/admin/leaves/policy` | Update leave policy |
+| POST | `/api/v1/admin/leaves/{leave_id}/approve` | Approve leave |
+| POST | `/api/v1/admin/leaves/{leave_id}/reject` | Reject leave |
+| POST | `/api/v1/admin/leaves/{leave_id}/cancel` | Cancel leave |
+| POST | `/api/v1/admin/leaves/bulk-action` | Bulk approve/reject |
+| GET | `/api/v1/admin/leaves/calendar` | Leave calendar view |
+| POST | `/api/v1/admin/leaves/allocate` | Allocate leave balance |
+
+---
+
+### Transport (28)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/admin/transport/stats` | Transport stats |
+| GET | `/api/v1/admin/transport/vehicles/export` | Export vehicles CSV |
+| GET | `/api/v1/admin/transport/vehicles` | List vehicles |
+| POST | `/api/v1/admin/transport/vehicles` | Create vehicle |
+| GET | `/api/v1/admin/transport/vehicles/{vehicle_id}` | Get vehicle |
+| PUT | `/api/v1/admin/transport/vehicles/{vehicle_id}` | Update vehicle |
+| DELETE | `/api/v1/admin/transport/vehicles/{vehicle_id}` | Delete vehicle |
+| GET | `/api/v1/admin/transport/drivers/export` | Export drivers CSV |
+| GET | `/api/v1/admin/transport/drivers` | List drivers |
+| POST | `/api/v1/admin/transport/drivers` | Create driver |
+| PUT | `/api/v1/admin/transport/drivers/{driver_id}` | Update driver |
+| DELETE | `/api/v1/admin/transport/drivers/{driver_id}` | Delete driver |
+| GET | `/api/v1/admin/transport/helpers` | List helpers |
+| POST | `/api/v1/admin/transport/helpers` | Create helper |
+| PUT | `/api/v1/admin/transport/helpers/{helper_id}` | Update helper |
+| DELETE | `/api/v1/admin/transport/helpers/{helper_id}` | Delete helper |
+| GET | `/api/v1/admin/transport/routes` | List routes |
+| POST | `/api/v1/admin/transport/routes` | Create route |
+| PUT | `/api/v1/admin/transport/routes/{route_id}` | Update route |
+| DELETE | `/api/v1/admin/transport/routes/{route_id}` | Delete route |
+| GET | `/api/v1/admin/transport/assignments` | List vehicle-driver assignments |
+| POST | `/api/v1/admin/transport/assignments` | Create assignment |
+| PUT | `/api/v1/admin/transport/assignments/{assignment_id}` | Update assignment |
+| DELETE | `/api/v1/admin/transport/assignments/{assignment_id}` | Delete assignment |
+| GET | `/api/v1/admin/transport/routes/{route_id}/students` | List students on route |
+| POST | `/api/v1/admin/transport/routes/{route_id}/students` | Add student to route |
+| DELETE | `/api/v1/admin/transport/routes/{route_id}/students/{student_id}` | Remove student from route |
+| POST | `/api/v1/admin/transport/routes/shuffle-assign` | Auto-assign students to routes |
+
+---
+
+### Timetable (12)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/admin/timetable/periods` | List period definitions |
+| POST | `/api/v1/admin/timetable/periods` | Create period |
+| PUT | `/api/v1/admin/timetable/periods/{period_id}` | Update period |
+| DELETE | `/api/v1/admin/timetable/periods/{period_id}` | Delete period |
+| GET | `/api/v1/admin/timetable` | Get timetable grid |
+| POST | `/api/v1/admin/timetable/slot` | Create timetable slot |
+| PUT | `/api/v1/admin/timetable/slot/{slot_id}` | Update slot |
+| DELETE | `/api/v1/admin/timetable/slot/{slot_id}` | Delete slot |
+| POST | `/api/v1/admin/timetable/bulk-assign` | Bulk assign slots |
+| GET | `/api/v1/admin/timetable/teacher/{teacher_id}` | Teacher timetable |
+| GET | `/api/v1/admin/timetable/teacher-availability` | Check teacher availability |
+| GET | `/api/v1/admin/timetable/conflicts` | Detect timetable conflicts |
+
+---
+
+### Library (6)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/admin/library/books` | List books (paginated, searchable) |
+| POST | `/api/v1/admin/library/books` | Add book to library |
+| POST | `/api/v1/admin/library/issue` | Issue book to student |
+| POST | `/api/v1/admin/library/return` | Return book |
+| GET | `/api/v1/admin/library/issued` | List currently issued books |
+| GET | `/api/v1/admin/library/overdue` | List overdue books |
+
+---
+
+### Notifications (5)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/admin/notifications` | List notifications (paginated) |
+| POST | `/api/v1/admin/notifications` | Create/send notification |
+| GET | `/api/v1/admin/notifications/{notification_id}` | Get notification detail |
+| PUT | `/api/v1/admin/notifications/{notification_id}` | Update notification |
+| DELETE | `/api/v1/admin/notifications/{notification_id}` | Archive notification |
+
+---
+
+### Attendance (3)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/admin/attendance` | Get attendance for a class/date |
+| POST | `/api/v1/admin/attendance` | Submit attendance |
+| PUT | `/api/v1/admin/attendance` | Update attendance |
+
+---
+
+### Mentoring (7)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/admin/mentoring` | List all mentor assignments |
+| GET | `/api/v1/admin/mentoring/teacher/{staff_id}/students` | Get mentor's students |
+| GET | `/api/v1/admin/mentoring/teachers` | List available mentor teachers |
+| GET | `/api/v1/admin/mentoring/students` | List students (for assignment) |
+| POST | `/api/v1/admin/mentoring/assign` | Assign mentor to students |
+| DELETE | `/api/v1/admin/mentoring/{assignment_id}` | Remove mentor assignment |
+| POST | `/api/v1/admin/mentoring/shuffle-assign` | Auto-assign all students evenly |
 
 ---
 
 ## Summary
 
-| Module | Endpoints | Version |
-|--------|-----------|---------|
-| Auth | 7 | V1 |
-| Dashboard | 7 | V1 |
-| Students | 12 | V1 |
-| Teachers | 12 | V1 |
-| Leaves | 10 | V1 |
-| Timetable | 11 | V1 |
-| Examinations | 16 | V1 |
-| Library | 9 | **Moved to V2** |
-| Fees | 12 | V1 |
-| Transport | 24 | V1 |
-| Staff | 5 | V1 |
-| Payroll | 6 | V1 |
-| Salary Advances | 5 | V1 |
-| Notifications | 5 | V1 |
-| Settings | 11 | V1 |
-| **V1 Total** | **143** | |
-| **Grand Total (incl. V2)** | **152** | |
+| Module | Endpoints | Notes |
+|--------|-----------|-------|
+| Auth (shared) | 8 | Login, logout, refresh, profile, password management |
+| Dashboard | 8 | KPIs, trends, distributions, activities, leaves, alerts |
+| Settings | 35 | School profile, academic years, classes, sections, subjects, enums, fee structures, holidays, ID gen, attendance config |
+| Students | 27 | CRUD + bulk import + parent meetings + activities + awards + disciplinary + attendance |
+| Teachers | 18 | CRUD + bulk import + class assignments + awards + history |
+| Staff | 5 | CRUD + export |
+| Payroll | 18 | Payroll run + payslips + salary structure + advances + revisions |
+| Fees | 13 | CRUD + payments + late fees + reminders + export |
+| Examinations | 16 | CRUD + results + analytics + report cards + schedule |
+| Leaves | 11 | Applications + policy + approve/reject + calendar + allocate |
+| Transport | 28 | Vehicles + drivers + helpers + routes + assignments + route students |
+| Timetable | 12 | Periods + slots + bulk assign + teacher view + conflicts |
+| Library | 6 | Books + issue/return + overdue |
+| Notifications | 5 | CRUD + archive |
+| Attendance | 3 | Get + submit + update |
+| Mentoring | 7 | Assign + remove + auto-shuffle |
+| **Admin-specific** | **212** | |
+| **Total (incl. shared auth)** | **220** | |

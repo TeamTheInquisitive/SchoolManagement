@@ -125,6 +125,7 @@ class TeacherStudentDetailResponse(BaseModel):
     """Full student profile as viewed by teacher."""
 
     id: UUID
+    can_edit: bool = False
     roll_number: str
     full_name: str
     email: str | None = None
@@ -150,6 +151,10 @@ class TeacherStudentDetailResponse(BaseModel):
     assigned_mentor: MentorInfo | None = None
     academic_summary: AcademicSummary | None = None
     behavior_conduct: BehaviorConduct | None = None
+    parent_meetings: list[dict] = []
+    extra_curricular: list[dict] = []
+    awards: list[dict] = []
+    disciplinary_records: list[dict] = []
     metadata: dict = {}
 
 

@@ -112,9 +112,33 @@ async def get_payroll(
     pending_amount = Decimal("0")
     pending_count = 0
 
+    # Load salary structures for deduction breakup
+    staff_ids = [p.staff_id for p in payslips]
+    structures_map = {}
+    if staff_ids:
+        struct_result = await db.execute(
+            select(SalaryStructure).where(
+                SalaryStructure.school_id == school_id,
+                SalaryStructure.staff_id.in_(staff_ids),
+                SalaryStructure.is_active.is_(True),
+            )
+        )
+        for s in struct_result.scalars().all():
+            structures_map[s.staff_id] = s
+
     for payslip in payslips:
         staff = payslip.staff
         remaining = payslip.net_salary - (payslip.paid_amount or Decimal("0"))
+        structure = structures_map.get(payslip.staff_id)
+        deduction_breakup = {}
+        if structure:
+            deduction_breakup = {
+                "pf": float(structure.pf_deduction or 0),
+                "professional_tax": float(structure.professional_tax or 0),
+                "tds": float(structure.tds or 0),
+            }
+            if structure.other_deductions:
+                deduction_breakup.update({k: float(v) for k, v in structure.other_deductions.items()})
         items.append({
             "id": payslip.id,
             "employee_id": staff.employee_id if staff else "",
@@ -125,12 +149,14 @@ async def get_payroll(
             "transport_allowance": payslip.transport_allowance or Decimal("0"),
             "allowances": payslip.total_allowances,
             "deductions": payslip.total_deductions,
+            "deduction_breakup": deduction_breakup,
             "net_salary": payslip.net_salary,
             "paid_amount": payslip.paid_amount or Decimal("0"),
             "working_days": payslip.working_days or 26,
             "total_days": payslip.total_days or 30,
             "status": payslip.status,
             "paid_on": payslip.paid_on,
+            "payment_history": payslip.payment_history or [],
         })
 
         total_disbursed += payslip.paid_amount or Decimal("0")
@@ -437,6 +463,41 @@ async def undo_all_paid(
 
     await db.commit()
     return {"updated": count, "message": f"Undone {count} payslips back to unpaid"}
+
+
+async def delete_monthly_payroll(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    data: dict,
+    user_id: uuid.UUID,
+) -> dict:
+    """Soft-delete all payslips for a given month/year."""
+    month = data["month"]
+    year = data["year"]
+
+    result = await db.execute(
+        select(Payslip).where(
+            Payslip.school_id == school_id,
+            Payslip.month == month,
+            Payslip.year == year,
+            Payslip.is_active.is_(True),
+        )
+    )
+    payslips = result.scalars().all()
+
+    if not payslips:
+        raise NotFound("Payroll", f"{MONTH_NAMES[month]} {year}")
+
+    now = datetime.now(timezone.utc)
+    count = 0
+    for p in payslips:
+        p.is_active = False
+        p.deleted_by = user_id
+        p.deleted_at = now
+        count += 1
+
+    await db.commit()
+    return {"deleted": count, "message": f"Payroll for {MONTH_NAMES[month]} {year} deleted ({count} payslips)"}
 
 
 async def get_payroll_history(

@@ -240,6 +240,38 @@ async def bulk_create_classes(
 
 
 # ---------------------------------------------------------------------------
+# Delete: Class
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/classes/{class_id}")
+async def delete_class(
+    class_id: str,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Soft-delete a class and its associated class-section mappings."""
+    return await service.delete_class(db, school.id, class_id, user.id)
+
+
+# ---------------------------------------------------------------------------
+# Delete: Class-Section (remove a section from a class)
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/class-sections/{class_section_id}")
+async def delete_class_section(
+    class_section_id: str,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Soft-delete a class-section mapping."""
+    return await service.delete_class_section(db, school.id, class_section_id, user.id)
+
+
+# ---------------------------------------------------------------------------
 # Bulk: Sections
 # ---------------------------------------------------------------------------
 

@@ -61,9 +61,11 @@ class UpcomingExamsResponse(BaseModel):
 
 
 class ClassSummaryItem(BaseModel):
+    class_section_id: str
     class_name: str
     section: str
-    subject: str
+    class_section: str = ""
+    subject: str | None = None
     student_count: int = 0
     is_class_teacher: bool = False
 

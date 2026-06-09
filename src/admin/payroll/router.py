@@ -121,6 +121,18 @@ async def undo_all_paid(
     return result
 
 
+@router.delete("/payroll")
+async def delete_monthly_payroll(
+    data: MarkAllPaidRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Soft-delete all payslips for a given month/year."""
+    result = await service.delete_monthly_payroll(db, school.id, data.model_dump(), user.id)
+    return result
+
+
 @router.get("/payroll/history")
 async def get_payroll_history(
     db: SessionDep,

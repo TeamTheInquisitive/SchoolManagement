@@ -637,6 +637,80 @@ async def bulk_create_classes(
 
 
 # ---------------------------------------------------------------------------
+# Delete: Class
+# ---------------------------------------------------------------------------
+
+
+async def delete_class(
+    db: AsyncSession, school_id: uuid.UUID, class_id: str, user_id: uuid.UUID
+) -> dict:
+    """Soft-delete a class and its associated class-section mappings."""
+    from src.models.academic import ClassSection
+    from datetime import datetime, timezone
+
+    result = await db.execute(
+        select(Class).where(
+            Class.id == class_id, Class.school_id == school_id, Class.is_active.is_(True)
+        )
+    )
+    cls = result.scalar_one_or_none()
+    if not cls:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    now = datetime.now(timezone.utc)
+    cls.is_active = False
+    cls.deleted_by = user_id
+    cls.deleted_at = now
+
+    cs_result = await db.execute(
+        select(ClassSection).where(
+            ClassSection.school_id == school_id,
+            ClassSection.class_id == cls.id,
+            ClassSection.is_active.is_(True),
+        )
+    )
+    for cs in cs_result.scalars().all():
+        cs.is_active = False
+        cs.deleted_by = user_id
+        cs.deleted_at = now
+
+    await db.commit()
+    return {"message": f"Class '{cls.display_name or cls.name}' deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Delete: Class-Section mapping
+# ---------------------------------------------------------------------------
+
+
+async def delete_class_section(
+    db: AsyncSession, school_id: uuid.UUID, class_section_id: str, user_id: uuid.UUID
+) -> dict:
+    """Soft-delete a class-section mapping."""
+    from src.models.academic import ClassSection
+    from datetime import datetime, timezone
+
+    result = await db.execute(
+        select(ClassSection).where(
+            ClassSection.id == class_section_id,
+            ClassSection.school_id == school_id,
+            ClassSection.is_active.is_(True),
+        )
+    )
+    cs = result.scalar_one_or_none()
+    if not cs:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    cs.is_active = False
+    cs.deleted_by = user_id
+    cs.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"message": "Section removed from class"}
+
+
+# ---------------------------------------------------------------------------
 # Bulk: Sections
 # ---------------------------------------------------------------------------
 
@@ -1217,9 +1291,9 @@ async def delete_fee_structure(db: AsyncSession, school_id: uuid.UUID, structure
 # ---------------------------------------------------------------------------
 
 DEFAULT_ID_CONFIG = {
-    "student": {"enabled": False, "pattern": "STU{YY}{SEQ:4}", "next_seq": 1},
-    "teacher": {"enabled": False, "pattern": "TCH{YY}{SEQ:4}", "next_seq": 1},
-    "staff": {"enabled": False, "pattern": "STF{YY}{SEQ:4}", "next_seq": 1},
+    "student": {"enabled": True, "pattern": "STU{YY}{SEQ:4}", "next_seq": 1},
+    "teacher": {"enabled": True, "pattern": "TCH{YY}{SEQ:4}", "next_seq": 1},
+    "staff": {"enabled": True, "pattern": "STF{YY}{SEQ:4}", "next_seq": 1},
 }
 
 
@@ -1279,6 +1353,8 @@ async def update_id_generation_config(
                 current[entity_type] = cfg
         existing.value = current
         existing.updated_by = updated_by
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(existing, "value")
     else:
         merged = dict(DEFAULT_ID_CONFIG)
         for entity_type, cfg in data.items():

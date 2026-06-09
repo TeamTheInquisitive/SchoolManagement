@@ -100,8 +100,19 @@ async def get_low_attendance(
     threshold: int = Query(default=75),
     limit: int = Query(default=10, le=50),
 ) -> LowAttendanceResponse:
-    """Get students below attendance threshold."""
-    result = await service.get_low_attendance(db, school.id, threshold, limit)
+    """Get students below attendance threshold (only after min_days of attendance recorded)."""
+    from src.models.core import Settings
+    config_result = await db.execute(
+        select(Settings.value).where(
+            Settings.school_id == school.id,
+            Settings.category == "attendance",
+            Settings.key == "config",
+            Settings.is_active.is_(True),
+        )
+    )
+    config = config_result.scalar_one_or_none()
+    min_days = config.get("min_days", 30) if isinstance(config, dict) else 30
+    result = await service.get_low_attendance(db, school.id, threshold, limit, min_days)
     return LowAttendanceResponse(**result)
 
 

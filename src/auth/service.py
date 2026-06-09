@@ -35,6 +35,7 @@ async def authenticate_user(
     query = select(User).where(User.email == email, User.is_active.is_(True))
     if school_id:
         query = query.where(User.school_id == school_id)
+    query = query.limit(1)
 
     result = await db.execute(query)
     user = result.scalar_one_or_none()

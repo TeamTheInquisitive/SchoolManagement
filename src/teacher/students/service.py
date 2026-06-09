@@ -393,7 +393,7 @@ async def get_student_detail(
                 father_phone = father_phone or parent.phone
                 father_email = father_email or parent.email
             if parent.is_primary_contact:
-                emergency_contact = parent.phone
+                emergency_contact = parent.alternate_phone or parent.phone
                 relationship = parent.relation
 
     if not emergency_contact and father_phone:
@@ -444,8 +444,8 @@ async def get_student_detail(
     )
     is_mentor = mentor_result.scalar_one_or_none() is not None
 
-    # Also check if class teacher of this student's class
-    is_class_teacher = False
+    # Also check if teacher is assigned to this student's class (any assignment)
+    is_assigned_class = False
     enr_r = await db.execute(
         select(StudentEnrollment.class_section_id).where(
             StudentEnrollment.student_id == student_id,
@@ -455,11 +455,20 @@ async def get_student_detail(
     )
     cs_id = enr_r.scalar_one_or_none()
     if cs_id:
-        is_class_teacher = await _is_class_teacher_of(db, school_id, staff.id, current_ay.id, cs_id)
+        assign_check = await db.execute(
+            select(ClassAssignment).where(
+                ClassAssignment.school_id == school_id,
+                ClassAssignment.staff_id == staff.id,
+                ClassAssignment.academic_year_id == current_ay.id,
+                ClassAssignment.class_section_id == cs_id,
+                ClassAssignment.is_active.is_(True),
+            )
+        )
+        is_assigned_class = assign_check.scalar_one_or_none() is not None
 
-    can_edit = is_mentor or is_class_teacher
+    can_edit = is_mentor or is_assigned_class
 
-    return {
+    detail = {
         "id": student.id,
         "can_edit": can_edit,
         "roll_number": student.admission_number,
@@ -472,7 +481,7 @@ async def get_student_detail(
         "date_of_birth": student.date_of_birth,
         "gender": student.gender,
         "admission_date": student.admission_date,
-        "student_type": None,
+        "student_type": (student.metadata_ or {}).get("student_type"),
         "blood_group": student.blood_group,
         "religion": student.religion,
         "address": student.address_line1,
@@ -521,6 +530,107 @@ async def get_student_detail(
         },
         "metadata": {},
     }
+
+    # Fetch parent meetings
+    from src.models.meeting import ParentMeeting
+    meetings_result = await db.execute(
+        select(ParentMeeting).where(
+            ParentMeeting.student_id == student.id, ParentMeeting.school_id == school_id, ParentMeeting.is_active.is_(True)
+        ).order_by(ParentMeeting.meeting_date.desc())
+    )
+    meetings = meetings_result.scalars().all()
+    staff_ids = {m.conducted_by for m in meetings}
+    staff_map = {}
+    if staff_ids:
+        sr = await db.execute(select(Staff).where(Staff.id.in_(staff_ids)))
+        staff_map = {s.id: s.full_name for s in sr.scalars().all()}
+    detail["parent_meetings"] = [
+        {
+            "id": m.id,
+            "meeting_date": m.meeting_date,
+            "date": m.meeting_date,
+            "meeting_type": m.meeting_type,
+            "conducted_by": staff_map.get(m.conducted_by),
+            "discussion_notes": m.discussion_notes,
+            "notes": m.discussion_notes,
+            "status": m.status,
+            "agenda": m.agenda,
+            "remarks": m.remarks,
+            "follow_up_required": m.follow_up_required,
+            "next_meeting_date": m.next_meeting_date,
+        }
+        for m in meetings
+    ]
+
+    # Fetch activities and awards
+    from src.models.activity import Activity, Award
+    activities_result = await db.execute(
+        select(Activity).where(
+            Activity.student_id == student.id, Activity.school_id == school_id, Activity.is_active.is_(True)
+        ).order_by(Activity.start_date.desc())
+    )
+    detail["extra_curricular"] = [
+        {
+            "id": a.id,
+            "name": a.name,
+            "activity_name": a.name,
+            "activity_type": a.activity_type,
+            "description": a.description,
+            "role": a.role,
+            "start_date": a.start_date,
+            "date": a.start_date,
+            "end_date": a.end_date,
+            "achievement": a.achievement,
+            "since": str(a.start_date.year) if a.start_date else None,
+            "status": a.status,
+        }
+        for a in activities_result.scalars().all()
+    ]
+
+    awards_result = await db.execute(
+        select(Award).where(
+            Award.student_id == student.id, Award.school_id == school_id, Award.is_active.is_(True)
+        ).order_by(Award.awarded_date.desc())
+    )
+    detail["awards"] = [
+        {
+            "id": a.id,
+            "title": a.title,
+            "name": a.title,
+            "category": a.category,
+            "year": str(a.awarded_date.year) if a.awarded_date else None,
+            "awarded_date": a.awarded_date,
+            "award_date": a.awarded_date,
+            "date": a.awarded_date,
+            "awarded_by": a.awarded_by,
+            "level": a.level,
+            "description": a.description,
+        }
+        for a in awards_result.scalars().all()
+    ]
+
+    # Fetch disciplinary records
+    from src.models.activity import DisciplinaryRecord
+    disc_result = await db.execute(
+        select(DisciplinaryRecord).where(
+            DisciplinaryRecord.student_id == student.id, DisciplinaryRecord.school_id == school_id, DisciplinaryRecord.is_active.is_(True)
+        ).order_by(DisciplinaryRecord.incident_date.desc())
+    )
+    detail["disciplinary_records"] = [
+        {
+            "id": d.id,
+            "incident_date": d.incident_date,
+            "category": d.category,
+            "severity": d.severity,
+            "description": d.description,
+            "action_taken": d.action_taken,
+            "status": d.status,
+            "parent_notified": d.parent_notified,
+        }
+        for d in disc_result.scalars().all()
+    ]
+
+    return detail
 
 
 # ---------------------------------------------------------------------------
@@ -578,7 +688,42 @@ async def get_parent_meetings(
 ) -> dict:
     """Get parent meetings for a student (teacher view)."""
     await _verify_access(db, school_id, student_id, user)
-    return {"count": 0, "page": 1, "page_size": 10, "total_pages": 0, "results": []}
+    from src.models.meeting import ParentMeeting
+
+    result = await db.execute(
+        select(ParentMeeting)
+        .where(ParentMeeting.student_id == student_id, ParentMeeting.school_id == school_id, ParentMeeting.is_active.is_(True))
+        .order_by(ParentMeeting.meeting_date.desc())
+    )
+    meetings = result.scalars().all()
+
+    # Resolve conductor names
+    staff_ids = {m.conducted_by for m in meetings}
+    staff_map = {}
+    if staff_ids:
+        from src.models.staff import Staff
+        sr = await db.execute(select(Staff).where(Staff.id.in_(staff_ids)))
+        staff_map = {s.id: s.full_name for s in sr.scalars().all()}
+
+    results = [
+        {
+            "id": m.id,
+            "meeting_type": m.meeting_type,
+            "date": m.meeting_date,
+            "conducted_by": staff_map.get(m.conducted_by),
+            "attendee": None,
+            "notes": m.discussion_notes,
+            "attendance_status": m.status,
+            "follow_up_required": m.follow_up_required,
+            "metadata": {
+                "agenda": m.agenda,
+                "remarks": m.remarks,
+                "next_meeting_date": str(m.next_meeting_date) if m.next_meeting_date else None,
+            },
+        }
+        for m in meetings
+    ]
+    return {"count": len(results), "page": 1, "page_size": len(results) or 10, "total_pages": 1 if results else 0, "results": results}
 
 
 async def get_activities(
@@ -586,7 +731,43 @@ async def get_activities(
 ) -> dict:
     """Get activities and awards for a student (teacher view)."""
     await _verify_access(db, school_id, student_id, user)
-    return {"activities": [], "awards": []}
+    from src.models.activity import Activity, Award
+
+    activities_result = await db.execute(
+        select(Activity).where(
+            Activity.student_id == student_id, Activity.school_id == school_id, Activity.is_active.is_(True)
+        ).order_by(Activity.start_date.desc())
+    )
+    activities = [
+        {
+            "id": a.id,
+            "activity_name": a.name,
+            "year_joined": a.start_date.year if a.start_date else None,
+            "role": a.role,
+            "is_active": a.status == "Active" if a.status else True,
+            "metadata": {"description": a.description, "achievement": a.achievement},
+        }
+        for a in activities_result.scalars().all()
+    ]
+
+    awards_result = await db.execute(
+        select(Award).where(
+            Award.student_id == student_id, Award.school_id == school_id, Award.is_active.is_(True)
+        ).order_by(Award.awarded_date.desc())
+    )
+    awards = [
+        {
+            "id": a.id,
+            "award_name": a.title,
+            "category": a.category,
+            "year": a.awarded_date.year if a.awarded_date else None,
+            "description": a.description,
+            "metadata": {"level": a.level, "awarded_by": a.awarded_by},
+        }
+        for a in awards_result.scalars().all()
+    ]
+
+    return {"activities": activities, "awards": awards}
 
 
 async def get_fee_summary(
@@ -684,7 +865,7 @@ async def update_student_by_mentor(
         if mentor_check.scalar_one_or_none():
             has_access = True
         else:
-            # Check class teacher
+            # Check any class assignment
             enr_r = await db.execute(
                 select(StudentEnrollment.class_section_id).where(
                     StudentEnrollment.student_id == student_id,
@@ -694,7 +875,16 @@ async def update_student_by_mentor(
             )
             cs_id = enr_r.scalar_one_or_none()
             if cs_id:
-                has_access = await _is_class_teacher_of(db, school_id, staff.id, current_ay.id, cs_id)
+                assign_r = await db.execute(
+                    select(ClassAssignment).where(
+                        ClassAssignment.school_id == school_id,
+                        ClassAssignment.staff_id == staff.id,
+                        ClassAssignment.academic_year_id == current_ay.id,
+                        ClassAssignment.class_section_id == cs_id,
+                        ClassAssignment.is_active.is_(True),
+                    )
+                )
+                has_access = assign_r.scalar_one_or_none() is not None
     if not has_access:
         raise AccessDenied("You don't have permission to edit this student")
 
@@ -708,17 +898,25 @@ async def update_student_by_mentor(
 
     # Update allowed fields
     field_map = {
-        "phone": "phone", "email": "email", "address": "address_line1",
-        "date_of_birth": "date_of_birth", "gender": "gender",
-        "blood_group": "blood_group", "religion": "religion",
+        "full_name": "full_name", "phone": "phone", "email": "email", "address": "address_line1",
+        "date_of_birth": "date_of_birth", "admission_date": "admission_date", "gender": "gender",
+        "blood_group": "blood_group", "religion": "religion", "medical_conditions": "medical_conditions",
     }
     for req_field, model_field in field_map.items():
         if req_field in data and data[req_field] is not None and data[req_field] != '':
             setattr(student, model_field, data[req_field])
 
+    # Update student_type in metadata
+    if "student_type" in data:
+        from sqlalchemy.orm.attributes import flag_modified
+        meta = dict(student.metadata_ or {})
+        meta["student_type"] = data["student_type"]
+        student.metadata_ = meta
+        flag_modified(student, "metadata_")
+
     # Update parent info
     from src.models.student import StudentParent, Parent
-    parent_fields = ["parent_name", "parent_phone", "parent_email"]
+    parent_fields = ["parent_name", "parent_phone", "parent_email", "parent_emergency", "parent_relationship"]
     if any(f in data for f in parent_fields):
         sp_r = await db.execute(
             select(StudentParent).where(StudentParent.student_id == student_id, StudentParent.is_active.is_(True))
@@ -730,10 +928,17 @@ async def update_student_by_mentor(
             if parent:
                 if "parent_name" in data and data["parent_name"]:
                     parent.full_name = data["parent_name"]
+                    parts = data["parent_name"].split(" ", 1)
+                    parent.first_name = parts[0]
+                    parent.last_name = parts[1] if len(parts) > 1 else None
                 if "parent_phone" in data and data["parent_phone"]:
                     parent.phone = data["parent_phone"]
-                if "parent_email" in data and data["parent_email"]:
-                    parent.email = data["parent_email"]
+                if "parent_email" in data:
+                    parent.email = data["parent_email"] or None
+                if "parent_emergency" in data and data["parent_emergency"]:
+                    parent.alternate_phone = data["parent_emergency"]
+                if "parent_relationship" in data and data["parent_relationship"]:
+                    parent.relation = data["parent_relationship"]
 
     await db.commit()
     return {"message": "Student updated successfully"}
