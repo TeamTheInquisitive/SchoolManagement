@@ -168,6 +168,18 @@ async def get_teacher_leave_detail(
     )
     balances = balances_result.scalars().all()
 
+    # Get display names from policies
+    policies_result = await db.execute(
+        select(LeavePolicy).where(
+            LeavePolicy.school_id == school_id,
+            LeavePolicy.academic_year_id == ay.id,
+            LeavePolicy.is_active.is_(True),
+        )
+    )
+    policy_display_map = {}
+    for p in policies_result.scalars().all():
+        policy_display_map[p.leave_type] = p.display_name or p.leave_type
+
     leave_balance: dict = {}
     total_allocated = 0
     total_availed = Decimal("0")
@@ -176,8 +188,10 @@ async def get_teacher_leave_detail(
 
     for bal in balances:
         available = Decimal(bal.total_allocated + bal.carried_forward) - bal.used - bal.pending
+        display = policy_display_map.get(bal.leave_type, bal.leave_type)
         key = bal.leave_type.lower().replace(" leave", "").replace(" ", "_")
         leave_balance[key] = {
+            "label": display,
             "total": bal.total_allocated + bal.carried_forward,
             "availed": bal.used,
             "pending": bal.pending,
@@ -273,9 +287,6 @@ async def get_all_balances(
             "employee_id": s.employee_id,
             "teacher_name": s.full_name,
             "department": s.department,
-            "casual": None,
-            "sick": None,
-            "annual": None,
             "total_availed": Decimal("0"),
             "total_remaining": Decimal("0"),
             "is_active": s.is_active,
@@ -291,8 +302,7 @@ async def get_all_balances(
                 "remaining": remaining,
             }
             key = bal.leave_type.lower().replace(" leave", "").replace(" ", "_")
-            if key in ("casual", "sick", "annual"):
-                item[key] = balance_info
+            item[key] = balance_info
             item["total_availed"] += bal.used
             item["total_remaining"] += remaining
 
@@ -329,6 +339,7 @@ async def get_leave_policy(
             applicable_to = [applicable_to]
         leave_types.append({
             "type": p.leave_type,
+            "display_name": p.display_name,
             "code": p.code,
             "total_per_year": p.total_per_year,
             "carry_forward": p.carry_forward,
@@ -381,6 +392,7 @@ async def update_leave_policy(
             school_id=school_id,
             academic_year_id=ay.id,
             leave_type=lt["type"],
+            display_name=lt.get("display_name"),
             code=lt.get("code"),
             total_per_year=lt["total_per_year"],
             carry_forward=lt.get("carry_forward", False),
@@ -400,6 +412,9 @@ async def update_leave_policy(
         new_policies.append(policy)
 
     await db.flush()
+
+    # Build a set of valid (leave_type, staff_id) pairs from new policies
+    valid_balance_keys: set[tuple[str, uuid.UUID]] = set()
 
     # Allocate leave balances to applicable staff
     for policy in new_policies:
@@ -425,6 +440,7 @@ async def update_leave_policy(
         staff_list = staff_result.scalars().all()
 
         for staff in staff_list:
+            valid_balance_keys.add((policy.leave_type, staff.id))
             existing_bal = await db.execute(
                 select(LeaveBalance).where(
                     LeaveBalance.school_id == school_id,
@@ -450,6 +466,22 @@ async def update_leave_policy(
                     created_by=user.id,
                 )
                 db.add(balance)
+
+    await db.flush()
+
+    # Deactivate leave balances that are no longer valid:
+    # - Leave types that were removed
+    # - Staff members who are no longer in the applicable departments/members
+    all_balances_result = await db.execute(
+        select(LeaveBalance).where(
+            LeaveBalance.school_id == school_id,
+            LeaveBalance.academic_year_id == ay.id,
+            LeaveBalance.is_active.is_(True),
+        )
+    )
+    for balance in all_balances_result.scalars().all():
+        if (balance.leave_type, balance.staff_id) not in valid_balance_keys:
+            balance.is_active = False
 
     await db.commit()
 
@@ -797,28 +829,46 @@ async def allocate_leaves(
     data: dict,
     user_id: uuid.UUID,
 ) -> dict:
-    """Allocate leave balances to selected teachers."""
+    """Allocate leave balances to selected staff members."""
     ay = await _get_current_academic_year(db, school_id)
     staff_ids = data["staff_ids"]
     leave_types = data["leave_types"]  # {"Casual Leave": 12, "Sick Leave": 10}
 
+    if not staff_ids:
+        raise AppException(status_code=400, error="No staff members selected for allocation", code="NO_STAFF_SELECTED")
+    if not leave_types:
+        raise AppException(status_code=400, error="No leave types specified for allocation", code="NO_LEAVE_TYPES")
+
     count = 0
     for staff_id in staff_ids:
+        # Validate staff exists
+        staff_result = await db.execute(
+            select(Staff).where(
+                Staff.id == staff_id,
+                Staff.school_id == school_id,
+                Staff.is_active.is_(True),
+            )
+        )
+        staff = staff_result.scalar_one_or_none()
+        if not staff:
+            continue  # Skip invalid/inactive staff
+
         for leave_type, total in leave_types.items():
             if total <= 0:
                 continue
+            # Query without is_active filter to avoid unique constraint violations
             result = await db.execute(
                 select(LeaveBalance).where(
                     LeaveBalance.school_id == school_id,
                     LeaveBalance.staff_id == staff_id,
                     LeaveBalance.academic_year_id == ay.id,
                     LeaveBalance.leave_type == leave_type,
-                    LeaveBalance.is_active.is_(True),
                 )
             )
             balance = result.scalar_one_or_none()
             if balance:
                 balance.total_allocated = total
+                balance.is_active = True
             else:
                 balance = LeaveBalance(
                     school_id=school_id,
@@ -827,10 +877,16 @@ async def allocate_leaves(
                     leave_type=leave_type,
                     total_allocated=total,
                     carried_forward=0,
+                    used=Decimal("0"),
+                    pending=Decimal("0"),
                     created_by=user_id,
                 )
                 db.add(balance)
             count += 1
 
     await db.commit()
-    return {"allocated_count": count, "message": f"Allocated leaves to {len(staff_ids)} teacher(s)"}
+    return {
+        "allocated_count": count,
+        "staff_count": len(staff_ids),
+        "message": f"Successfully allocated leaves to {len(staff_ids)} employee(s)",
+    }

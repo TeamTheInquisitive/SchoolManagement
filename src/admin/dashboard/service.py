@@ -134,29 +134,33 @@ async def get_attendance_trends(db: AsyncSession, school_id: uuid.UUID, year: in
 
 
 async def get_fee_collection_status(db: AsyncSession, school_id: uuid.UUID) -> dict:
-    """Get fee pie chart data."""
+    """Get fee pie chart data based on amounts."""
     ay = await _get_current_academic_year(db, school_id)
     if not ay:
         return {"data": []}
 
-    statuses = {
-        "Paid": {"color": "#22c55e"},
-        "Pending": {"color": "#3b82f6"},
-        "Partially Paid": {"color": "#f59e0b"},
-        "Overdue": {"color": "#ef4444"},
-    }
+    fee_stats = (await db.execute(
+        select(
+            func.coalesce(func.sum(FeeRecord.paid), 0),
+            func.coalesce(func.sum(FeeRecord.pending), 0),
+            func.coalesce(func.sum(FeeRecord.concession_amount), 0),
+        ).where(
+            FeeRecord.school_id == school_id,
+            FeeRecord.academic_year_id == ay.id,
+            FeeRecord.is_active.is_(True),
+        )
+    )).one_or_none()
 
-    data = []
-    for status_name, config in statuses.items():
-        count = (await db.execute(
-            select(func.count(FeeRecord.id)).where(
-                FeeRecord.school_id == school_id,
-                FeeRecord.academic_year_id == ay.id,
-                FeeRecord.is_active.is_(True),
-                FeeRecord.status == status_name,
-            )
-        )).scalar() or 0
-        data.append({"name": status_name, "value": count, "color": config["color"]})
+    total_paid = float(fee_stats[0]) if fee_stats else 0
+    total_pending = float(fee_stats[1]) if fee_stats else 0
+    total_concession = float(fee_stats[2]) if fee_stats else 0
+
+    data = [
+        {"name": "Collected", "value": round(total_paid), "color": "#22c55e"},
+        {"name": "Pending", "value": round(total_pending), "color": "#f59e0b"},
+    ]
+    if total_concession > 0:
+        data.append({"name": "Concession", "value": round(total_concession), "color": "#3b82f6"})
 
     return {"data": data}
 

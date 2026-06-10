@@ -262,6 +262,28 @@
 
 ---
 
+### DELETE /api/v1/admin/settings/classes/{class_id}
+
+Soft-delete a class and its associated class-section mappings.
+
+**Response: 200**
+```json
+{"message": "Class deleted", "class_id": "uuid"}
+```
+
+---
+
+### DELETE /api/v1/admin/settings/class-sections/{class_section_id}
+
+Soft-delete a class-section mapping.
+
+**Response: 200**
+```json
+{"message": "Class-section deleted", "class_section_id": "uuid"}
+```
+
+---
+
 ### POST /api/v1/admin/settings/sections/bulk
 
 **Request:**
@@ -601,6 +623,25 @@
 ---
 
 ## 7. Payroll (`/admin/staff/payroll`)
+
+### DELETE /api/v1/admin/staff/payroll
+
+Soft-delete all payslips for a given month/year.
+
+**Request:**
+```json
+{
+  "month": 1,
+  "year": 2024
+}
+```
+
+**Response: 200**
+```json
+{"message": "Monthly payroll deleted", "deleted_count": 65}
+```
+
+---
 
 ### POST /api/v1/admin/staff/payroll/run
 

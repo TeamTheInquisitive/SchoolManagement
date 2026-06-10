@@ -157,6 +157,7 @@ async def get_payroll(
             "status": payslip.status,
             "paid_on": payslip.paid_on,
             "payment_history": payslip.payment_history or [],
+            "notes": payslip.notes,
         })
 
         total_disbursed += payslip.paid_amount or Decimal("0")
@@ -336,6 +337,9 @@ async def update_payslip(
     for field in ["basic_salary", "hra", "da", "transport_allowance", "total_allowances", "total_deductions", "net_salary"]:
         if field in data and data[field] is not None:
             setattr(payslip, field, Decimal(str(data[field])))
+
+    if "notes" in data:
+        payslip.notes = data["notes"] or None
 
     await db.commit()
     await db.refresh(payslip)

@@ -62,6 +62,12 @@ class UpdateFeeRecordRequest(BaseModel):
     status: str | None = None
 
 
+class BulkRecordPaymentRequest(BaseModel):
+    amount: Decimal
+    payment_method: str
+    reference: str | None = None
+
+
 class SendReminderRequest(BaseModel):
     target_group: str  # "All", "Class", "Section", "Overdue", "Selected"
     class_name: str | None = None
@@ -238,6 +244,25 @@ class SendReminderResponse(BaseModel):
     sent_to: int
     target_group: str
     send_via: str
+    message: str
+
+
+class BulkPaymentComponentItem(BaseModel):
+    fee_id: uuid.UUID
+    fee_type: str
+    amount_paid: Decimal
+    pending_before: Decimal
+    pending_after: Decimal
+    status: str
+
+
+class BulkRecordPaymentResponse(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    total_amount_paid: Decimal
+    payment_method: str
+    components_paid: int
+    components: list[BulkPaymentComponentItem]
     message: str
 
 

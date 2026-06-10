@@ -68,7 +68,7 @@ Every request includes `X-School-Code` header. The backend resolves the school c
 
 ---
 
-## All Endpoints (212 Admin-specific + 8 Shared Auth = 220 total)
+## All Endpoints (215 Admin-specific + 8 Shared Auth = 223 total)
 
 ---
 
@@ -102,7 +102,7 @@ Every request includes `X-School-Code` header. The backend resolves the school c
 
 ---
 
-### Settings (35)
+### Settings (37)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -120,6 +120,8 @@ Every request includes `X-School-Code` header. The backend resolves the school c
 | GET | `/api/v1/admin/settings/enums/{category}` | Get enum category values |
 | PUT | `/api/v1/admin/settings/enums/{category}` | Update enum category values |
 | POST | `/api/v1/admin/settings/classes/bulk` | Bulk create classes |
+| DELETE | `/api/v1/admin/settings/classes/{class_id}` | Delete a class |
+| DELETE | `/api/v1/admin/settings/class-sections/{class_section_id}` | Delete a class-section |
 | POST | `/api/v1/admin/settings/sections/bulk` | Bulk create sections |
 | POST | `/api/v1/admin/settings/subjects/bulk` | Bulk create subjects |
 | GET | `/api/v1/admin/settings/class-sections` | Get all class-sections |
@@ -215,7 +217,7 @@ Every request includes `X-School-Code` header. The backend resolves the school c
 
 ---
 
-### Payroll (18) — prefix: `/admin/staff`
+### Payroll (19) — prefix: `/admin/staff`
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -226,6 +228,7 @@ Every request includes `X-School-Code` header. The backend resolves the school c
 | POST | `/api/v1/admin/staff/payroll/{payslip_id}/pay` | Mark payslip as paid |
 | POST | `/api/v1/admin/staff/payroll/mark-all-paid` | Mark all as paid |
 | POST | `/api/v1/admin/staff/payroll/undo-all-paid` | Undo mark all paid |
+| DELETE | `/api/v1/admin/staff/payroll` | Delete monthly payroll (soft-delete all payslips) |
 | GET | `/api/v1/admin/staff/payroll/history` | Payroll history |
 | GET | `/api/v1/admin/staff/payroll/salary-structure/{employee_id}` | Get salary structure |
 | PUT | `/api/v1/admin/staff/payroll/salary-structure/{staff_id}` | Update salary structure |
@@ -410,11 +413,11 @@ Every request includes `X-School-Code` header. The backend resolves the school c
 |--------|-----------|-------|
 | Auth (shared) | 8 | Login, logout, refresh, profile, password management |
 | Dashboard | 8 | KPIs, trends, distributions, activities, leaves, alerts |
-| Settings | 35 | School profile, academic years, classes, sections, subjects, enums, fee structures, holidays, ID gen, attendance config |
+| Settings | 37 | School profile, academic years, classes, sections, subjects, enums, fee structures, holidays, ID gen, attendance config |
 | Students | 27 | CRUD + bulk import + parent meetings + activities + awards + disciplinary + attendance |
 | Teachers | 18 | CRUD + bulk import + class assignments + awards + history |
 | Staff | 5 | CRUD + export |
-| Payroll | 18 | Payroll run + payslips + salary structure + advances + revisions |
+| Payroll | 19 | Payroll run + payslips + salary structure + advances + revisions + delete |
 | Fees | 13 | CRUD + payments + late fees + reminders + export |
 | Examinations | 16 | CRUD + results + analytics + report cards + schedule |
 | Leaves | 11 | Applications + policy + approve/reject + calendar + allocate |
@@ -424,5 +427,5 @@ Every request includes `X-School-Code` header. The backend resolves the school c
 | Notifications | 5 | CRUD + archive |
 | Attendance | 3 | Get + submit + update |
 | Mentoring | 7 | Assign + remove + auto-shuffle |
-| **Admin-specific** | **212** | |
-| **Total (incl. shared auth)** | **220** | |
+| **Admin-specific** | **215** | |
+| **Total (incl. shared auth)** | **223** | |

@@ -738,6 +738,124 @@ async def record_payment(
     }
 
 
+async def bulk_record_payment(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    user: User,
+    student_id: uuid.UUID,
+    data: dict,
+) -> dict:
+    """Record a bulk payment that distributes across multiple pending fee components for a student.
+
+    The total amount is distributed across pending fee records in order of due date (oldest first).
+    """
+    ay = await _get_current_academic_year(db, school_id)
+
+    # Verify student exists
+    result = await db.execute(
+        select(Student).where(
+            Student.id == student_id,
+            Student.school_id == school_id,
+            Student.is_active.is_(True),
+        )
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise NotFound("Student", str(student_id))
+
+    # Get all pending fee records for this student, ordered by due date (oldest first)
+    records_result = await db.execute(
+        select(FeeRecord)
+        .where(
+            FeeRecord.school_id == school_id,
+            FeeRecord.academic_year_id == ay.id,
+            FeeRecord.student_id == student_id,
+            FeeRecord.is_active.is_(True),
+            FeeRecord.status.in_(["Pending", "Partial", "Overdue"]),
+        )
+        .order_by(FeeRecord.due_date.asc())
+    )
+    pending_records = records_result.scalars().all()
+
+    if not pending_records:
+        raise AppException(
+            status_code=400,
+            error="No pending fee records found for this student",
+            code="NO_PENDING_FEES",
+        )
+
+    total_payment = Decimal(str(data["amount"]))
+    payment_method = data["payment_method"]
+    reference = data.get("reference")
+
+    # Calculate total pending across all records
+    total_pending_all = sum(r.pending for r in pending_records)
+    if total_payment > total_pending_all:
+        raise AppException(
+            status_code=400,
+            error=f"Payment amount ({total_payment:,.0f}) exceeds total pending ({total_pending_all:,.0f})",
+            code="PAYMENT_EXCEEDS_TOTAL_PENDING",
+        )
+
+    # Distribute payment across records
+    remaining = total_payment
+    components = []
+
+    for record in pending_records:
+        if remaining <= 0:
+            break
+
+        component_pending = record.pending
+        pay_for_this = min(remaining, component_pending)
+
+        # Create payment record
+        payment = FeePayment(
+            school_id=school_id,
+            fee_record_id=record.id,
+            amount=pay_for_this,
+            payment_date=date.today(),
+            payment_method=payment_method,
+            reference=reference,
+            recorded_by=user.id,
+            created_by=user.id,
+        )
+        record.payments.append(payment)
+
+        # Update fee record
+        pending_before = record.pending
+        record.paid = (record.paid or Decimal("0")) + pay_for_this
+        record.pending = (record.pending or Decimal("0")) - pay_for_this
+
+        if record.pending <= 0:
+            record.status = "Paid"
+        else:
+            record.status = "Partial"
+
+        components.append({
+            "fee_id": record.id,
+            "fee_type": record.fee_type,
+            "amount_paid": pay_for_this,
+            "pending_before": pending_before,
+            "pending_after": record.pending,
+            "status": record.status,
+        })
+
+        remaining -= pay_for_this
+
+    await db.flush()
+    await db.commit()
+
+    return {
+        "student_id": student_id,
+        "student_name": student.full_name,
+        "total_amount_paid": total_payment,
+        "payment_method": payment_method,
+        "components_paid": len(components),
+        "components": components,
+        "message": f"Payment of {total_payment:,.0f} recorded across {len(components)} fee component(s).",
+    }
+
+
 async def apply_late_fee(
     db: AsyncSession,
     school_id: uuid.UUID,

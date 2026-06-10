@@ -607,7 +607,7 @@ async def bulk_create_classes(
     class_names: list[str],
     created_by: uuid.UUID,
 ) -> int:
-    """Bulk create classes. Skips already existing ones. Returns created count."""
+    """Bulk create classes. Reactivates soft-deleted ones. Skips active duplicates."""
     created = 0
     for idx, name in enumerate(class_names):
         result = await db.execute(
@@ -618,6 +618,12 @@ async def bulk_create_classes(
         )
         existing = result.scalar_one_or_none()
         if existing:
+            if not existing.is_active:
+                existing.is_active = True
+                existing.deleted_at = None
+                existing.deleted_by = None
+                existing.updated_by = created_by
+                created += 1
             continue
 
         new_class = Class(
@@ -738,6 +744,12 @@ async def bulk_create_sections(
         )
         existing = result.scalar_one_or_none()
         if existing:
+            if not existing.is_active:
+                existing.is_active = True
+                existing.deleted_at = None
+                existing.deleted_by = None
+                existing.updated_by = created_by
+                created += 1
             section_ids.append(existing.id)
             continue
 
@@ -796,13 +808,12 @@ async def bulk_create_subjects(
     subjects: list[dict],
     created_by: uuid.UUID,
 ) -> int:
-    """Bulk create subjects. Skips already existing ones. Returns created count."""
+    """Bulk create subjects. Reactivates soft-deleted ones. Skips active duplicates."""
     created = 0
     for item in subjects:
         name = item["name"]
         code = item.get("code")
 
-        # Check if subject with same name exists
         result = await db.execute(
             select(Subject).where(
                 Subject.school_id == school_id,
@@ -811,6 +822,14 @@ async def bulk_create_subjects(
         )
         existing = result.scalar_one_or_none()
         if existing:
+            if not existing.is_active:
+                existing.is_active = True
+                existing.deleted_at = None
+                existing.deleted_by = None
+                existing.updated_by = created_by
+                if code:
+                    existing.code = code
+                created += 1
             continue
 
         new_subject = Subject(
@@ -1170,32 +1189,67 @@ async def create_fee_structure(
     await db.flush()
 
     # Create FeeRecords for existing students in the applicable class/section
-    cs_ids = []
-    if fs.class_section_id:
-        cs_ids = [fs.class_section_id]
-    elif fs.class_id:
-        cs_result = await db.execute(
-            select(ClassSection.id).where(
-                ClassSection.school_id == school_id,
-                ClassSection.class_id == fs.class_id,
-                ClassSection.is_active.is_(True),
-            )
-        )
-        cs_ids = [row[0] for row in cs_result.all()]
+    enrollments = []
 
-    if cs_ids:
+    if fs.class_section_id:
+        # Specific section - query enrollments directly by class_section_id
         enrollment_result = await db.execute(
             select(StudentEnrollment).where(
                 StudentEnrollment.school_id == school_id,
                 StudentEnrollment.academic_year_id == academic_year.id,
-                StudentEnrollment.class_section_id.in_(cs_ids),
+                StudentEnrollment.class_section_id == fs.class_section_id,
                 StudentEnrollment.status == "Active",
                 StudentEnrollment.is_active.is_(True),
             )
         )
         enrollments = enrollment_result.scalars().all()
+    elif fs.class_id:
+        # Specific class - find all class_sections for this class in the current academic year
+        cs_result = await db.execute(
+            select(ClassSection.id).where(
+                ClassSection.school_id == school_id,
+                ClassSection.class_id == fs.class_id,
+                ClassSection.academic_year_id == academic_year.id,
+                ClassSection.is_active.is_(True),
+            )
+        )
+        cs_ids = [row[0] for row in cs_result.all()]
+
+        if cs_ids:
+            enrollment_result = await db.execute(
+                select(StudentEnrollment).where(
+                    StudentEnrollment.school_id == school_id,
+                    StudentEnrollment.academic_year_id == academic_year.id,
+                    StudentEnrollment.class_section_id.in_(cs_ids),
+                    StudentEnrollment.status == "Active",
+                    StudentEnrollment.is_active.is_(True),
+                )
+            )
+            enrollments = enrollment_result.scalars().all()
+        else:
+            # Fallback: class_sections may not have academic_year_id set or may
+            # use is_active alone. Try without the academic_year filter.
+            cs_result_fallback = await db.execute(
+                select(ClassSection.id).where(
+                    ClassSection.school_id == school_id,
+                    ClassSection.class_id == fs.class_id,
+                    ClassSection.is_active.is_(True),
+                )
+            )
+            cs_ids_fallback = [row[0] for row in cs_result_fallback.all()]
+            if cs_ids_fallback:
+                enrollment_result = await db.execute(
+                    select(StudentEnrollment).where(
+                        StudentEnrollment.school_id == school_id,
+                        StudentEnrollment.academic_year_id == academic_year.id,
+                        StudentEnrollment.class_section_id.in_(cs_ids_fallback),
+                        StudentEnrollment.status == "Active",
+                        StudentEnrollment.is_active.is_(True),
+                    )
+                )
+                enrollments = enrollment_result.scalars().all()
     else:
-        # All classes - get all enrolled students
+        # All classes - get all enrolled students for the current academic year
         enrollment_result = await db.execute(
             select(StudentEnrollment).where(
                 StudentEnrollment.school_id == school_id,
@@ -1224,10 +1278,13 @@ async def create_fee_structure(
             total_late_fee=Decimal("0"),
             due_date=due_date,
             status="Pending",
+            description=f"Auto-generated from fee structure ({fs.frequency})",
+            is_active=True,
             created_by=created_by,
         )
         db.add(record)
 
+    records_created = len(enrollments)
     await db.commit()
     await db.refresh(fs)
     return {
@@ -1236,6 +1293,7 @@ async def create_fee_structure(
         "fee_category": fs.fee_category,
         "amount": float(fs.amount),
         "frequency": fs.frequency,
+        "records_created": records_created,
     }
 
 

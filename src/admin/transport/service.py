@@ -737,6 +737,8 @@ async def _enrich_route(db: AsyncSession, route: Route) -> dict:
     assigned_vehicle = None
     assigned_driver = None
 
+    vehicle_capacity = 0
+
     assignment_result = await db.execute(
         select(RouteAssignment).where(
             RouteAssignment.school_id == route.school_id,
@@ -748,9 +750,12 @@ async def _enrich_route(db: AsyncSession, route: Route) -> dict:
     assignment = assignment_result.scalar_one_or_none()
     if assignment:
         veh_result = await db.execute(
-            select(Vehicle.vehicle_number).where(Vehicle.id == assignment.vehicle_id)
+            select(Vehicle).where(Vehicle.id == assignment.vehicle_id)
         )
-        assigned_vehicle = veh_result.scalar_one_or_none()
+        vehicle = veh_result.scalar_one_or_none()
+        if vehicle:
+            assigned_vehicle = vehicle.vehicle_number
+            vehicle_capacity = vehicle.capacity or 0
 
         drv_result = await db.execute(
             select(Driver.full_name).where(Driver.id == assignment.driver_id)
@@ -789,6 +794,7 @@ async def _enrich_route(db: AsyncSession, route: Route) -> dict:
         "status": route.status,
         "assigned_vehicle": assigned_vehicle,
         "assigned_driver": assigned_driver,
+        "capacity": vehicle_capacity,
         "students_count": students_count,
         "is_active": route.is_active,
         "created_at": route.created_at,

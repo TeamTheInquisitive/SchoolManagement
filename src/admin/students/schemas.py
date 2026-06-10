@@ -1,7 +1,7 @@
 
 from datetime import date, datetime
 import re
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, field_validator
@@ -224,6 +224,25 @@ class BehaviorInfo(BaseModel):
     punctuality_score: float | None = None
 
 
+class TransportInfo(BaseModel):
+    """Transport info in student detail."""
+
+    enrolled: bool = False
+    route_name: str | None = None
+    route_code: str | None = None
+    bus_number: str | None = None
+    pickup_point: str | None = None
+    drop_point: str | None = None
+
+
+class ClassTeacherInfo(BaseModel):
+    """Class teacher info in student detail."""
+
+    name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+
+
 class StudentResponse(BaseModel):
     """Full student detail response."""
 
@@ -244,10 +263,19 @@ class StudentResponse(BaseModel):
     state: str | None = None
     pincode: str | None = None
     parent: ParentInfo | None = None
+    parent_name: str | None = None
+    parent_phone: str | None = None
+    parent_email: str | None = None
+    parent_relationship: str | None = None
+    parent_occupation: str | None = None
+    previous_school: str | None = None
+    token_advance: Any | None = None
     medical: MedicalInfo | None = None
     mentor: MentorInfo | None = None
+    class_teacher: ClassTeacherInfo | None = None
     stats: StudentStats | None = None
     behavior: BehaviorInfo | None = None
+    transport: TransportInfo | None = None
     created_at: datetime | None = None
 
 

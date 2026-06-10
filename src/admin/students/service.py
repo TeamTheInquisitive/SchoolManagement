@@ -567,6 +567,7 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
         select(AcademicYear).where(
             AcademicYear.school_id == school_id,
             AcademicYear.is_current.is_(True),
+            AcademicYear.is_active.is_(True),
         )
     )
     current_ay = ay_result.scalar_one_or_none()
@@ -680,7 +681,7 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
         )
         st_record = st_result.scalar_one_or_none()
         if st_record:
-            route_r = await db.execute(select(Route2).where(Route2.id == st_record.route_id))
+            route_r = await db.execute(select(Route2).where(Route2.id == st_record.route_id, Route2.is_active.is_(True)))
             route_obj = route_r.scalar_one_or_none()
             bus_number = None
             ra_r = await db.execute(select(RA2.vehicle_id).where(RA2.route_id == st_record.route_id, RA2.is_active.is_(True)))
@@ -846,6 +847,60 @@ async def update_student(
                 created_by=updated_by,
             )
             db.add(student_parent)
+
+    # Update fee concessions if provided
+    concessions = data.get("concessions")
+    if concessions:
+        from src.models.fee import FeeRecord
+        for fee_structure_id, concession_amount in concessions.items():
+            fee_result = await db.execute(
+                select(FeeRecord).where(
+                    FeeRecord.student_id == student.id,
+                    FeeRecord.school_id == school_id,
+                    FeeRecord.fee_structure_id == fee_structure_id,
+                    FeeRecord.is_active.is_(True),
+                )
+            )
+            fee_record = fee_result.scalar_one_or_none()
+            if fee_record:
+                from decimal import Decimal
+                new_concession = Decimal(str(concession_amount))
+                original = fee_record.total_amount + (fee_record.concession_amount or Decimal("0"))
+                fee_record.concession_amount = new_concession
+                fee_record.total_amount = original - new_concession
+                fee_record.pending = fee_record.total_amount - (fee_record.paid or Decimal("0"))
+
+    # Add custom fees if provided
+    custom_fees = data.get("custom_fees")
+    if custom_fees:
+        from src.models.fee import FeeRecord
+        from src.models.core import AcademicYear
+        from decimal import Decimal
+        from datetime import date, timedelta
+        ay_result = await db.execute(
+            select(AcademicYear).where(AcademicYear.school_id == school_id, AcademicYear.is_current.is_(True))
+        )
+        ay = ay_result.scalar_one_or_none()
+        if ay:
+            for cf in custom_fees:
+                amount = Decimal(str(cf["amount"]))
+                record = FeeRecord(
+                    school_id=school_id,
+                    academic_year_id=ay.id,
+                    student_id=student.id,
+                    fee_structure_id=None,
+                    fee_type=cf["fee_type"],
+                    fee_category=cf.get("fee_category", "other"),
+                    total_amount=amount,
+                    concession_amount=Decimal("0"),
+                    paid=Decimal("0"),
+                    pending=amount,
+                    total_late_fee=Decimal("0"),
+                    due_date=date.today() + timedelta(days=30),
+                    status="Pending",
+                    created_by=updated_by,
+                )
+                db.add(record)
 
     student.updated_by = updated_by
     await db.commit()

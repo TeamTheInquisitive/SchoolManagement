@@ -628,7 +628,12 @@ async def get_attendance_config(
         )
     )
     config = result.scalar_one_or_none()
-    return config if isinstance(config, dict) else {"threshold": 75, "min_days": 30}
+    if isinstance(config, dict):
+        # Ensure attendance_mode field exists with default
+        if "attendance_mode" not in config:
+            config["attendance_mode"] = "daily"
+        return config
+    return {"threshold": 75, "min_days": 30, "attendance_mode": "daily"}
 
 
 @router.put("/attendance-config")
@@ -638,9 +643,17 @@ async def update_attendance_config(
     school: SchoolDep,
     user: AdminUser,
 ) -> dict:
-    """Update attendance alert configuration. Body: { threshold: 75, min_days: 30 }"""
+    """Update attendance alert configuration. Body: { threshold: 75, min_days: 30, attendance_mode: "daily" }"""
     from src.models.core import Setting as Settings
-    config = {"threshold": data.get("threshold", 75), "min_days": data.get("min_days", 30)}
+    valid_modes = ("daily", "subject_wise", "twice_daily")
+    attendance_mode = data.get("attendance_mode", "daily")
+    if attendance_mode not in valid_modes:
+        raise HTTPException(status_code=400, detail=f"attendance_mode must be one of: {', '.join(valid_modes)}")
+    config = {
+        "threshold": data.get("threshold", 75),
+        "min_days": data.get("min_days", 30),
+        "attendance_mode": attendance_mode,
+    }
     result = await db.execute(
         select(Settings).where(
             Settings.school_id == school.id,

@@ -523,6 +523,7 @@ async def get_teacher(
                 LeaveBalance.school_id == school_id,
                 LeaveBalance.staff_id == teacher_id,
                 LeaveBalance.academic_year_id == ay.id,
+                LeaveBalance.is_active.is_(True),
             )
         )
         rows = lb_result.all()

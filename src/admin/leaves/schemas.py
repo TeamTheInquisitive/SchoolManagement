@@ -126,13 +126,12 @@ class TeacherLeaveDetailResponse(BaseModel):
 
 
 class TeacherBalanceOverviewItem(BaseModel):
+    model_config = {"extra": "allow"}
+
     teacher_id: uuid.UUID
     employee_id: str
     teacher_name: str
     department: str | None = None
-    casual: LeaveTypeBalance | None = None
-    sick: LeaveTypeBalance | None = None
-    annual: LeaveTypeBalance | None = None
     total_availed: Decimal
     total_remaining: Decimal
     is_active: bool = True
@@ -213,6 +212,7 @@ class AllocateLeaveRequest(BaseModel):
 
 class AllocateLeaveResponse(BaseModel):
     allocated_count: int
+    staff_count: int = 0
     message: str
 
 

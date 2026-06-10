@@ -14,6 +14,8 @@ from src.admin.fees.schemas import (
     ApplyLateFeeResponse,
     BulkApplyLateFeesRequest,
     BulkApplyLateFeesResponse,
+    BulkRecordPaymentRequest,
+    BulkRecordPaymentResponse,
     ConsolidatedReceiptResponse,
     CreateFeeRecordRequest,
     FeeReceiptResponse,
@@ -202,6 +204,19 @@ async def record_payment(
     """Record a payment (partial or full) against a fee record."""
     result = await service.record_payment(db, school.id, user, fee_id, data.model_dump())
     return RecordPaymentResponse(**result)
+
+
+@router.post("/student/{student_id}/bulk-record-payment", response_model=BulkRecordPaymentResponse)
+async def bulk_record_payment(
+    student_id: uuid.UUID,
+    data: BulkRecordPaymentRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> BulkRecordPaymentResponse:
+    """Record a bulk payment that distributes across multiple pending fee components for a student."""
+    result = await service.bulk_record_payment(db, school.id, user, student_id, data.model_dump())
+    return BulkRecordPaymentResponse(**result)
 
 
 @router.post("/{fee_id}/apply-late-fee", response_model=ApplyLateFeeResponse)
