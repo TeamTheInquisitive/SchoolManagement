@@ -25,12 +25,16 @@ class SubmitAttendanceRequest(BaseModel):
     class_id: uuid.UUID
     date: Optional[date_type] = None
     academic_year: Optional[str] = None
+    subject_id: Optional[uuid.UUID] = None
+    period_number: Optional[int] = None
     records: list[AttendanceRecordInput]
 
 
 class UpdateAttendanceRequest(BaseModel):
     class_id: uuid.UUID
     date: Optional[date_type] = None
+    subject_id: Optional[uuid.UUID] = None
+    period_number: Optional[int] = None
     records: list[AttendanceRecordInput]
 
 

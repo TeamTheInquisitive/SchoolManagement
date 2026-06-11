@@ -19,11 +19,14 @@ class AttendanceSession(BaseModel):
             "class_section_id",
             "date",
             "academic_year_id",
-            name="uq_attendance_sessions_school_class_date_year",
+            "subject_id",
+            "period_number",
+            name="uq_attendance_sessions_school_class_date_year_subject_period",
         ),
         Index("idx_attendance_sessions_class_date", "class_section_id", "date"),
         Index("idx_attendance_sessions_date", "school_id", "date"),
         Index("idx_attendance_sessions_submitted_by", "submitted_by", "date"),
+        Index("idx_attendance_sessions_subject", "class_section_id", "date", "subject_id"),
     )
 
     academic_year_id: Mapped[uuid.UUID] = mapped_column(
@@ -33,6 +36,10 @@ class AttendanceSession(BaseModel):
         UUIDType, ForeignKey("class_sections.id"), nullable=False
     )
     date: Mapped[date] = mapped_column(Date, nullable=False)
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType, ForeignKey("subjects.id"), nullable=True, default=None
+    )
+    period_number: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     submitted_by: Mapped[uuid.UUID | None] = mapped_column(
         UUIDType, ForeignKey("staff.id"), nullable=True, default=None
     )
@@ -63,6 +70,7 @@ class AttendanceSession(BaseModel):
     )
     class_section: Mapped["ClassSection"] = relationship("ClassSection", lazy="selectin")
     academic_year: Mapped["AcademicYear"] = relationship("AcademicYear", lazy="selectin")
+    subject: Mapped["Subject | None"] = relationship("Subject", lazy="selectin")
     staff: Mapped["Staff"] = relationship("Staff", lazy="selectin", foreign_keys=[submitted_by])
 
 
@@ -100,7 +108,7 @@ class AttendanceRecord(BaseModel):
 
 
 # Type stubs for relationships (avoids circular imports at runtime)
-from src.models.academic import ClassSection  # noqa: E402, F401
+from src.models.academic import ClassSection, Subject  # noqa: E402, F401
 from src.models.core import AcademicYear  # noqa: E402, F401
 from src.models.staff import Staff  # noqa: E402, F401
 from src.models.student import Student  # noqa: E402, F401
