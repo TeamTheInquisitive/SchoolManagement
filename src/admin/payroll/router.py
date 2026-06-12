@@ -121,7 +121,7 @@ async def undo_all_paid(
     return result
 
 
-@router.delete("/payroll")
+@router.post("/payroll/delete")
 async def delete_monthly_payroll(
     data: MarkAllPaidRequest,
     db: SessionDep,

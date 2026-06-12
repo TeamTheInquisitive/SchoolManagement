@@ -356,6 +356,8 @@ async def create_fee_record(
         raise NotFound("Student", str(student_id))
 
     total_amount = Decimal(str(data["total_amount"]))
+    if total_amount <= 0:
+        raise AppException(status_code=400, error="Fee amount must be greater than zero", code="INVALID_AMOUNT")
     record = FeeRecord(
         school_id=school_id,
         academic_year_id=ay.id,
@@ -397,6 +399,32 @@ async def create_fee_record(
     }
 
 
+async def delete_fee_record(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    fee_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> dict:
+    """Soft-delete a fee record. Only allowed if no payment has been made (paid = 0)."""
+    from datetime import datetime, timezone
+
+    result = await db.execute(
+        select(FeeRecord).where(FeeRecord.id == fee_id, FeeRecord.school_id == school_id, FeeRecord.is_active.is_(True))
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise NotFound("Fee record")
+
+    if record.paid and record.paid > 0:
+        raise AppException(status_code=400, error="Cannot delete a fee record that has payments recorded", code="HAS_PAYMENTS")
+
+    record.is_active = False
+    record.deleted_by = user_id
+    record.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"message": f"Fee record '{record.fee_type}' deleted"}
+
+
 async def update_fee_record(
     db: AsyncSession,
     school_id: uuid.UUID,
@@ -418,6 +446,10 @@ async def update_fee_record(
             if record.total_amount:
                 record.pending = record.total_amount - record.paid
         elif k == "total_amount":
+            if Decimal(str(v)) <= 0:
+                raise AppException(status_code=400, error="Fee amount must be greater than zero", code="INVALID_AMOUNT")
+            if Decimal(str(v)) < (record.paid or Decimal("0")):
+                raise AppException(status_code=400, error="Amount cannot be less than already paid amount", code="INVALID_AMOUNT")
             setattr(record, k, v)
             record.pending = v - record.paid
         elif hasattr(record, k):
@@ -471,6 +503,8 @@ async def generate_due_fees(
 
     fee_type = data["fee_type"]
     amount = Decimal(str(data["amount"]))
+    if amount <= 0:
+        raise AppException(status_code=400, error="Fee amount must be greater than zero", code="INVALID_AMOUNT")
     due_date = data["due_date"]
     fee_category = data.get("fee_category", "academic")
 
@@ -671,6 +705,8 @@ async def record_payment(
         raise NotFound("Fee record", str(fee_id))
 
     payment_amount = Decimal(str(data["amount"]))
+    if payment_amount <= 0:
+        raise AppException(status_code=400, error="Payment amount must be greater than zero", code="INVALID_AMOUNT")
     current_pending = record.pending
 
     if payment_amount > current_pending:
@@ -762,6 +798,10 @@ async def bulk_record_payment(
     student = result.scalar_one_or_none()
     if not student:
         raise NotFound("Student", str(student_id))
+
+    total_amount = Decimal(str(data["amount"]))
+    if total_amount <= 0:
+        raise AppException(status_code=400, error="Payment amount must be greater than zero", code="INVALID_AMOUNT")
 
     # Get all pending fee records for this student, ordered by due date (oldest first)
     records_result = await db.execute(

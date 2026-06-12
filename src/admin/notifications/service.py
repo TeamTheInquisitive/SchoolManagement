@@ -292,6 +292,14 @@ async def create_notification(
     user_id: uuid.UUID,
 ) -> dict:
     """Create and send (or schedule) a notification."""
+    from fastapi import HTTPException
+
+    # Validate required fields
+    if not data.get("title") or not str(data["title"]).strip():
+        raise HTTPException(status_code=400, detail="Notification title must not be empty")
+    if not data.get("message") or not str(data["message"]).strip():
+        raise HTTPException(status_code=400, detail="Notification message must not be empty")
+
     schedule_for_later = data.pop("schedule_for_later", False)
     scheduled_at = data.get("scheduled_at")
 
@@ -444,6 +452,14 @@ async def update_notification(
     user_id: uuid.UUID,
 ) -> dict:
     """Update a notification's title, message, and other editable fields."""
+    from fastapi import HTTPException
+
+    # Validate title and message if provided
+    if "title" in data and (not data["title"] or not str(data["title"]).strip()):
+        raise HTTPException(status_code=400, detail="Notification title must not be empty")
+    if "message" in data and (not data["message"] or not str(data["message"]).strip()):
+        raise HTTPException(status_code=400, detail="Notification message must not be empty")
+
     result = await db.execute(
         select(Notification).where(
             Notification.id == notification_id,

@@ -400,8 +400,10 @@ async def create_student(
                 if str(fs.id) in excluded_ids:
                     continue
                 due = date.today() + timedelta(days=30)
-                concession_amount = float(concessions.get(str(fs.id), 0))
+                concession_amount = max(0, float(concessions.get(str(fs.id), 0)))
                 total = float(fs.amount)
+                if concession_amount > total:
+                    concession_amount = total
                 net_amount = max(0, total - concession_amount)
                 fee_record = FeeRecord(
                     school_id=school_id,

@@ -122,6 +122,12 @@ async def get_attendance(
 
 
 async def submit_attendance(db: AsyncSession, school_id: uuid.UUID, user: User, data: SubmitAttendanceRequest) -> dict:
+    from fastapi import HTTPException
+
+    # Validate records is not empty
+    if not data.records:
+        raise HTTPException(status_code=400, detail="Attendance records must not be empty")
+
     ay = await _get_current_academic_year(db, school_id, data.academic_year)
     cs = await _get_class_section(db, school_id, data.class_id)
     _, _, label = await _cs_label(db, cs)
@@ -177,6 +183,12 @@ async def submit_attendance(db: AsyncSession, school_id: uuid.UUID, user: User, 
 
 
 async def update_attendance(db: AsyncSession, school_id: uuid.UUID, user: User, data: UpdateAttendanceRequest) -> dict:
+    from fastapi import HTTPException
+
+    # Validate records is not empty
+    if not data.records:
+        raise HTTPException(status_code=400, detail="Attendance records must not be empty")
+
     ay = await _get_current_academic_year(db, school_id)
     cs = await _get_class_section(db, school_id, data.class_id)
     _, _, label = await _cs_label(db, cs)

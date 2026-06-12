@@ -4,6 +4,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -368,6 +369,22 @@ async def update_leave_policy(
     """Update leave policy for the current academic year."""
     ay = await _get_current_academic_year(db, school_id)
 
+    # Validate leave types
+    leave_types = data.get("leave_types", [])
+    for lt in leave_types:
+        if not lt.get("type") or not str(lt["type"]).strip():
+            raise AppException(
+                status_code=400,
+                error="Leave type name must not be empty",
+                code="VALIDATION_ERROR",
+            )
+        if not lt.get("total_per_year") or lt["total_per_year"] <= 0:
+            raise AppException(
+                status_code=400,
+                error="Leave total_per_year must be greater than 0",
+                code="VALIDATION_ERROR",
+            )
+
     # Delete existing policies for this academic year
     existing_result = await db.execute(
         select(LeavePolicy).where(
@@ -378,9 +395,6 @@ async def update_leave_policy(
     for p in existing_result.scalars().all():
         await db.delete(p)
     await db.flush()
-
-    # Create new policies
-    leave_types = data.get("leave_types", [])
     new_policies = []
     for lt in leave_types:
         # Handle applicable_to - store as comma-separated string for list, or "all"
@@ -698,6 +712,13 @@ async def bulk_action(
     remarks: str | None = None,
 ) -> dict:
     """Bulk approve or reject leave applications."""
+    # Validate action
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="action must be 'approve' or 'reject'")
+    # Validate leave_ids not empty
+    if not leave_ids:
+        raise HTTPException(status_code=400, detail="leave_ids must not be empty")
+
     results = []
     for leave_id in leave_ids:
         try:
@@ -838,6 +859,15 @@ async def allocate_leaves(
         raise AppException(status_code=400, error="No staff members selected for allocation", code="NO_STAFF_SELECTED")
     if not leave_types:
         raise AppException(status_code=400, error="No leave types specified for allocation", code="NO_LEAVE_TYPES")
+
+    # Validate all leave type values are > 0
+    for leave_type_name, total in leave_types.items():
+        if total is None or total <= 0:
+            raise AppException(
+                status_code=400,
+                error=f"Leave allocation value for '{leave_type_name}' must be greater than 0",
+                code="VALIDATION_ERROR",
+            )
 
     count = 0
     for staff_id in staff_ids:

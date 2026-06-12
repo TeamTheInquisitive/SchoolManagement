@@ -533,36 +533,32 @@ async def get_holidays(
     school: SchoolDep,
     user: AdminUser,
 ) -> dict:
-    """Get holidays list from settings. Seeds default public holidays if none exist."""
+    """Get holidays list for the current academic year."""
+    from src.models.core import AcademicYear
+
+    ay_result = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school.id,
+            AcademicYear.is_current.is_(True),
+            AcademicYear.is_active.is_(True),
+        )
+    )
+    ay = ay_result.scalar_one_or_none()
+    ay_key = f"holidays_{ay.id}" if ay else "holidays"
+
     result = await db.execute(
         select(Settings).where(
             Settings.school_id == school.id,
             Settings.category == "school",
-            Settings.key == "holidays",
+            Settings.key == ay_key,
             Settings.is_active.is_(True),
         )
     )
     row = result.scalar_one_or_none()
     if row:
-        return {"holidays": row.value if row.value else []}
+        return {"holidays": row.value if row.value else [], "academic_year": ay.name if ay else None}
 
-    # Seed default public holidays for the current year
-    from datetime import datetime
-    yr = datetime.now().year
-    defaults = [
-        {"date": f"{yr}-01-26", "name": "Republic Day", "type": "National", "description": "Republic Day of India"},
-        {"date": f"{yr}-03-14", "name": "Holi", "type": "National", "description": "Festival of Colors"},
-        {"date": f"{yr}-04-14", "name": "Ambedkar Jayanti", "type": "National", "description": "Dr. B.R. Ambedkar's Birthday"},
-        {"date": f"{yr}-04-17", "name": "Ram Navami", "type": "National", "description": "Birth of Lord Rama"},
-        {"date": f"{yr}-05-01", "name": "May Day", "type": "National", "description": "International Workers' Day"},
-        {"date": f"{yr}-08-15", "name": "Independence Day", "type": "National", "description": "Independence Day of India"},
-        {"date": f"{yr}-10-02", "name": "Gandhi Jayanti", "type": "National", "description": "Mahatma Gandhi's Birthday"},
-        {"date": f"{yr}-10-12", "name": "Dussehra", "type": "National", "description": "Victory of good over evil"},
-        {"date": f"{yr}-11-01", "name": "Diwali", "type": "National", "description": "Festival of Lights"},
-        {"date": f"{yr}-11-15", "name": "Guru Nanak Jayanti", "type": "National", "description": "Birth of Guru Nanak"},
-        {"date": f"{yr}-12-25", "name": "Christmas", "type": "National", "description": "Christmas Day"},
-    ]
-    return {"holidays": defaults}
+    return {"holidays": [], "academic_year": ay.name if ay else None}
 
 
 @router.put("/holidays")
@@ -572,13 +568,25 @@ async def update_holidays(
     school: SchoolDep,
     user: AdminUser,
 ) -> dict:
-    """Update holidays list in settings."""
+    """Update holidays list for the current academic year."""
+    from src.models.core import AcademicYear
+
+    ay_result = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school.id,
+            AcademicYear.is_current.is_(True),
+            AcademicYear.is_active.is_(True),
+        )
+    )
+    ay = ay_result.scalar_one_or_none()
+    ay_key = f"holidays_{ay.id}" if ay else "holidays"
+
     holidays = data.get("holidays", [])
     result = await db.execute(
         select(Settings).where(
             Settings.school_id == school.id,
             Settings.category == "school",
-            Settings.key == "holidays",
+            Settings.key == ay_key,
         )
     )
     row = result.scalar_one_or_none()
@@ -590,12 +598,12 @@ async def update_holidays(
             id=uuid.uuid4(),
             school_id=school.id,
             category="school",
-            key="holidays",
+            key=ay_key,
             value=holidays,
         )
         db.add(row)
     await db.commit()
-    return {"holidays": holidays, "message": "Holidays updated successfully"}
+    return {"holidays": holidays, "academic_year": ay.name if ay else None, "message": "Holidays updated successfully"}
 
 
 @router.get("/next-id")
@@ -618,7 +626,7 @@ async def get_attendance_config(
     user: AdminUser,
 ) -> dict:
     """Get attendance alert configuration."""
-    from src.models.core import Setting as Settings
+    from src.models.core import Settings
     result = await db.execute(
         select(Settings.value).where(
             Settings.school_id == school.id,
@@ -644,7 +652,7 @@ async def update_attendance_config(
     user: AdminUser,
 ) -> dict:
     """Update attendance alert configuration. Body: { threshold: 75, min_days: 30, attendance_mode: "daily" }"""
-    from src.models.core import Setting as Settings
+    from src.models.core import Settings
     valid_modes = ("daily", "subject_wise", "twice_daily")
     attendance_mode = data.get("attendance_mode", "daily")
     if attendance_mode not in valid_modes:

@@ -213,6 +213,14 @@ async def create_vehicle(
     db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
 ) -> dict:
     """Create a new vehicle."""
+    from fastapi import HTTPException
+
+    # Validate required fields
+    if not data.get("vehicle_number") or not str(data["vehicle_number"]).strip():
+        raise HTTPException(status_code=400, detail="Vehicle number must not be empty")
+    if not data.get("capacity") or data["capacity"] <= 0:
+        raise HTTPException(status_code=400, detail="Vehicle capacity must be greater than 0")
+
     # Check uniqueness
     existing = await db.execute(
         select(Vehicle).where(
@@ -254,6 +262,14 @@ async def update_vehicle(
     db: AsyncSession, school_id: uuid.UUID, vehicle_id: uuid.UUID, data: dict, updated_by: uuid.UUID
 ) -> dict:
     """Update vehicle details."""
+    from fastapi import HTTPException
+
+    # Validate fields if provided
+    if "vehicle_number" in data and (not data["vehicle_number"] or not str(data["vehicle_number"]).strip()):
+        raise HTTPException(status_code=400, detail="Vehicle number must not be empty")
+    if "capacity" in data and data["capacity"] is not None and data["capacity"] <= 0:
+        raise HTTPException(status_code=400, detail="Vehicle capacity must be greater than 0")
+
     result = await db.execute(
         select(Vehicle).where(
             Vehicle.id == vehicle_id,
@@ -452,6 +468,16 @@ async def create_driver(
     db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
 ) -> dict:
     """Create a new driver."""
+    from fastapi import HTTPException
+
+    # Validate required fields
+    if not data.get("full_name") or not str(data["full_name"]).strip():
+        raise HTTPException(status_code=400, detail="Driver full_name must not be empty")
+    if not data.get("phone") or not str(data["phone"]).strip():
+        raise HTTPException(status_code=400, detail="Driver phone must not be empty")
+    if not data.get("license_number") or not str(data["license_number"]).strip():
+        raise HTTPException(status_code=400, detail="Driver license_number must not be empty")
+
     driver_id = await _generate_driver_id(db, school_id)
 
     driver = Driver(
@@ -471,6 +497,16 @@ async def update_driver(
     db: AsyncSession, school_id: uuid.UUID, driver_uuid: uuid.UUID, data: dict, updated_by: uuid.UUID
 ) -> dict:
     """Update driver details."""
+    from fastapi import HTTPException
+
+    # Validate fields if provided
+    if "full_name" in data and (not data["full_name"] or not str(data["full_name"]).strip()):
+        raise HTTPException(status_code=400, detail="Driver full_name must not be empty")
+    if "phone" in data and (not data["phone"] or not str(data["phone"]).strip()):
+        raise HTTPException(status_code=400, detail="Driver phone must not be empty")
+    if "license_number" in data and (not data["license_number"] or not str(data["license_number"]).strip()):
+        raise HTTPException(status_code=400, detail="Driver license_number must not be empty")
+
     result = await db.execute(
         select(Driver).where(
             Driver.id == driver_uuid,
@@ -841,6 +877,12 @@ async def create_route(
     db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
 ) -> dict:
     """Create a new route."""
+    from fastapi import HTTPException
+
+    # Validate required fields
+    if not data.get("name") or not str(data["name"]).strip():
+        raise HTTPException(status_code=400, detail="Route name must not be empty")
+
     route_code = await _generate_route_code(db, school_id)
 
     # Handle stops: accept int or list
@@ -869,6 +911,12 @@ async def update_route(
     db: AsyncSession, school_id: uuid.UUID, route_id: uuid.UUID, data: dict, updated_by: uuid.UUID
 ) -> dict:
     """Update route details."""
+    from fastapi import HTTPException
+
+    # Validate name if provided
+    if "name" in data and (not data["name"] or not str(data["name"]).strip()):
+        raise HTTPException(status_code=400, detail="Route name must not be empty")
+
     result = await db.execute(
         select(Route).where(
             Route.id == route_id,
@@ -1036,6 +1084,16 @@ async def create_assignment(
     db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
 ) -> dict:
     """Create a route assignment. Validates vehicle is not already assigned."""
+    from fastapi import HTTPException
+
+    # Validate required fields
+    if not data.get("route_id"):
+        raise HTTPException(status_code=400, detail="route_id must not be empty")
+    if not data.get("vehicle_id"):
+        raise HTTPException(status_code=400, detail="vehicle_id must not be empty")
+    if not data.get("driver_id"):
+        raise HTTPException(status_code=400, detail="driver_id must not be empty")
+
     vehicle_id = data["vehicle_id"]
     driver_id = data["driver_id"]
     helper_id = data.get("helper_id")

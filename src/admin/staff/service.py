@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import uuid
 from datetime import date
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +16,8 @@ from src.core.pagination import PaginationParams, paginate
 from src.models.core import AcademicYear
 from src.models.payroll import SalaryStructure
 from src.models.staff import Staff
+
+_EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
 
 SALARY_FIELDS = {"basic_salary", "hra", "da", "ta", "other_allowances", "pf_deduction", "tax_deduction", "other_deductions"}
 
@@ -249,6 +253,16 @@ async def create_staff(
     created_by: uuid.UUID,
 ) -> dict:
     """Create a new staff member."""
+    # Validate required fields
+    if not data.get("full_name") or not str(data["full_name"]).strip():
+        raise HTTPException(status_code=400, detail="full_name must not be empty")
+    if not data.get("email") or not str(data["email"]).strip():
+        raise HTTPException(status_code=400, detail="email must not be empty")
+    if not _EMAIL_REGEX.match(str(data["email"]).strip()):
+        raise HTTPException(status_code=400, detail="email format is invalid")
+    if not data.get("employee_id") or not str(data["employee_id"]).strip():
+        raise HTTPException(status_code=400, detail="employee_id must not be empty")
+
     staff_data, salary_data = _split_salary_data(data)
 
     # Check duplicate employee_id
@@ -308,6 +322,13 @@ async def update_staff(
     updated_by: uuid.UUID,
 ) -> dict:
     """Update a staff member."""
+    # Validate email format if provided
+    if "email" in data and data["email"] is not None:
+        if not str(data["email"]).strip():
+            raise HTTPException(status_code=400, detail="email must not be empty")
+        if not _EMAIL_REGEX.match(str(data["email"]).strip()):
+            raise HTTPException(status_code=400, detail="email format is invalid")
+
     staff_data, salary_data = _split_salary_data(data)
 
     result = await db.execute(

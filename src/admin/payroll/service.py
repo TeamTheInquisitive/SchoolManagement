@@ -4,6 +4,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -185,10 +186,33 @@ async def run_payroll(
     data: dict,
 ) -> dict:
     """Run payroll for a month: generate payslip entries for all active staff."""
-    ay = await _get_current_academic_year(db, school_id)
-
     month = data["month"]
     year = data["year"]
+
+    # Validate month and year
+    if not isinstance(month, int) or month < 1 or month > 12:
+        raise AppException(
+            status_code=400,
+            error="Month must be between 1 and 12",
+            code="VALIDATION_ERROR",
+        )
+    if not isinstance(year, int) or year <= 2020 or year >= 2100:
+        raise AppException(
+            status_code=400,
+            error="Year must be between 2021 and 2099",
+            code="VALIDATION_ERROR",
+        )
+    working_days = data.get("working_days")
+    if working_days is not None:
+        if not isinstance(working_days, int) or working_days < 1 or working_days > 31:
+            raise AppException(
+                status_code=400,
+                error="Working days must be between 1 and 31",
+                code="VALIDATION_ERROR",
+            )
+
+    ay = await _get_current_academic_year(db, school_id)
+
     now = datetime.now(timezone.utc)
 
     # Check if payroll already run for this month
@@ -323,6 +347,17 @@ async def update_payslip(
     data: dict,
 ) -> dict:
     """Update a payslip's salary components."""
+    # Validate salary fields are >= 0
+    salary_fields = ["basic_salary", "hra", "da", "transport_allowance", "total_allowances", "total_deductions", "net_salary"]
+    for field in salary_fields:
+        if field in data and data[field] is not None:
+            if Decimal(str(data[field])) < 0:
+                raise AppException(
+                    status_code=400,
+                    error=f"{field} must be >= 0",
+                    code="VALIDATION_ERROR",
+                )
+
     result = await db.execute(
         select(Payslip).where(
             Payslip.id == payslip_id,
@@ -334,7 +369,7 @@ async def update_payslip(
     if not payslip:
         raise NotFound("Payslip", str(payslip_id))
 
-    for field in ["basic_salary", "hra", "da", "transport_allowance", "total_allowances", "total_deductions", "net_salary"]:
+    for field in salary_fields:
         if field in data and data[field] is not None:
             setattr(payslip, field, Decimal(str(data[field])))
 
@@ -366,6 +401,14 @@ async def record_payment(
     data: dict,
 ) -> dict:
     """Record a partial or full payment on a payslip."""
+    # Validate amount > 0
+    if not data.get("amount") or Decimal(str(data["amount"])) <= 0:
+        raise AppException(
+            status_code=400,
+            error="Payment amount must be greater than 0",
+            code="VALIDATION_ERROR",
+        )
+
     result = await db.execute(
         select(Payslip).where(
             Payslip.id == payslip_id,
@@ -415,6 +458,12 @@ async def mark_all_paid(
     month = data["month"]
     year = data["year"]
 
+    # Validate month and year
+    if not isinstance(month, int) or month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Month must be between 1 and 12")
+    if not isinstance(year, int) or year <= 2020 or year >= 2100:
+        raise HTTPException(status_code=400, detail="Year must be between 2021 and 2099")
+
     result = await db.execute(
         select(Payslip).where(
             Payslip.school_id == school_id,
@@ -446,6 +495,12 @@ async def undo_all_paid(
     """Undo all paid payslips back to unpaid for a month."""
     month = data["month"]
     year = data["year"]
+
+    # Validate month and year
+    if not isinstance(month, int) or month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Month must be between 1 and 12")
+    if not isinstance(year, int) or year <= 2020 or year >= 2100:
+        raise HTTPException(status_code=400, detail="Year must be between 2021 and 2099")
 
     result = await db.execute(
         select(Payslip).where(
@@ -599,6 +654,11 @@ async def update_salary_structure(
     """Update a salary structure — activate draft records created on teacher onboarding."""
     from decimal import Decimal
 
+    # Validate basic_salary >= 0 if provided
+    if "basic_salary" in data and data["basic_salary"] is not None:
+        if Decimal(str(data["basic_salary"])) < 0:
+            raise HTTPException(status_code=400, detail="basic_salary must be >= 0")
+
     result = await db.execute(
         select(SalaryStructure).where(
             SalaryStructure.school_id == school_id,
@@ -698,6 +758,14 @@ async def create_salary_advance(
     data: dict,
 ) -> dict:
     """Create a new salary advance request."""
+    # Validate amount > 0
+    if not data.get("amount") or Decimal(str(data["amount"])) <= 0:
+        raise AppException(
+            status_code=400,
+            error="Salary advance amount must be greater than 0",
+            code="VALIDATION_ERROR",
+        )
+
     staff_id = data["staff_id"]
     staff = await _get_staff_by_id(db, school_id, staff_id)
 
@@ -963,6 +1031,14 @@ async def create_salary_revision(
     data: dict,
 ) -> dict:
     """Create a salary revision/hike and update the salary structure."""
+    # Validate required fields
+    if not data.get("staff_id"):
+        raise HTTPException(status_code=400, detail="staff_id must not be empty")
+    if not data.get("effective_date"):
+        raise HTTPException(status_code=400, detail="effective_date must not be empty")
+    if not data.get("new_basic") or Decimal(str(data["new_basic"])) <= 0:
+        raise HTTPException(status_code=400, detail="new_basic must be greater than 0")
+
     ay = await _get_current_academic_year(db, school_id)
 
     staff_id = data["staff_id"]

@@ -169,6 +169,18 @@ async def update_fee_record(
     return result
 
 
+@router.delete("/{fee_id}")
+async def delete_fee_record(
+    fee_id: uuid.UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Soft-delete a fee record. Only allowed if no payment has been made."""
+    result = await service.delete_fee_record(db, school.id, fee_id, user.id)
+    return result
+
+
 @router.post("", status_code=201, response_model=FeeRecordCreateResponse)
 async def create_fee_record(
     data: CreateFeeRecordRequest,

@@ -6,6 +6,7 @@ import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -465,6 +466,12 @@ async def update_exam(
     data: UpdateExamRequest,
 ) -> dict:
     """Update an exam."""
+    # Validate total_marks if provided
+    update_fields = data.model_dump(exclude_unset=True)
+    if "total_marks" in update_fields and update_fields["total_marks"] is not None:
+        if update_fields["total_marks"] <= 0:
+            raise HTTPException(status_code=400, detail="total_marks must be greater than 0")
+
     result = await db.execute(
         select(Exam).where(
             Exam.id == exam_id,
@@ -627,6 +634,10 @@ async def enter_results(
     data: EnterResultsRequest,
 ) -> dict:
     """Enter results for students with auto grade/rank computation."""
+    # Validate results not empty
+    if not data.results:
+        raise HTTPException(status_code=400, detail="results must not be empty")
+
     result = await db.execute(
         select(Exam).where(
             Exam.id == exam_id,
@@ -647,10 +658,13 @@ async def enter_results(
 
     # Validate marks
     for entry in data.results:
-        if entry.marks_obtained is not None and entry.marks_obtained > total_marks:
-            raise ValidationError(
-                f"Marks cannot exceed total_marks ({total_marks})"
-            )
+        if entry.marks_obtained is not None:
+            if entry.marks_obtained < 0:
+                raise ValidationError("Marks obtained must be >= 0")
+            if entry.marks_obtained > total_marks:
+                raise ValidationError(
+                    f"Marks cannot exceed total_marks ({total_marks})"
+                )
 
     created_results: list[ExamResult] = []
     for entry in data.results:
@@ -897,8 +911,11 @@ async def update_result(
     update_data = data.model_dump(exclude_unset=True)
     if "marks_obtained" in update_data:
         new_marks = update_data["marks_obtained"]
-        if new_marks is not None and new_marks > total_marks:
-            raise ValidationError(f"Marks cannot exceed total_marks ({total_marks})")
+        if new_marks is not None:
+            if new_marks < 0:
+                raise ValidationError("Marks obtained must be >= 0")
+            if new_marks > total_marks:
+                raise ValidationError(f"Marks cannot exceed total_marks ({total_marks})")
         exam_result.marks_obtained = Decimal(str(new_marks)) if new_marks is not None else None
     if "attendance" in update_data:
         exam_result.attendance = update_data["attendance"]
@@ -1225,6 +1242,10 @@ async def get_report_card(
     term: str | None = None,
 ) -> dict:
     """Generate report card data for a student."""
+    # Validate student_id
+    if not student_id:
+        raise HTTPException(status_code=400, detail="student_id must not be empty")
+
     ay = await _get_academic_year(db, school_id, academic_year)
 
     # Get student

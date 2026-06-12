@@ -4,6 +4,7 @@ import uuid
 from collections import defaultdict
 from datetime import date, time
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -226,6 +227,16 @@ async def create_period(
     academic_year_name: str | None = None,
 ) -> PeriodConfig:
     """Create a new period config."""
+    # Validate required fields
+    if not data.get("start_time"):
+        raise HTTPException(status_code=400, detail="start_time must not be empty")
+    if not data.get("end_time"):
+        raise HTTPException(status_code=400, detail="end_time must not be empty")
+    if data.get("end_time") <= data.get("start_time"):
+        raise HTTPException(status_code=400, detail="end_time must be after start_time")
+    if "name" in data and data["name"] is not None and not str(data["name"]).strip():
+        raise HTTPException(status_code=400, detail="Period name must not be empty if provided")
+
     ay = await _get_current_academic_year(db, school_id, academic_year_name)
 
     start_time = data["start_time"]
@@ -272,6 +283,10 @@ async def update_period(
     updated_by: uuid.UUID,
 ) -> PeriodConfig:
     """Update an existing period config."""
+    # Validate fields when provided
+    if "name" in data and data["name"] is not None and not str(data["name"]).strip():
+        raise HTTPException(status_code=400, detail="Period name must not be empty if provided")
+
     result = await db.execute(
         select(PeriodConfig).where(
             PeriodConfig.id == period_id,
@@ -285,6 +300,10 @@ async def update_period(
 
     start_time = data.get("start_time", period.start_time)
     end_time = data.get("end_time", period.end_time)
+
+    # Validate end_time is after start_time when either is provided
+    if end_time <= start_time:
+        raise HTTPException(status_code=400, detail="end_time must be after start_time")
 
     # Check for time overlap (excluding self)
     await _check_time_overlap(
@@ -436,6 +455,18 @@ async def create_slot(
     academic_year_name: str | None = None,
 ) -> dict:
     """Assign a subject+teacher to a specific slot."""
+    # Validate required fields
+    if not data.get("subject_id"):
+        raise HTTPException(status_code=400, detail="subject_id must not be empty")
+    if not data.get("teacher_id"):
+        raise HTTPException(status_code=400, detail="teacher_id must not be empty")
+    if not data.get("period_config_id"):
+        raise HTTPException(status_code=400, detail="period_config_id must not be empty")
+    if not data.get("day") or not str(data["day"]).strip():
+        raise HTTPException(status_code=400, detail="day must not be empty")
+    if data["day"] not in WORKING_DAYS:
+        raise HTTPException(status_code=400, detail=f"day must be one of: {', '.join(WORKING_DAYS)}")
+
     ay = await _get_current_academic_year(db, school_id, academic_year_name)
     cs = await _get_class_section(db, school_id, data["class_section_id"])
 
@@ -527,6 +558,13 @@ async def update_slot(
     updated_by: uuid.UUID,
 ) -> dict:
     """Update an existing timetable slot."""
+    # Validate fields when provided
+    if "day" in data:
+        if not data["day"] or not str(data["day"]).strip():
+            raise HTTPException(status_code=400, detail="day must not be empty")
+        if data["day"] not in WORKING_DAYS:
+            raise HTTPException(status_code=400, detail=f"day must be one of: {', '.join(WORKING_DAYS)}")
+
     result = await db.execute(
         select(TimetableSlot).where(
             TimetableSlot.id == slot_id,
@@ -625,6 +663,10 @@ async def bulk_assign_slots(
     academic_year_name: str | None = None,
 ) -> dict:
     """Bulk assign multiple slots. Returns partial success (207) if some conflict."""
+    # Validate entries not empty
+    if not data.get("slots"):
+        raise HTTPException(status_code=400, detail="slots entries must not be empty")
+
     ay = await _get_current_academic_year(db, school_id, academic_year_name)
     cs = await _get_class_section(db, school_id, data["class_section_id"])
 

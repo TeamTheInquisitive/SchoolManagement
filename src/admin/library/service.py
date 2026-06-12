@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
+from fastapi import HTTPException
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,6 +41,13 @@ async def list_books(
 async def create_book(
     db: AsyncSession, school_id: uuid.UUID, data: dict, user_id: uuid.UUID
 ) -> dict:
+    # Validate title not empty
+    if not data.get("title") or not str(data["title"]).strip():
+        raise HTTPException(status_code=400, detail="Book title must not be empty")
+    # Validate ISBN not empty if provided
+    if "isbn" in data and data["isbn"] is not None and not str(data["isbn"]).strip():
+        raise HTTPException(status_code=400, detail="ISBN must not be empty if provided")
+
     book = Book(
         school_id=school_id,
         title=data["title"],
@@ -67,6 +75,12 @@ async def create_book(
 async def issue_book(
     db: AsyncSession, school_id: uuid.UUID, data: dict, user_id: uuid.UUID
 ) -> dict:
+    # Validate required fields
+    if not data.get("book_id"):
+        raise HTTPException(status_code=400, detail="book_id must not be empty")
+    if not data.get("borrower_id"):
+        raise HTTPException(status_code=400, detail="borrower_id must not be empty")
+
     # Validate book
     book_result = await db.execute(
         select(Book).where(Book.id == data["book_id"], Book.school_id == school_id, Book.is_active.is_(True))

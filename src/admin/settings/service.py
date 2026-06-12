@@ -282,6 +282,11 @@ async def update_academic_year(
     end_date = data.get("end_date")
     terms = data.get("terms")
 
+    # Validate: if both dates provided, end must be after start
+    if start_date and end_date and end_date <= start_date:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="end_date must be after start_date")
+
     # Update or create academic year record
     if current_name:
         result = await db.execute(
@@ -399,6 +404,10 @@ async def create_academic_year(
         from src.core.exceptions import ValidationError
         raise ValidationError("name, start_date, and end_date are required")
 
+    if end_date <= start_date:
+        from src.core.exceptions import ValidationError
+        raise ValidationError("end_date must be after start_date")
+
     # Check duplicate
     existing = await db.execute(
         select(AcademicYear).where(
@@ -435,6 +444,11 @@ async def update_academic_year_by_id(
     db: AsyncSession, school_id: uuid.UUID, year_id: str, data: dict, updated_by: uuid.UUID
 ) -> dict:
     """Update an academic year by ID."""
+    # Validate name is not empty if provided
+    if "name" in data and (not data["name"] or not str(data["name"]).strip()):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Academic year name must not be empty")
+
     result = await db.execute(
         select(AcademicYear).where(AcademicYear.id == year_id, AcademicYear.school_id == school_id, AcademicYear.is_active.is_(True))
     )
@@ -442,6 +456,13 @@ async def update_academic_year_by_id(
     if not ay:
         from src.core.exceptions import NotFound
         raise NotFound("Academic Year", year_id)
+
+    # Validate end_date > start_date considering both existing and new values
+    new_start = data.get("start_date", ay.start_date)
+    new_end = data.get("end_date", ay.end_date)
+    if new_start and new_end and new_end <= new_start:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="end_date must be after start_date")
 
     if "name" in data:
         ay.name = data["name"]
@@ -809,6 +830,12 @@ async def bulk_create_subjects(
     created_by: uuid.UUID,
 ) -> int:
     """Bulk create subjects. Reactivates soft-deleted ones. Skips active duplicates."""
+    # Validate subject names are not empty
+    for item in subjects:
+        if not item.get("name") or not str(item["name"]).strip():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Subject name must not be empty")
+
     created = 0
     for item in subjects:
         name = item["name"]
@@ -910,6 +937,11 @@ async def update_subject(
 ) -> dict:
     """Update a subject's name and/or code."""
     from src.models.academic import Subject
+
+    # Validate name is not empty if provided
+    if "name" in data and (not data["name"] or not str(data["name"]).strip()):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Subject name must not be empty")
 
     result = await db.execute(
         select(Subject).where(
@@ -1173,6 +1205,10 @@ async def create_fee_structure(
     if not academic_year:
         from src.core.exceptions import ValidationError
         raise ValidationError("No current academic year set")
+
+    if not data.get("amount") or float(data["amount"]) <= 0:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Fee amount must be greater than zero")
 
     fs = FeeStructure(
         school_id=school_id,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
+from fastapi import HTTPException
 from sqlalchemy import and_, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -169,6 +170,12 @@ async def list_students(db: AsyncSession, school_id: uuid.UUID, class_section_id
 
 
 async def assign_mentor(db: AsyncSession, school_id: uuid.UUID, staff_id: uuid.UUID, student_ids: list[uuid.UUID], user_id: uuid.UUID) -> dict:
+    # Validate required fields
+    if not staff_id:
+        raise HTTPException(status_code=400, detail="teacher_id must not be empty")
+    if not student_ids:
+        raise HTTPException(status_code=400, detail="student_ids must not be empty")
+
     ay = await _get_current_academic_year(db, school_id)
 
     # Validate staff exists and is teacher
