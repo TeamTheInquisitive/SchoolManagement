@@ -159,6 +159,7 @@ async def get_payroll(
             "paid_on": payslip.paid_on,
             "payment_history": payslip.payment_history or [],
             "notes": payslip.notes,
+            "edit_history": (payslip.metadata_ or {}).get("edit_history", []),
         })
 
         total_disbursed += payslip.paid_amount or Decimal("0")
@@ -369,12 +370,32 @@ async def update_payslip(
     if not payslip:
         raise NotFound("Payslip", str(payslip_id))
 
+    # Track what changed for edit history
+    changes = {}
     for field in salary_fields:
         if field in data and data[field] is not None:
+            old_val = float(getattr(payslip, field) or 0)
+            new_val = float(Decimal(str(data[field])))
+            if old_val != new_val:
+                changes[field] = {"old": old_val, "new": new_val}
             setattr(payslip, field, Decimal(str(data[field])))
 
     if "notes" in data:
         payslip.notes = data["notes"] or None
+
+    # Save edit history in metadata
+    if changes:
+        meta = dict(payslip.metadata_) if payslip.metadata_ else {}
+        edit_history = list(meta.get("edit_history", []))
+        edit_history.append({
+            "date": date.today().isoformat(),
+            "changes": changes,
+            "notes": data.get("notes") or None,
+        })
+        meta["edit_history"] = edit_history
+        payslip.metadata_ = meta
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(payslip, "metadata_")
 
     await db.commit()
     await db.refresh(payslip)
@@ -426,7 +447,7 @@ async def record_payment(
     payslip.paid_on = date.today()
 
     # Track payment in history
-    history = payslip.payment_history or []
+    history = list(payslip.payment_history or [])
     history.append({
         "amount": float(amount),
         "date": date.today().isoformat(),
@@ -434,6 +455,8 @@ async def record_payment(
         "notes": data.get("notes"),
     })
     payslip.payment_history = history
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(payslip, "payment_history")
 
     if payslip.paid_amount >= payslip.net_salary:
         payslip.status = "Paid"

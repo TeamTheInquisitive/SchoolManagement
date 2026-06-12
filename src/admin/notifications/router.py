@@ -62,6 +62,71 @@ async def create_notification(
 
 
 # ────────────────────────────────────────────────────────────────────────────────
+# Custom Templates
+# ────────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/templates")
+async def get_custom_templates(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Get school-specific custom notification templates."""
+    from sqlalchemy import select
+    from src.models.core import Settings
+
+    result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school.id,
+            Settings.category == "notifications",
+            Settings.key == "custom_templates",
+            Settings.is_active.is_(True),
+        )
+    )
+    row = result.scalar_one_or_none()
+    return {"templates": row.value if row and row.value else []}
+
+
+@router.put("/templates")
+async def update_custom_templates(
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Save school-specific custom notification templates."""
+    import uuid as uuid_mod
+    from sqlalchemy import select
+    from src.models.core import Settings
+
+    templates = data.get("templates", [])
+    result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school.id,
+            Settings.category == "notifications",
+            Settings.key == "custom_templates",
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row:
+        row.value = templates
+        row.is_active = True
+    else:
+        row = Settings(
+            id=uuid_mod.uuid4(),
+            school_id=school.id,
+            category="notifications",
+            key="custom_templates",
+            value=templates,
+            created_by=user.id,
+        )
+        db.add(row)
+    await db.commit()
+    return {"templates": templates, "message": "Templates saved"}
+
+
+# ────────────────────────────────────────────────────────────────────────────────
 # Get notification detail
 # ────────────────────────────────────────────────────────────────────────────────
 

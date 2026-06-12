@@ -97,13 +97,13 @@ async def get_transport_stats(db: AsyncSession, school_id: uuid.UUID) -> dict:
         total_students = st_result.scalar() or 0
 
     return {
-        "total_vehicles": v_row.total,
-        "operational_vehicles": v_row.operational,
-        "under_maintenance": v_row.maintenance,
-        "out_of_order": v_row.out_of_order,
-        "total_drivers": d_row.total,
-        "active_drivers": d_row.active,
-        "available_drivers": d_row.available,
+        "total_vehicles": v_row.total or 0,
+        "operational_vehicles": v_row.operational or 0,
+        "under_maintenance": v_row.maintenance or 0,
+        "out_of_order": v_row.out_of_order or 0,
+        "total_drivers": d_row.total or 0,
+        "active_drivers": d_row.active or 0,
+        "available_drivers": d_row.available or 0,
         "total_helpers": total_helpers,
         "active_routes": active_routes,
         "total_assignments": total_assignments,
