@@ -38,6 +38,7 @@ class ParentMeeting(BaseModel):
     )
     meeting_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     follow_up_required: Mapped[bool] = mapped_column(nullable=False, default=False)
+    parent_attended: Mapped[bool] = mapped_column(nullable=False, default=True)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (

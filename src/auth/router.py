@@ -79,7 +79,7 @@ async def login(
         school = result.scalar_one_or_none()
         if school:
             school_id = school.id
-    user = await auth_service.authenticate_user(db, data.email, data.password, school_id)
+    user = await auth_service.authenticate_user(db, data.identifier or data.email, data.password, school_id)
 
     # Skip subscription check for super_admin
     if user.role != "super_admin":

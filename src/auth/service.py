@@ -29,19 +29,36 @@ from src.models.core import User
 
 
 async def authenticate_user(
-    db: AsyncSession, email: str, password: str, school_id: uuid.UUID | None = None
+    db: AsyncSession, identifier: str, password: str, school_id: uuid.UUID | None = None
 ) -> User:
-    """Authenticate a user by email and password."""
-    query = select(User).where(User.email == email, User.is_active.is_(True))
+    """Authenticate a user by email or employee_id and password."""
+    from src.models.staff import Staff
+
+    # Try email lookup first
+    query = select(User).where(User.email == identifier, User.is_active.is_(True))
     if school_id:
         query = query.where(User.school_id == school_id)
-    query = query.limit(1)
-
-    result = await db.execute(query)
+    result = await db.execute(query.limit(1))
     user = result.scalar_one_or_none()
 
+    # If not found by email, try employee_id via Staff
     if not user:
-        raise AuthenticationError("Invalid email or password")
+        staff_query = select(Staff).where(
+            Staff.employee_id == identifier, Staff.is_active.is_(True)
+        )
+        if school_id:
+            staff_query = staff_query.where(Staff.school_id == school_id)
+        staff_result = await db.execute(staff_query.limit(1))
+        staff = staff_result.scalar_one_or_none()
+        if staff:
+            user_query = select(User).where(
+                User.staff_id == staff.id, User.is_active.is_(True)
+            )
+            user_result = await db.execute(user_query.limit(1))
+            user = user_result.scalar_one_or_none()
+
+    if not user:
+        raise AuthenticationError("Invalid credentials")
 
     if user.is_locked:
         raise AuthenticationError("Account is locked due to too many failed attempts")
@@ -52,7 +69,7 @@ async def authenticate_user(
         if user.failed_login_attempts >= 5:
             user.is_locked = True
         await db.commit()
-        raise AuthenticationError("Invalid email or password")
+        raise AuthenticationError("Invalid credentials")
 
     # Reset failed attempts on successful login
     user.failed_login_attempts = 0

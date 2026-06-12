@@ -201,6 +201,7 @@ class MeetingItem(BaseModel):
     notes: str | None = None
     attendance_status: str | None = None
     follow_up_required: bool = False
+    parent_attended: bool = True
     metadata: dict = {}
 
 

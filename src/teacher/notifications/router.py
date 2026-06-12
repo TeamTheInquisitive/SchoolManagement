@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query
 from src.auth.dependencies import SchoolDep, TeacherUser
 from src.core.dependencies import PaginationDep, SessionDep
 from src.teacher.notifications import service
+from src.teacher.notifications.schemas import SentNotificationListResponse
 from src.student.notifications.schemas import (
     MarkReadResponse,
     StudentNotificationDetailResponse as NotificationDetailResponse,
@@ -14,6 +15,18 @@ from src.student.notifications.schemas import (
 )
 
 router = APIRouter(prefix="/teacher/notifications", tags=["Teacher Notifications"])
+
+
+@router.get("/sent", response_model=SentNotificationListResponse)
+async def list_sent_notifications(
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+    pagination: PaginationDep,
+) -> SentNotificationListResponse:
+    """Get notifications sent by the authenticated teacher."""
+    result = await service.list_sent_notifications(db, school.id, user, pagination)
+    return SentNotificationListResponse(**result)
 
 
 @router.get("", response_model=NotificationListResponse)

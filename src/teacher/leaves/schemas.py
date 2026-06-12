@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 class LeaveBalanceItem(BaseModel):
     leave_type: str
+    display_name: str | None = None
     total_allocated: int
     available: Decimal = Decimal("0")
     used: Decimal = Decimal("0")

@@ -698,7 +698,10 @@ async def list_submissions(
             "status": display_status,
             "marks": float(sub.marks) if sub.marks is not None else None,
             "max_marks": float(assignment.max_marks) if assignment.max_marks else None,
+            "feedback": sub.feedback,
             "graded_at": sub.graded_at,
+            "file_urls": sub.file_urls or [],
+            "comments": sub.comments,
         })
 
     paginated = paginate(items, total, pagination)

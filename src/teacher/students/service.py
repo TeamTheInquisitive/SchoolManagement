@@ -557,6 +557,7 @@ async def get_student_detail(
             "agenda": m.agenda,
             "remarks": m.remarks,
             "follow_up_required": m.follow_up_required,
+            "parent_attended": m.parent_attended,
             "next_meeting_date": m.next_meeting_date,
         }
         for m in meetings
@@ -715,6 +716,7 @@ async def get_parent_meetings(
             "notes": m.discussion_notes,
             "attendance_status": m.status,
             "follow_up_required": m.follow_up_required,
+            "parent_attended": m.parent_attended,
             "metadata": {
                 "agenda": m.agenda,
                 "remarks": m.remarks,

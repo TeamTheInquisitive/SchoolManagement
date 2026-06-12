@@ -6,7 +6,8 @@ from pydantic import BaseModel, EmailStr
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str | None = None
+    identifier: str | None = None
     password: str
 
 
