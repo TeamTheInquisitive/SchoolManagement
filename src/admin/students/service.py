@@ -182,13 +182,20 @@ async def list_students(
             item["password_changed"] = pw_changed_map.get(item["id"], False)
             item.update(parent_map.get(item["id"], {}))
 
-    # Compute summary
-    active_count = sum(1 for i in items if i["status"] == "Active")
-    inactive_count = len(items) - active_count
+    # Compute summary from database (not paginated items)
+    total_all_result = await db.execute(
+        select(func.count()).where(Student.school_id == school_id, Student.is_active.is_(True))
+    )
+    total_all = total_all_result.scalar() or 0
+    active_result = await db.execute(
+        select(func.count()).where(Student.school_id == school_id, Student.is_active.is_(True), Student.status == "Active")
+    )
+    active_count = active_result.scalar() or 0
+    inactive_count = total_all - active_count
 
     paginated = paginate(items, total, pagination)
     paginated["summary"] = {
-        "total": total,
+        "total": total_all,
         "active": active_count,
         "inactive": inactive_count,
     }
