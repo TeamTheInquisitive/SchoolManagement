@@ -182,15 +182,33 @@ async def list_students(
             item["password_changed"] = pw_changed_map.get(item["id"], False)
             item.update(parent_map.get(item["id"], {}))
 
-    # Compute summary from database (not paginated items)
+    # Compute summary scoped to current academic year
     total_all_result = await db.execute(
         select(func.count()).where(Student.school_id == school_id, Student.is_active.is_(True))
     )
     total_all = total_all_result.scalar() or 0
-    active_result = await db.execute(
-        select(func.count()).where(Student.school_id == school_id, Student.is_active.is_(True), Student.status == "Active")
-    )
-    active_count = active_result.scalar() or 0
+
+    # Active = enrolled in current academic year with Active status
+    if current_ay:
+        active_result = await db.execute(
+            select(func.count(func.distinct(StudentEnrollment.student_id)))
+            .join(Student, Student.id == StudentEnrollment.student_id)
+            .where(
+                StudentEnrollment.school_id == school_id,
+                StudentEnrollment.academic_year_id == current_ay.id,
+                StudentEnrollment.is_active.is_(True),
+                StudentEnrollment.status == "Active",
+                Student.is_active.is_(True),
+                Student.status == "Active",
+            )
+        )
+        active_count = active_result.scalar() or 0
+    else:
+        active_result = await db.execute(
+            select(func.count()).where(Student.school_id == school_id, Student.is_active.is_(True), Student.status == "Active")
+        )
+        active_count = active_result.scalar() or 0
+
     inactive_count = total_all - active_count
 
     paginated = paginate(items, total, pagination)

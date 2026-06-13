@@ -1472,9 +1472,14 @@ async def update_id_generation_config(
 async def generate_next_id(
     db: AsyncSession, school_id: uuid.UUID, entity_type: str
 ) -> dict:
-    """Generate the next ID for an entity type and increment sequence."""
+    """Generate the next ID for an entity type and increment sequence.
+
+    Checks actual database records to ensure the counter is never behind
+    what was imported via bulk operations.
+    """
     import re
     from datetime import datetime
+    from sqlalchemy import func
 
     result = await db.execute(
         select(Settings).where(
@@ -1496,13 +1501,20 @@ async def generate_next_id(
     year = str(datetime.now().year)
     yy = year[-2:]
 
-    generated = pattern.replace("{YY}", yy).replace("{YEAR}", yy)
-    seq_match = re.search(r"\{SEQ(?::(\d+))?\}", generated)
-    if seq_match:
-        pad = int(seq_match.group(1)) if seq_match.group(1) else 1
-        generated = generated[: seq_match.start()] + str(seq).zfill(pad) + generated[seq_match.end() :]
+    # Build the prefix (everything before the sequence number)
+    prefix_template = pattern.replace("{YY}", yy).replace("{YEAR}", yy)
+    seq_match_pattern = re.search(r"\{SEQ(?::(\d+))?\}", prefix_template)
+    prefix = prefix_template[: seq_match_pattern.start()] if seq_match_pattern else prefix_template
+    pad = int(seq_match_pattern.group(1)) if seq_match_pattern and seq_match_pattern.group(1) else 1
 
-    # Increment sequence
+    # Query actual max sequence from existing records to prevent duplicates
+    actual_max_seq = await _get_max_seq_from_db(db, school_id, entity_type, prefix, len(prefix), pad)
+    if actual_max_seq >= seq:
+        seq = actual_max_seq + 1
+
+    generated = prefix + str(seq).zfill(pad)
+
+    # Increment sequence and persist
     cfg["next_seq"] = seq + 1
     config[entity_type] = cfg
 
@@ -1522,3 +1534,44 @@ async def generate_next_id(
 
     await db.commit()
     return {"enabled": True, "id": generated}
+
+
+async def _get_max_seq_from_db(
+    db: AsyncSession, school_id: uuid.UUID, entity_type: str, prefix: str, prefix_len: int, pad: int
+) -> int:
+    """Query the actual max sequence number from the relevant table."""
+    from sqlalchemy import func, cast, Integer
+
+    if entity_type == "student":
+        from src.models.student import Student
+        result = await db.execute(
+            select(func.max(Student.admission_number))
+            .where(
+                Student.school_id == school_id,
+                Student.admission_number.like(f"{prefix}%"),
+                Student.is_active.is_(True),
+            )
+        )
+    elif entity_type == "teacher" or entity_type == "staff":
+        from src.models.staff import Staff
+        result = await db.execute(
+            select(func.max(Staff.employee_id))
+            .where(
+                Staff.school_id == school_id,
+                Staff.employee_id.like(f"{prefix}%"),
+                Staff.is_active.is_(True),
+            )
+        )
+    else:
+        return 0
+
+    max_id = result.scalar_one_or_none()
+    if not max_id:
+        return 0
+
+    # Extract the numeric suffix after the prefix
+    suffix = max_id[prefix_len:]
+    try:
+        return int(suffix)
+    except (ValueError, TypeError):
+        return 0

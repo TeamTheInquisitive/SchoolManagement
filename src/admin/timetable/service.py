@@ -412,7 +412,8 @@ async def get_timetable_grid(
                 filled_count += 1
                 day_slots.append({
                     "id": slot.id,
-                    "subject": slot.subject.name if slot.subject else None,
+                    "subject": slot.subject.name if slot.subject else slot.slot_type,
+                    "subject_id": slot.subject_id,
                     "teacher_name": slot.staff.full_name if slot.staff else None,
                     "teacher_id": slot.staff_id,
                     "slot_type": slot.slot_type,
@@ -455,8 +456,11 @@ async def create_slot(
     academic_year_name: str | None = None,
 ) -> dict:
     """Assign a subject+teacher to a specific slot."""
+    slot_type = data.get("slot_type", "Subject")
+    is_subject_slot = slot_type == "Subject"
+
     # Validate required fields
-    if not data.get("subject_id"):
+    if is_subject_slot and not data.get("subject_id"):
         raise HTTPException(status_code=400, detail="subject_id must not be empty")
     if not data.get("teacher_id"):
         raise HTTPException(status_code=400, detail="teacher_id must not be empty")
@@ -500,16 +504,19 @@ async def create_slot(
         section = cs.section.name if cs.section else ""
         raise SlotAlreadyOccupied(day, period.start_time.strftime("%H:%M"), f"{class_name}-{section}")
 
-    # Check teacher conflict
-    await _check_teacher_conflict(
-        db, school_id, ay.id, data["teacher_id"], period.id, day
-    )
+    # Check teacher conflict only for Subject slots
+    if is_subject_slot:
+        await _check_teacher_conflict(
+            db, school_id, ay.id, data["teacher_id"], period.id, day
+        )
 
-    # Get subject and staff for response
-    subject_result = await db.execute(select(Subject).where(Subject.id == data["subject_id"]))
-    subject = subject_result.scalar_one_or_none()
-    if not subject:
-        raise NotFound("Subject", str(data["subject_id"]))
+    # Get subject if applicable
+    subject = None
+    if is_subject_slot:
+        subject_result = await db.execute(select(Subject).where(Subject.id == data["subject_id"]))
+        subject = subject_result.scalar_one_or_none()
+        if not subject:
+            raise NotFound("Subject", str(data["subject_id"]))
 
     staff_result = await db.execute(select(Staff).where(Staff.id == data["teacher_id"]))
     staff = staff_result.scalar_one_or_none()
@@ -522,9 +529,9 @@ async def create_slot(
         class_section_id=cs.id,
         period_config_id=period.id,
         day_of_week=day,
-        subject_id=data["subject_id"],
+        subject_id=data.get("subject_id") if is_subject_slot else None,
         staff_id=data["teacher_id"],
-        slot_type=data.get("slot_type", "Lecture"),
+        slot_type=slot_type,
         created_by=created_by,
     )
     db.add(slot)
@@ -541,8 +548,8 @@ async def create_slot(
         "day": day,
         "period_start_time": period.start_time.strftime("%H:%M"),
         "period_end_time": period.end_time.strftime("%H:%M"),
-        "subject": subject.name,
-        "subject_id": subject.id,
+        "subject": subject.name if subject else slot_type,
+        "subject_id": subject.id if subject else None,
         "teacher_name": staff.full_name,
         "teacher_id": staff.id,
         "slot_type": slot.slot_type,
@@ -576,20 +583,25 @@ async def update_slot(
     if not slot:
         raise NotFound("TimetableSlot", str(slot_id))
 
+    new_slot_type = data.get("slot_type", slot.slot_type)
+    is_subject_slot = new_slot_type == "Subject"
     new_teacher_id = data.get("teacher_id", slot.staff_id)
 
-    # If teacher is changing, check for conflicts
-    if new_teacher_id and new_teacher_id != slot.staff_id:
+    # If teacher is changing, check for conflicts (only for Subject slots)
+    if is_subject_slot and new_teacher_id and new_teacher_id != slot.staff_id:
         await _check_teacher_conflict(
             db, school_id, slot.academic_year_id, new_teacher_id,
             slot.period_config_id, slot.day_of_week, exclude_slot_id=slot_id,
         )
 
     if "subject_id" in data:
-        subject_result = await db.execute(select(Subject).where(Subject.id == data["subject_id"]))
-        if not subject_result.scalar_one_or_none():
-            raise NotFound("Subject", str(data["subject_id"]))
-        slot.subject_id = data["subject_id"]
+        if data["subject_id"]:
+            subject_result = await db.execute(select(Subject).where(Subject.id == data["subject_id"]))
+            if not subject_result.scalar_one_or_none():
+                raise NotFound("Subject", str(data["subject_id"]))
+            slot.subject_id = data["subject_id"]
+        else:
+            slot.subject_id = None
 
     if "teacher_id" in data:
         staff_result = await db.execute(select(Staff).where(Staff.id == data["teacher_id"]))
@@ -599,6 +611,8 @@ async def update_slot(
 
     if "slot_type" in data:
         slot.slot_type = data["slot_type"]
+        if data["slot_type"] != "Subject":
+            slot.subject_id = None
 
     slot.updated_by = updated_by
     await db.commit()
@@ -616,7 +630,7 @@ async def update_slot(
         "day": slot.day_of_week,
         "period_start_time": period.start_time.strftime("%H:%M") if period else None,
         "period_end_time": period.end_time.strftime("%H:%M") if period else None,
-        "subject": slot.subject.name if slot.subject else None,
+        "subject": slot.subject.name if slot.subject else slot.slot_type,
         "subject_id": slot.subject_id,
         "teacher_name": slot.staff.full_name if slot.staff else None,
         "teacher_id": slot.staff_id,
@@ -677,9 +691,10 @@ async def bulk_assign_slots(
     for item in data["slots"]:
         day = item["day"]
         period_config_id = item["period_config_id"]
-        subject_id = item["subject_id"]
+        subject_id = item.get("subject_id")
         teacher_id = item["teacher_id"]
-        slot_type = item.get("slot_type", "Lecture")
+        slot_type = item.get("slot_type", "Subject")
+        is_subject_slot = slot_type == "Subject"
 
         # Check if slot already occupied
         existing_result = await db.execute(
@@ -707,44 +722,47 @@ async def bulk_assign_slots(
             })
             continue
 
-        # Check teacher conflict
-        teacher_conflict_result = await db.execute(
-            select(TimetableSlot).where(
-                TimetableSlot.school_id == school_id,
-                TimetableSlot.academic_year_id == ay.id,
-                TimetableSlot.staff_id == teacher_id,
-                TimetableSlot.period_config_id == period_config_id,
-                TimetableSlot.day_of_week == day,
-                TimetableSlot.is_active.is_(True),
+        # Check teacher conflict only for Subject slots
+        if is_subject_slot:
+            teacher_conflict_result = await db.execute(
+                select(TimetableSlot).where(
+                    TimetableSlot.school_id == school_id,
+                    TimetableSlot.academic_year_id == ay.id,
+                    TimetableSlot.staff_id == teacher_id,
+                    TimetableSlot.period_config_id == period_config_id,
+                    TimetableSlot.day_of_week == day,
+                    TimetableSlot.is_active.is_(True),
+                )
             )
-        )
-        conflicting_slot = teacher_conflict_result.scalar_one_or_none()
-        if conflicting_slot:
-            conflict_count += 1
-            conflict_cs = conflicting_slot.class_section
-            conflict_class = conflict_cs.class_.name if conflict_cs and conflict_cs.class_ else "?"
-            conflict_section = conflict_cs.section.name if conflict_cs and conflict_cs.section else "?"
-            staff = conflicting_slot.staff
-            teacher_name = staff.full_name if staff else "Unknown"
-            results.append({
-                "id": None,
-                "day": day,
-                "period_config_id": period_config_id,
-                "subject": None,
-                "teacher_name": None,
-                "teacher_id": teacher_id,
-                "slot_type": slot_type,
-                "status": "Conflict",
-                "conflict": {
-                    "teacher_name": teacher_name,
-                    "existing_class": f"{conflict_class}-{conflict_section}",
-                },
-            })
-            continue
+            conflicting_slot = teacher_conflict_result.scalar_one_or_none()
+            if conflicting_slot:
+                conflict_count += 1
+                conflict_cs = conflicting_slot.class_section
+                conflict_class = conflict_cs.class_.name if conflict_cs and conflict_cs.class_ else "?"
+                conflict_section = conflict_cs.section.name if conflict_cs and conflict_cs.section else "?"
+                staff = conflicting_slot.staff
+                teacher_name = staff.full_name if staff else "Unknown"
+                results.append({
+                    "id": None,
+                    "day": day,
+                    "period_config_id": period_config_id,
+                    "subject": None,
+                    "teacher_name": None,
+                    "teacher_id": teacher_id,
+                    "slot_type": slot_type,
+                    "status": "Conflict",
+                    "conflict": {
+                        "teacher_name": teacher_name,
+                        "existing_class": f"{conflict_class}-{conflict_section}",
+                    },
+                })
+                continue
 
         # Get subject and staff names
-        subject_result = await db.execute(select(Subject).where(Subject.id == subject_id))
-        subject = subject_result.scalar_one_or_none()
+        subject = None
+        if is_subject_slot and subject_id:
+            subject_result = await db.execute(select(Subject).where(Subject.id == subject_id))
+            subject = subject_result.scalar_one_or_none()
         staff_result = await db.execute(select(Staff).where(Staff.id == teacher_id))
         staff = staff_result.scalar_one_or_none()
 
@@ -754,7 +772,7 @@ async def bulk_assign_slots(
             class_section_id=cs.id,
             period_config_id=period_config_id,
             day_of_week=day,
-            subject_id=subject_id,
+            subject_id=subject_id if is_subject_slot else None,
             staff_id=teacher_id,
             slot_type=slot_type,
             created_by=created_by,
@@ -767,7 +785,7 @@ async def bulk_assign_slots(
             "id": slot.id,
             "day": day,
             "period_config_id": period_config_id,
-            "subject": subject.name if subject else None,
+            "subject": subject.name if subject else slot_type,
             "teacher_name": staff.full_name if staff else None,
             "teacher_id": teacher_id,
             "slot_type": slot_type,

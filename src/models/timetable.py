@@ -76,7 +76,7 @@ class TimetableSlot(BaseModel):
     staff_id: Mapped[uuid.UUID | None] = mapped_column(
         UUIDType, ForeignKey("staff.id"), default=None
     )
-    slot_type: Mapped[str] = mapped_column(String(20), default="Lecture", nullable=False)
+    slot_type: Mapped[str] = mapped_column(String(50), default="Subject", nullable=False)
 
     # Relationships
     academic_year: Mapped["AcademicYear"] = relationship("AcademicYear", lazy="selectin")

@@ -153,8 +153,11 @@ async def list_notifications(
     type: str | None = None,
     status: str | None = None,
     target_type: str | None = None,
+    date: str | None = None,
 ) -> dict:
     """List notifications with filters and summary KPIs."""
+    from datetime import datetime as dt
+
     base_query = select(Notification).where(
         Notification.school_id == school_id,
         Notification.is_active.is_(True),
@@ -185,6 +188,16 @@ async def list_notifications(
     if target_type:
         base_query = base_query.where(Notification.target_type == target_type)
         count_query = count_query.where(Notification.target_type == target_type)
+
+    if date:
+        try:
+            filter_date = dt.strptime(date, "%Y-%m-%d").date()
+            from sqlalchemy import cast, Date
+            date_filter = cast(Notification.created_at, Date) == filter_date
+            base_query = base_query.where(date_filter)
+            count_query = count_query.where(date_filter)
+        except ValueError:
+            pass
 
     # Get total count
     total_result = await db.execute(count_query)

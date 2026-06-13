@@ -34,10 +34,11 @@ async def list_notifications(
     type: str | None = Query(default=None),
     status: str | None = Query(default=None),
     target_type: str | None = Query(default=None),
+    date: str | None = Query(default=None),
 ) -> NotificationListResponse:
     """List notifications with filters and summary KPIs."""
     result = await service.list_notifications(
-        db, school.id, pagination, search, type, status, target_type
+        db, school.id, pagination, search, type, status, target_type, date
     )
     return NotificationListResponse(**result)
 
