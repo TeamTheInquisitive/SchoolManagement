@@ -50,9 +50,9 @@ async def authenticate_user(
             staff_query = staff_query.where(Staff.school_id == school_id)
         staff_result = await db.execute(staff_query.limit(1))
         staff = staff_result.scalar_one_or_none()
-        if staff:
+        if staff and staff.user_id:
             user_query = select(User).where(
-                User.staff_id == staff.id, User.is_active.is_(True)
+                User.id == staff.user_id, User.is_active.is_(True)
             )
             user_result = await db.execute(user_query.limit(1))
             user = user_result.scalar_one_or_none()
