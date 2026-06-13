@@ -28,6 +28,7 @@ class UpdatePayslipRequest(BaseModel):
     total_allowances: Decimal | None = None
     total_deductions: Decimal | None = None
     net_salary: Decimal | None = None
+    notes: str | None = None
 
 
 class RecordPaymentRequest(BaseModel):
