@@ -62,6 +62,8 @@ async def list_students(
     section: str | None = None,
     status: str | None = None,
     gender: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> dict:
     """List students with filters and pagination.
 
@@ -118,6 +120,32 @@ async def list_students(
                 Student.email.ilike(search_pattern),
             )
         )
+
+    # Apply date range filter (admission_date or created_at)
+    if date_from:
+        from datetime import date as date_type
+        try:
+            d = date_type.fromisoformat(date_from)
+            query = query.where(
+                or_(
+                    Student.admission_date >= d,
+                    and_(Student.admission_date.is_(None), Student.created_at >= d),
+                )
+            )
+        except ValueError:
+            pass
+    if date_to:
+        from datetime import date as date_type
+        try:
+            d = date_type.fromisoformat(date_to)
+            query = query.where(
+                or_(
+                    Student.admission_date <= d,
+                    and_(Student.admission_date.is_(None), Student.created_at <= d),
+                )
+            )
+        except ValueError:
+            pass
 
     # Count AFTER all filters, BEFORE pagination
     count_query = select(func.count()).select_from(query.subquery())

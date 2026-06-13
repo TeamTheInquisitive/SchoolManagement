@@ -52,10 +52,12 @@ async def list_students(
     section: str | None = Query(default=None),
     status: str | None = Query(default=None),
     gender: str | None = Query(default=None),
+    date_from: str | None = Query(default=None),
+    date_to: str | None = Query(default=None),
 ) -> StudentListResponse:
     """List students with filters and pagination."""
     result = await service.list_students(
-        db, school.id, pagination, search, class_name, section, status, gender
+        db, school.id, pagination, search, class_name, section, status, gender, date_from, date_to
     )
     return StudentListResponse(**result)
 
