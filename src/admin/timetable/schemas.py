@@ -61,9 +61,9 @@ class CreateSlotRequest(BaseModel):
     class_section_id: UUID
     day: str
     period_config_id: UUID
-    subject_id: UUID
+    subject_id: UUID | None = None
     teacher_id: UUID
-    slot_type: str = "Lecture"
+    slot_type: str = "Subject"
 
 
 class UpdateSlotRequest(BaseModel):
@@ -104,9 +104,9 @@ class SlotDeleteResponse(BaseModel):
 class BulkSlotItem(BaseModel):
     day: str
     period_config_id: UUID
-    subject_id: UUID
+    subject_id: UUID | None = None
     teacher_id: UUID
-    slot_type: str = "Lecture"
+    slot_type: str = "Subject"
 
 
 class BulkAssignRequest(BaseModel):

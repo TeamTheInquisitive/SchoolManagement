@@ -175,3 +175,178 @@ async def get_subscription_banner(
         }
 
     return {"show_banner": False}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Analytics endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/analytics/attendance-by-class", response_model=None)
+async def get_attendance_by_class(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get attendance percentage per class for the current academic year."""
+    return await service.get_attendance_by_class(db, school.id)
+
+
+@router.get("/analytics/fee-collection-trend", response_model=None)
+async def get_fee_collection_trend(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get monthly fee collection amounts (last 6 months)."""
+    return await service.get_fee_collection_trend(db, school.id)
+
+
+@router.get("/analytics/exam-performance", response_model=None)
+async def get_exam_performance(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get average marks percentage per class across all exams."""
+    return await service.get_exam_performance(db, school.id)
+
+
+@router.get("/analytics/teacher-workload", response_model=None)
+async def get_teacher_workload(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get teacher workload distribution (periods assigned vs max)."""
+    return await service.get_teacher_workload(db, school.id)
+
+
+@router.get("/analytics/enrollment-trend", response_model=None)
+async def get_enrollment_trend(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get student enrollment count per academic year (historical)."""
+    return await service.get_enrollment_trend(db, school.id)
+
+
+@router.get("/analytics/fee-defaulters-by-class", response_model=None)
+async def get_fee_defaulters_by_class(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get count of fee defaulters per class."""
+    return await service.get_fee_defaulters_by_class(db, school.id)
+
+
+@router.get("/analytics/attendance-monthly-comparison", response_model=None)
+async def get_attendance_monthly_comparison(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get this month vs last month attendance comparison by class."""
+    return await service.get_attendance_monthly_comparison(db, school.id)
+
+
+@router.get("/analytics/gender-ratio", response_model=None)
+async def get_gender_ratio(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get overall male/female/other student ratio."""
+    return await service.get_gender_ratio(db, school.id)
+
+
+@router.get("/analytics/subject-performance", response_model=None)
+async def get_subject_performance(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get average score and pass rate per subject across all classes."""
+    return await service.get_subject_performance(db, school.id)
+
+
+@router.get("/analytics/class-toppers", response_model=None)
+async def get_class_toppers(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get top scoring student per class from latest exam."""
+    return await service.get_class_toppers(db, school.id)
+
+
+@router.get("/analytics/attendance-marks-correlation", response_model=None)
+async def get_attendance_marks_correlation(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get per-student attendance % and exam avg % for correlation analysis."""
+    return await service.get_attendance_marks_correlation(db, school.id)
+
+
+@router.get("/analytics/revenue-vs-target", response_model=None)
+async def get_revenue_vs_target(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get monthly collected vs expected (total fee structure amounts)."""
+    return await service.get_revenue_vs_target(db, school.id)
+
+
+@router.get("/analytics/teacher-leave-patterns", response_model=None)
+async def get_teacher_leave_patterns(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get monthly leave days by department (Teaching vs Non-Teaching)."""
+    return await service.get_teacher_leave_patterns(db, school.id)
+
+
+@router.get("/analytics/transport-utilization", response_model=None)
+async def get_transport_utilization(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get occupied vs capacity per route."""
+    return await service.get_transport_utilization(db, school.id)
+
+
+@router.get("/analytics/concession-summary", response_model=None)
+async def get_concession_summary(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get total concession amount grouped by category/type."""
+    return await service.get_concession_summary(db, school.id)
+
+
+@router.get("/analytics/growth-rate", response_model=None)
+async def get_growth_rate(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get year-over-year student count change percentage."""
+    return await service.get_growth_rate(db, school.id)
+
+
+@router.get("/analytics/fee-collection-rate", response_model=None)
+async def get_fee_collection_rate(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get monthly percentage of expected fees actually collected."""
+    return await service.get_fee_collection_rate(db, school.id)
