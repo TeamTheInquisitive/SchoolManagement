@@ -62,55 +62,20 @@ async def list_students(
     section: str | None = None,
     status: str | None = None,
     gender: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
 ) -> dict:
-    """List students with filters and pagination.
-
-    Execution order: Dataset → Filters → Search → Count → Sort → Paginate → Response
-    """
-    # Get current academic year
-    ay_result = await db.execute(
-        select(AcademicYear).where(
-            AcademicYear.school_id == school_id,
-            AcademicYear.is_current.is_(True),
-        )
-    )
-    current_ay = ay_result.scalar_one_or_none()
-
-    # Base query with enrollment join for class/section filtering
+    """List students with filters and pagination."""
+    # Base query
     query = select(Student).where(
         Student.school_id == school_id,
         Student.is_active.is_(True),
     )
 
-    # Join enrollment + class_section for class/section filtering BEFORE pagination
-    if current_ay and (class_name or section):
-        query = (
-            query
-            .join(StudentEnrollment, and_(
-                StudentEnrollment.student_id == Student.id,
-                StudentEnrollment.academic_year_id == current_ay.id,
-                StudentEnrollment.is_active.is_(True),
-            ))
-            .join(ClassSection, ClassSection.id == StudentEnrollment.class_section_id)
-            .join(Class, Class.id == ClassSection.class_id)
-            .join(Section, Section.id == ClassSection.section_id)
-        )
-        if class_name:
-            query = query.where(Class.name == class_name)
-        if section:
-            query = query.where(Section.name == section)
-
-    # Apply status filter
     if status:
         query = query.where(Student.status == status)
 
-    # Apply gender filter
     if gender:
         query = query.where(Student.gender == gender)
 
-    # Apply search filter
     if search:
         search_pattern = f"%{search}%"
         query = query.where(
@@ -121,42 +86,24 @@ async def list_students(
             )
         )
 
-    # Apply date range filter (admission_date or created_at)
-    if date_from:
-        from datetime import date as date_type
-        try:
-            d = date_type.fromisoformat(date_from)
-            query = query.where(
-                or_(
-                    Student.admission_date >= d,
-                    and_(Student.admission_date.is_(None), Student.created_at >= d),
-                )
-            )
-        except ValueError:
-            pass
-    if date_to:
-        from datetime import date as date_type
-        try:
-            d = date_type.fromisoformat(date_to)
-            query = query.where(
-                or_(
-                    Student.admission_date <= d,
-                    and_(Student.admission_date.is_(None), Student.created_at <= d),
-                )
-            )
-        except ValueError:
-            pass
-
-    # Count AFTER all filters, BEFORE pagination
+    # Count query
     count_query = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_query)).scalar() or 0
 
-    # Sort then paginate
-    query = query.order_by(Student.full_name).offset(pagination.offset).limit(pagination.page_size)
+    # Apply pagination
+    query = query.offset(pagination.offset).limit(pagination.page_size).order_by(Student.full_name)
     result = await db.execute(query)
     students = result.scalars().all()
 
-    # Build response items with enrollment info
+    # Get current academic year for enrollment info
+    ay_result = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school_id,
+            AcademicYear.is_current.is_(True),
+        )
+    )
+    current_ay = ay_result.scalar_one_or_none()
+
     items = []
     for student in students:
         class_name_val = None
@@ -175,6 +122,7 @@ async def list_students(
             enrollment = enrollment_result.scalar_one_or_none()
             if enrollment and enrollment.class_section:
                 cs = enrollment.class_section
+                # Get class and section names
                 cls_result = await db.execute(select(Class).where(Class.id == cs.class_id))
                 cls = cls_result.scalar_one_or_none()
                 sec_result = await db.execute(select(Section).where(Section.id == cs.section_id))
@@ -183,6 +131,12 @@ async def list_students(
                     class_name_val = cls.name
                 if sec:
                     section_val = sec.name
+
+        # Apply class/section filters
+        if class_name and class_name_val != class_name:
+            continue
+        if section and section_val != section:
+            continue
 
         items.append({
             "id": student.id,
@@ -206,7 +160,7 @@ async def list_students(
             "password_changed": False,
         })
 
-    # Lookup password_changed and parent info in batch
+    # Lookup password_changed for all students in the list
     student_ids = [i["id"] for i in items]
     if student_ids:
         user_result = await db.execute(
@@ -216,6 +170,7 @@ async def list_students(
         )
         pw_changed_map = {row.student_id: row.password_changed for row in user_result}
 
+        # Lookup parent info
         sp_result = await db.execute(
             select(StudentParent.student_id, Parent.full_name, Parent.phone, Parent.email, Parent.relation)
             .join(Parent, Parent.id == StudentParent.parent_id)
@@ -233,6 +188,7 @@ async def list_students(
     )
     total_all = total_all_result.scalar() or 0
 
+    # Active = enrolled in current academic year with Active status
     if current_ay:
         active_result = await db.execute(
             select(func.count(func.distinct(StudentEnrollment.student_id)))

@@ -500,24 +500,10 @@ async def mark_all_paid(
     today = date.today()
     count = 0
     for p in payslips:
-        remaining = p.net_salary - (p.paid_amount or Decimal("0"))
-        if remaining <= Decimal("0"):
-            continue
         p.paid_amount = p.net_salary
         p.status = "Paid"
         p.paid_on = today
         p.payment_method = "Bulk"
-        # Record in payment history
-        history = list(p.payment_history or [])
-        history.append({
-            "amount": float(remaining),
-            "date": today.isoformat(),
-            "method": "Bulk",
-            "notes": "Marked as paid via bulk action",
-        })
-        p.payment_history = history
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(p, "payment_history")
         count += 1
 
     await db.commit()

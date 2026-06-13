@@ -14,7 +14,7 @@
 | POST | /api/v1/auth/reset-password | Reset with token |
 | GET | /api/v1/auth/school-profile | School info (any auth user) |
 
-## Admin - Dashboard & Analytics (16 endpoints)
+## Admin - Dashboard (8 endpoints)
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | /admin/dashboard/stats | KPI cards |
@@ -25,14 +25,6 @@
 | GET | /admin/dashboard/leave-overview | Leave status + pending approvals |
 | GET | /admin/dashboard/low-attendance | Students below threshold |
 | GET | /admin/dashboard/subscription-banner | Subscription status |
-| GET | /admin/dashboard/analytics/attendance-by-class | Attendance % per class |
-| GET | /admin/dashboard/analytics/fee-collection-trend | Monthly fee collection (6 months) |
-| GET | /admin/dashboard/analytics/exam-performance | Avg marks & pass rate per class |
-| GET | /admin/dashboard/analytics/teacher-workload | Staff period utilization |
-| GET | /admin/dashboard/analytics/enrollment-trend | Student count per academic year |
-| GET | /admin/dashboard/analytics/fee-defaulters-by-class | Overdue students per class |
-| GET | /admin/dashboard/analytics/attendance-monthly-comparison | This month vs last month |
-| GET | /admin/dashboard/analytics/gender-ratio | Male/Female/Other counts |
 
 ## Admin - Settings (37 endpoints)
 | Method | Path | Description |
