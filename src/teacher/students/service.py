@@ -22,7 +22,7 @@ async def _get_staff_for_user(db: AsyncSession, user: User) -> Staff | None:
     """Get the staff record linked to a user."""
     if not user.staff_id:
         return None
-    result = await db.execute(select(Staff).where(Staff.id == user.staff_id))
+    result = await db.execute(select(Staff).where(Staff.id == user.staff_id, Staff.is_active.is_(True)))
     return result.scalar_one_or_none()
 
 

@@ -47,7 +47,8 @@ async def _get_staff_for_user(
     staff = result.scalar_one_or_none()
     if not staff:
         raise NotFound("Staff record", str(user.staff_id))
-    return staff
+
+    raise NotFound("Staff record for current user")
 
 
 async def get_leave_balance(
