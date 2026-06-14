@@ -276,10 +276,12 @@ async def list_notifications(
                 "date": n.sent_at.strftime("%Y-%m-%d") if n.sent_at else (
                     n.created_at.strftime("%Y-%m-%d") if n.created_at else None
                 ),
+                "sent_at": n.sent_at.isoformat() if n.sent_at else None,
+                "created_at": n.created_at.isoformat() if n.created_at else None,
                 "status": n.status,
                 "read_rate": _format_read_rate(n.recipients_count, n.read_count),
                 "recipients_count": n.recipients_count,
-                "scheduled_at": n.scheduled_at,
+                "scheduled_at": n.scheduled_at.isoformat() if n.scheduled_at else None,
             }
         )
 

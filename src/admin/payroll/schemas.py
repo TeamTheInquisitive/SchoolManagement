@@ -28,6 +28,7 @@ class UpdatePayslipRequest(BaseModel):
     total_allowances: Decimal | None = None
     total_deductions: Decimal | None = None
     net_salary: Decimal | None = None
+    notes: str | None = None
 
 
 class RecordPaymentRequest(BaseModel):
@@ -73,10 +74,17 @@ class PayslipListItem(BaseModel):
     transport_allowance: Decimal = Decimal("0")
     allowances: Decimal
     deductions: Decimal
+    deduction_breakup: dict | None = None
     net_salary: Decimal
     paid_amount: Decimal = Decimal("0")
+    working_days: int = 26
+    total_days: int = 30
     status: str
     paid_on: date | None = None
+    payment_history: list[dict] = []
+    payment_method: str | None = None
+    notes: str | None = None
+    edit_history: list[dict] = []
 
 
 class PayrollSummary(BaseModel):

@@ -421,8 +421,9 @@ async def create_teacher(
     db.add(user)
     await db.flush()
 
-    # Link user to staff
+    # Link user to staff (both directions)
     staff.user_id = user.id
+    user.staff_id = staff.id
 
     # Create salary structure from submitted salary fields
     ay_result = await db.execute(

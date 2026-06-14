@@ -1067,23 +1067,6 @@ Soft-delete all payslips for a given month/year.
 
 ---
 
-### POST /api/v1/admin/transport/routes/shuffle-assign
-
-**Request:**
-```json
-{
-  "class_name": "10",
-  "section": null
-}
-```
-
-**Response: 200**
-```json
-{"message": "Students shuffled and assigned to routes", "assigned": 45}
-```
-
----
-
 ## 12. Timetable (`/admin/timetable`)
 
 ### POST /api/v1/admin/timetable/periods

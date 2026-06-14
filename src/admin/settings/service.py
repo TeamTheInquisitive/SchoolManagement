@@ -1575,3 +1575,304 @@ async def _get_max_seq_from_db(
         return int(suffix)
     except (ValueError, TypeError):
         return 0
+
+
+# ---------------------------------------------------------------------------
+# Class-Section Teacher Assignments
+# ---------------------------------------------------------------------------
+
+
+async def _get_current_academic_year(db: AsyncSession, school_id: uuid.UUID):
+    """Get the current academic year for the school."""
+    from src.models.core import AcademicYear
+
+    result = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school_id,
+            AcademicYear.is_current.is_(True),
+            AcademicYear.is_active.is_(True),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_class_section_assignments(
+    db: AsyncSession, school_id: uuid.UUID
+) -> dict:
+    """
+    Get all class sections with their assigned class teacher and subject teachers
+    for the current academic year.
+    """
+    from src.models.academic import Class, ClassSection, Section, Subject, ClassSubject
+    from src.models.staff import Staff, ClassAssignment
+
+    # 1. Get current academic year
+    ay = await _get_current_academic_year(db, school_id)
+    if not ay:
+        return {"academic_year": None, "classes": []}
+
+    # 2. Get all classes with their sections for this school
+    classes_result = await db.execute(
+        select(Class).where(
+            Class.school_id == school_id,
+            Class.is_active.is_(True),
+        ).order_by(Class.sort_order, Class.name)
+    )
+    classes = classes_result.scalars().all()
+
+    # 3. Get all class sections for the current academic year
+    cs_result = await db.execute(
+        select(ClassSection).where(
+            ClassSection.school_id == school_id,
+            ClassSection.academic_year_id == ay.id,
+            ClassSection.is_active.is_(True),
+        )
+    )
+    class_sections = cs_result.scalars().all()
+
+    # 4. Get all class-subject mappings for the current academic year
+    csub_result = await db.execute(
+        select(ClassSubject).where(
+            ClassSubject.school_id == school_id,
+            ClassSubject.academic_year_id == ay.id,
+            ClassSubject.is_active.is_(True),
+        )
+    )
+    class_subjects = csub_result.scalars().all()
+
+    # 5. Get all subjects for lookup
+    subj_result = await db.execute(
+        select(Subject).where(
+            Subject.school_id == school_id,
+            Subject.is_active.is_(True),
+        )
+    )
+    subjects = subj_result.scalars().all()
+    subject_map = {s.id: s for s in subjects}
+
+    # 6. Get all ClassAssignment records for the current academic year
+    assign_result = await db.execute(
+        select(ClassAssignment).where(
+            ClassAssignment.school_id == school_id,
+            ClassAssignment.academic_year_id == ay.id,
+            ClassAssignment.is_active.is_(True),
+            ClassAssignment.status == "Active",
+        )
+    )
+    assignments = assign_result.scalars().all()
+
+    # 7. Get all staff for lookup
+    staff_ids = {a.staff_id for a in assignments}
+    staff_map: dict = {}
+    if staff_ids:
+        staff_result = await db.execute(
+            select(Staff).where(Staff.id.in_(staff_ids))
+        )
+        for s in staff_result.scalars().all():
+            staff_map[s.id] = s
+
+    # Build lookup: class_section_id -> list of assignments
+    assignments_by_cs: dict = {}
+    for a in assignments:
+        assignments_by_cs.setdefault(a.class_section_id, []).append(a)
+
+    # Build lookup: class_id -> list of subject_ids
+    subjects_by_class: dict = {}
+    for cs in class_subjects:
+        subjects_by_class.setdefault(cs.class_id, []).append(cs.subject_id)
+
+    # Build lookup: class_id -> list of class_sections
+    sections_by_class: dict = {}
+    for cs in class_sections:
+        sections_by_class.setdefault(cs.class_id, []).append(cs)
+
+    # Build response
+    response_classes = []
+    for cls in classes:
+        cls_sections = sections_by_class.get(cls.id, [])
+        if not cls_sections:
+            continue
+
+        section_list = []
+        for cs in sorted(cls_sections, key=lambda x: (x.section.sort_order if x.section else 0, str(x.section.name) if x.section else "")):
+            cs_assignments = assignments_by_cs.get(cs.id, [])
+
+            # Find class teacher
+            class_teacher = None
+            for a in cs_assignments:
+                if a.is_class_teacher:
+                    staff = staff_map.get(a.staff_id)
+                    if staff:
+                        class_teacher = {
+                            "staff_id": str(staff.id),
+                            "name": staff.full_name,
+                        }
+                    break
+
+            # Build subject teachers list
+            class_subject_ids = subjects_by_class.get(cls.id, [])
+            subject_teachers = []
+            for subj_id in class_subject_ids:
+                subj = subject_map.get(subj_id)
+                if not subj:
+                    continue
+
+                # Find assignment for this subject in this section
+                assigned_staff = None
+                assigned_staff_name = None
+                for a in cs_assignments:
+                    if not a.is_class_teacher and a.subject_id == subj_id:
+                        staff = staff_map.get(a.staff_id)
+                        if staff:
+                            assigned_staff = str(staff.id)
+                            assigned_staff_name = staff.full_name
+                        break
+
+                subject_teachers.append({
+                    "subject_id": str(subj.id),
+                    "subject_name": subj.name,
+                    "staff_id": assigned_staff,
+                    "staff_name": assigned_staff_name,
+                })
+
+            section_list.append({
+                "id": str(cs.id),
+                "section_name": cs.section.name if cs.section else "",
+                "class_teacher": class_teacher,
+                "subject_teachers": subject_teachers,
+            })
+
+        response_classes.append({
+            "id": str(cls.id),
+            "name": cls.name,
+            "sections": section_list,
+        })
+
+    return {
+        "academic_year": ay.name,
+        "classes": response_classes,
+    }
+
+
+async def update_class_section_assignments(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    class_section_id: uuid.UUID,
+    class_teacher_id: uuid.UUID | None,
+    subject_teachers: list[dict],
+) -> dict:
+    """
+    Upsert class teacher and subject teacher assignments for a specific section.
+    """
+    from src.models.academic import ClassSection
+    from src.models.staff import ClassAssignment
+
+    # 1. Get current academic year
+    ay = await _get_current_academic_year(db, school_id)
+    if not ay:
+        raise ValueError("No current academic year found")
+
+    # 2. Validate class_section_id exists
+    cs_result = await db.execute(
+        select(ClassSection).where(
+            ClassSection.id == class_section_id,
+            ClassSection.school_id == school_id,
+            ClassSection.is_active.is_(True),
+        )
+    )
+    cs = cs_result.scalar_one_or_none()
+    if not cs:
+        raise ValueError("Class section not found")
+
+    # 3. Handle class teacher assignment
+    if class_teacher_id is not None:
+        # Deactivate existing class teacher for this section+year
+        existing_ct_result = await db.execute(
+            select(ClassAssignment).where(
+                ClassAssignment.school_id == school_id,
+                ClassAssignment.class_section_id == class_section_id,
+                ClassAssignment.academic_year_id == ay.id,
+                ClassAssignment.is_class_teacher.is_(True),
+                ClassAssignment.is_active.is_(True),
+                ClassAssignment.status == "Active",
+            )
+        )
+        for existing in existing_ct_result.scalars().all():
+            existing.status = "Inactive"
+            existing.is_active = False
+
+        # Create new class teacher assignment
+        new_ct = ClassAssignment(
+            school_id=school_id,
+            staff_id=class_teacher_id,
+            class_section_id=class_section_id,
+            subject_id=None,
+            academic_year_id=ay.id,
+            is_class_teacher=True,
+            status="Active",
+        )
+        db.add(new_ct)
+    else:
+        # If class_teacher_id is explicitly None, remove existing class teacher
+        existing_ct_result = await db.execute(
+            select(ClassAssignment).where(
+                ClassAssignment.school_id == school_id,
+                ClassAssignment.class_section_id == class_section_id,
+                ClassAssignment.academic_year_id == ay.id,
+                ClassAssignment.is_class_teacher.is_(True),
+                ClassAssignment.is_active.is_(True),
+                ClassAssignment.status == "Active",
+            )
+        )
+        for existing in existing_ct_result.scalars().all():
+            existing.status = "Inactive"
+            existing.is_active = False
+
+    # 4. Handle subject teacher assignments
+    for st in subject_teachers:
+        subject_id = uuid.UUID(st["subject_id"]) if isinstance(st["subject_id"], str) else st["subject_id"]
+        staff_id = st.get("staff_id")
+
+        # Find existing assignment for this section+subject+year
+        existing_st_result = await db.execute(
+            select(ClassAssignment).where(
+                ClassAssignment.school_id == school_id,
+                ClassAssignment.class_section_id == class_section_id,
+                ClassAssignment.subject_id == subject_id,
+                ClassAssignment.academic_year_id == ay.id,
+                ClassAssignment.is_class_teacher.is_(False),
+                ClassAssignment.is_active.is_(True),
+                ClassAssignment.status == "Active",
+            )
+        )
+        existing_assignments = existing_st_result.scalars().all()
+
+        if staff_id is None:
+            # Remove existing assignment
+            for existing in existing_assignments:
+                existing.status = "Inactive"
+                existing.is_active = False
+        else:
+            staff_uuid = uuid.UUID(staff_id) if isinstance(staff_id, str) else staff_id
+            # Deactivate existing and create new
+            for existing in existing_assignments:
+                if existing.staff_id == staff_uuid:
+                    # Already assigned to the same staff, skip
+                    break
+                existing.status = "Inactive"
+                existing.is_active = False
+            else:
+                # Create new subject teacher assignment
+                new_st = ClassAssignment(
+                    school_id=school_id,
+                    staff_id=staff_uuid,
+                    class_section_id=class_section_id,
+                    subject_id=subject_id,
+                    academic_year_id=ay.id,
+                    is_class_teacher=False,
+                    status="Active",
+                )
+                db.add(new_st)
+
+    await db.commit()
+    return {"message": "Class section assignments updated successfully"}

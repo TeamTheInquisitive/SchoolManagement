@@ -50,7 +50,15 @@ async def list_mentors(db: AsyncSession, school_id: uuid.UUID) -> dict:
     counts = {row.staff_id: row.mentee_count for row in count_result.all()}
 
     if not counts:
-        return {"mentors": []}
+        total_enrolled_result = await db.execute(
+            select(func.count(StudentEnrollment.student_id)).where(
+                StudentEnrollment.school_id == school_id,
+                StudentEnrollment.academic_year_id == ay.id,
+                StudentEnrollment.is_active.is_(True),
+                StudentEnrollment.status == "Active",
+            )
+        )
+        return {"mentors": [], "total_enrolled": total_enrolled_result.scalar() or 0, "total_mentees": 0}
 
     # Fetch staff details for those with assignments
     staff_result = await db.execute(
@@ -68,7 +76,20 @@ async def list_mentors(db: AsyncSession, school_id: uuid.UUID) -> dict:
         })
 
     mentors.sort(key=lambda m: m["staff_name"])
-    return {"mentors": mentors}
+
+    # Total enrolled students for unassigned calculation
+    total_enrolled_result = await db.execute(
+        select(func.count(StudentEnrollment.student_id)).where(
+            StudentEnrollment.school_id == school_id,
+            StudentEnrollment.academic_year_id == ay.id,
+            StudentEnrollment.is_active.is_(True),
+            StudentEnrollment.status == "Active",
+        )
+    )
+    total_enrolled = total_enrolled_result.scalar() or 0
+    total_mentees = sum(counts.values())
+
+    return {"mentors": mentors, "total_enrolled": total_enrolled, "total_mentees": total_mentees}
 
 
 async def get_mentor_students(db: AsyncSession, school_id: uuid.UUID, staff_id: uuid.UUID) -> dict:

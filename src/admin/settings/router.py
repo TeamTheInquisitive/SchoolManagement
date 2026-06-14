@@ -677,3 +677,45 @@ async def update_attendance_config(
         db.add(Settings(school_id=school.id, category="attendance", key="config", value=config, created_by=user.id))
     await db.commit()
     return {**config, "message": "Attendance config updated"}
+
+
+# ---------------------------------------------------------------------------
+# Class-Section Teacher Assignments
+# ---------------------------------------------------------------------------
+
+
+@router.get("/class-section-assignments", response_model=None)
+async def get_class_section_assignments(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Get all class sections with their assigned class teacher and subject teachers."""
+    return await service.get_class_section_assignments(db, school.id)
+
+
+@router.put("/class-section-assignments/{class_section_id}", response_model=None)
+async def update_class_section_assignments(
+    class_section_id: uuid.UUID,
+    data: dict,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Upsert class teacher and subject teacher assignments for a specific section."""
+    class_teacher_id = data.get("class_teacher_id")
+    if class_teacher_id is not None:
+        class_teacher_id = uuid.UUID(class_teacher_id) if isinstance(class_teacher_id, str) else class_teacher_id
+
+    subject_teachers = data.get("subject_teachers", [])
+
+    try:
+        return await service.update_class_section_assignments(
+            db=db,
+            school_id=school.id,
+            class_section_id=class_section_id,
+            class_teacher_id=class_teacher_id,
+            subject_teachers=subject_teachers,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
