@@ -128,6 +128,26 @@ async def update_custom_templates(
 
 
 # ────────────────────────────────────────────────────────────────────────────────
+# Teacher-sent notifications
+# ────────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/teacher-sent")
+async def list_teacher_sent_notifications(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+    pagination: PaginationDep,
+    teacher_id: str | None = Query(default=None),
+    date: str | None = Query(default=None),
+):
+    """List all notifications sent by teachers."""
+    return await service.list_teacher_notifications(
+        db, school.id, pagination, teacher_id, date
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────────
 # Get notification detail
 # ────────────────────────────────────────────────────────────────────────────────
 
@@ -181,3 +201,5 @@ async def delete_notification(
         db, school.id, notification_id, user.id
     )
     return NotificationArchiveResponse(**result)
+
+

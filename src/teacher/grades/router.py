@@ -14,6 +14,7 @@ from src.teacher.grades.schemas import (
     GradesListResponse,
     ImportGradesResponse,
     LeaderboardResponse,
+    PublishExamResponse,
     SubmitGradesRequest,
     SubmitGradesResponse,
     UpdateGradesRequest,
@@ -72,6 +73,18 @@ async def get_exams_for_grading(
     """List available exams for grading."""
     result = await service.get_exams_for_grading(db, school.id, user, class_id, academic_year)
     return ExamsForGradingResponse(**result)
+
+
+@router.post("/exams/{exam_id}/publish", response_model=PublishExamResponse)
+async def publish_exam(
+    exam_id: uuid.UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+) -> PublishExamResponse:
+    """Publish exam results. Requires all students to have marks."""
+    result = await service.publish_exam(db, school.id, user, exam_id)
+    return PublishExamResponse(**result)
 
 
 @router.get("/report", response_model=GradeReportResponse)

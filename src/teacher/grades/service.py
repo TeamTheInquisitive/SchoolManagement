@@ -121,6 +121,49 @@ def _compute_ranks(results: list[ExamResult]) -> None:
         result.rank = idx
 
 
+async def _is_class_teacher_for_section(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    staff_id: uuid.UUID,
+    class_section_id: uuid.UUID,
+    academic_year_id: uuid.UUID,
+) -> bool:
+    """Check if teacher is class teacher for the given section."""
+    result = await db.execute(
+        select(ClassAssignment).where(
+            ClassAssignment.school_id == school_id,
+            ClassAssignment.staff_id == staff_id,
+            ClassAssignment.class_section_id == class_section_id,
+            ClassAssignment.academic_year_id == academic_year_id,
+            ClassAssignment.is_class_teacher.is_(True),
+            ClassAssignment.is_active.is_(True),
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _is_subject_teacher_for_exam(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    staff_id: uuid.UUID,
+    class_section_id: uuid.UUID,
+    subject_id: uuid.UUID,
+    academic_year_id: uuid.UUID,
+) -> bool:
+    """Check if teacher is the subject teacher for this exam's subject."""
+    result = await db.execute(
+        select(ClassAssignment).where(
+            ClassAssignment.school_id == school_id,
+            ClassAssignment.staff_id == staff_id,
+            ClassAssignment.class_section_id == class_section_id,
+            ClassAssignment.subject_id == subject_id,
+            ClassAssignment.academic_year_id == academic_year_id,
+            ClassAssignment.is_active.is_(True),
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
 async def get_grades(
     db: AsyncSession,
     school_id: uuid.UUID,
@@ -149,10 +192,19 @@ async def get_grades(
 
     ay = exam.academic_year
 
-    # Verify teacher assignment
-    await _verify_teacher_assignment(
+    # Check access: teacher must be either subject teacher or class teacher
+    is_subject_teacher = await _is_subject_teacher_for_exam(
         db, school_id, staff.id, exam.class_section_id, exam.subject_id, ay.id
     )
+    is_class_teacher = await _is_class_teacher_for_section(
+        db, school_id, staff.id, exam.class_section_id, ay.id
+    )
+
+    if not is_subject_teacher and not is_class_teacher:
+        raise AccessDenied("You are not assigned to teach this subject or class")
+
+    # can_grade is True only if subject teacher and exam is not published
+    can_grade = is_subject_teacher and exam.status != "Published"
 
     cs = exam.class_section
     cls_result = await db.execute(select(Class).where(Class.id == cs.class_id))
@@ -247,6 +299,7 @@ async def get_grades(
         "subject": exam.subject.name if exam.subject else "",
         "max_marks": total_marks,
         "is_published": exam.status == "Published",
+        "can_grade": can_grade,
         "stats": stats,
         "results": paginated_items,
     }
@@ -274,7 +327,11 @@ async def submit_grades(
     if not exam:
         raise NotFound("Exam", str(data.exam_id))
 
-    # Verify teacher assignment
+    # Reject if exam is already published
+    if exam.status == "Published":
+        raise ValidationError("Cannot modify grades for a published exam")
+
+    # Verify teacher is the subject teacher (not just class teacher)
     await _verify_teacher_assignment(
         db, school_id, staff.id, exam.class_section_id, exam.subject_id, ay.id
     )
@@ -385,9 +442,13 @@ async def update_grades(
     if not exam:
         raise NotFound("Exam", str(data.exam_id))
 
+    # Reject if exam is already published
+    if exam.status == "Published":
+        raise ValidationError("Cannot modify grades for a published exam")
+
     ay = exam.academic_year
 
-    # Verify teacher assignment
+    # Verify teacher is the subject teacher
     await _verify_teacher_assignment(
         db, school_id, staff.id, exam.class_section_id, exam.subject_id, ay.id
     )
@@ -459,7 +520,12 @@ async def get_exams_for_grading(
     class_id: uuid.UUID | None = None,
     academic_year: str | None = None,
 ) -> dict:
-    """List exams available for grading by this teacher."""
+    """List exams available for grading by this teacher.
+
+    Returns exams where teacher is:
+    - Subject teacher (can_grade=True) — can edit/submit grades
+    - Class teacher (can_grade=False) — read-only view of all subjects
+    """
     staff = await _get_staff_for_user(db, school_id, user)
     ay = await _get_academic_year(db, school_id, academic_year)
 
@@ -477,29 +543,46 @@ async def get_exams_for_grading(
     if not assignments:
         return {"results": []}
 
-    # Build filter: (class_section_id, subject_id) pairs
-    cs_subject_pairs = [(a.class_section_id, a.subject_id) for a in assignments]
+    # Build subject teacher pairs: (class_section_id, subject_id)
+    subject_teacher_pairs = set()
+    # Build class teacher section ids
+    class_teacher_section_ids = set()
+
+    for a in assignments:
+        if a.subject_id:
+            subject_teacher_pairs.add((a.class_section_id, a.subject_id))
+        if a.is_class_teacher:
+            class_teacher_section_ids.add(a.class_section_id)
 
     # Filter by class_id if provided
     if class_id:
-        cs_subject_pairs = [(cs_id, subj_id) for cs_id, subj_id in cs_subject_pairs if cs_id == class_id]
+        subject_teacher_pairs = {(cs_id, subj_id) for cs_id, subj_id in subject_teacher_pairs if cs_id == class_id}
+        class_teacher_section_ids = {cs_id for cs_id in class_teacher_section_ids if cs_id == class_id}
 
-    # Get exams for these pairs
+    # Collect all class_section_ids we need exams for
+    all_section_ids = {cs_id for cs_id, _ in subject_teacher_pairs} | class_teacher_section_ids
+
+    # Get exams for all relevant sections
     items = []
-    for cs_id, subj_id in cs_subject_pairs:
+    seen_exam_ids = set()
+
+    for cs_id in all_section_ids:
         exams_result = await db.execute(
             select(Exam).where(
                 Exam.school_id == school_id,
                 Exam.academic_year_id == ay.id,
                 Exam.class_section_id == cs_id,
-                Exam.subject_id == subj_id,
                 Exam.is_active.is_(True),
-                Exam.status.in_(["Scheduled", "In Progress", "Completed", "Published"]),
+                Exam.status != "Cancelled",
             ).order_by(Exam.date.desc())
         )
         exams = list(exams_result.scalars().all())
 
         for exam in exams:
+            if exam.id in seen_exam_ids:
+                continue
+            seen_exam_ids.add(exam.id)
+
             cs = exam.class_section
             cls_result = await db.execute(select(Class).where(Class.id == cs.class_id))
             cls = cls_result.scalar_one()
@@ -520,6 +603,10 @@ async def get_exams_for_grading(
             )
             total_students = total_result.scalar() or 0
 
+            # Determine if teacher can grade this exam
+            can_grade = (exam.class_section_id, exam.subject_id) in subject_teacher_pairs
+            is_published = exam.status == "Published"
+
             items.append({
                 "id": exam.id,
                 "name": exam.name,
@@ -531,6 +618,8 @@ async def get_exams_for_grading(
                 "is_graded": graded_count >= total_students and total_students > 0,
                 "graded_count": graded_count,
                 "total_students": total_students,
+                "can_grade": can_grade and not is_published,
+                "is_published": is_published,
             })
 
     return {"results": items}
@@ -883,3 +972,75 @@ async def export_grades(
         writer.writerow([roll, student.full_name, marks, total_marks, pct, r.grade or ""])
 
     return output.getvalue()
+
+
+async def publish_exam(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    user: User,
+    exam_id: uuid.UUID,
+) -> dict:
+    """Publish exam results after verifying all students are graded.
+
+    Only the subject teacher can publish. All students must have marks.
+    """
+    staff = await _get_staff_for_user(db, school_id, user)
+
+    # Get exam
+    exam_result = await db.execute(
+        select(Exam).where(
+            Exam.id == exam_id,
+            Exam.school_id == school_id,
+            Exam.is_active.is_(True),
+        )
+    )
+    exam = exam_result.scalar_one_or_none()
+    if not exam:
+        raise NotFound("Exam", str(exam_id))
+
+    if exam.status == "Published":
+        raise ValidationError("Exam results are already published")
+
+    ay = exam.academic_year
+
+    # Verify teacher is the subject teacher (not just class teacher)
+    await _verify_teacher_assignment(
+        db, school_id, staff.id, exam.class_section_id, exam.subject_id, ay.id
+    )
+
+    # Count total enrolled students
+    total_result = await db.execute(
+        select(func.count(StudentEnrollment.id)).where(
+            StudentEnrollment.school_id == school_id,
+            StudentEnrollment.class_section_id == exam.class_section_id,
+            StudentEnrollment.academic_year_id == ay.id,
+            StudentEnrollment.is_active.is_(True),
+        )
+    )
+    total_students = total_result.scalar() or 0
+
+    if total_students == 0:
+        raise ValidationError("No students enrolled in this class section")
+
+    # Count graded students
+    graded_count = len([r for r in exam.results if r.is_active and r.marks_obtained is not None])
+
+    if graded_count < total_students:
+        raise ValidationError(
+            f"Cannot publish: {total_students - graded_count} student(s) still pending grades. "
+            f"All {total_students} students must have marks before publishing."
+        )
+
+    # Publish
+    now = datetime.now(timezone.utc)
+    exam.status = "Published"
+    exam.published_at = now
+
+    await db.commit()
+
+    return {
+        "message": "Exam results published successfully",
+        "exam_id": exam.id,
+        "exam_name": exam.name,
+        "published_at": now,
+    }

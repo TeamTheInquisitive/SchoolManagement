@@ -219,18 +219,49 @@ async def get_pending_reviews(db: AsyncSession, school_id: uuid.UUID, user: User
 
 
 async def get_upcoming_exams(db: AsyncSession, school_id: uuid.UUID, user: User) -> dict:
-    """Get upcoming exams for the teacher."""
+    """Get upcoming exams for the teacher (by assignment or examiner)."""
     staff_id = user.staff_id
     today = date.today()
     items = []
 
     if staff_id:
+        # Get teacher's class-section + subject assignments
+        from src.models.staff import ClassAssignment
+        ay_result = await db.execute(
+            select(AcademicYear).where(
+                AcademicYear.school_id == school_id,
+                AcademicYear.is_current.is_(True),
+                AcademicYear.is_active.is_(True),
+            )
+        )
+        ay = ay_result.scalar_one_or_none()
+        if not ay:
+            return {"total": 0, "items": []}
+
+        assign_result = await db.execute(
+            select(ClassAssignment.class_section_id, ClassAssignment.subject_id).where(
+                ClassAssignment.school_id == school_id,
+                ClassAssignment.staff_id == staff_id,
+                ClassAssignment.academic_year_id == ay.id,
+                ClassAssignment.is_active.is_(True),
+            )
+        )
+        pairs = assign_result.all()
+        cs_ids = list(set(p[0] for p in pairs))
+        subj_ids = list(set(p[1] for p in pairs if p[1]))
+
+        if not cs_ids:
+            return {"total": 0, "items": []}
+
         result = await db.execute(
             select(
                 Exam.id,
                 Exam.name,
                 Exam.date,
                 Exam.total_marks,
+                Exam.exam_type,
+                Exam.start_time,
+                Exam.end_time,
                 Subject.name,
                 Class.name,
                 Section.name,
@@ -241,13 +272,13 @@ async def get_upcoming_exams(db: AsyncSession, school_id: uuid.UUID, user: User)
             .join(Section, ClassSection.section_id == Section.id)
             .where(
                 Exam.school_id == school_id,
-                Exam.examiner_id == staff_id,
-                Exam.date > today,
                 Exam.is_active.is_(True),
-                Exam.status.in_(["Scheduled", "Draft"]),
+                Exam.status != "Cancelled",
+                Exam.class_section_id.in_(cs_ids),
+                Exam.subject_id.in_(subj_ids) if subj_ids else True,
             )
-            .order_by(Exam.date.asc())
-            .limit(10)
+            .order_by(Exam.date.desc().nullslast())
+            .limit(20)
         )
         rows = result.all()
 
@@ -255,10 +286,13 @@ async def get_upcoming_exams(db: AsyncSession, school_id: uuid.UUID, user: User)
             items.append({
                 "id": row[0],
                 "name": row[1],
-                "class_section": f"{row[5]}-{row[6]}",
-                "subject": row[4],
+                "class_section": f"{row[8]}-{row[9]}",
+                "subject": row[7],
                 "date": row[2].isoformat() if row[2] else "",
                 "total_marks": float(row[3]) if row[3] else 0,
+                "exam_type": row[4],
+                "start_time": str(row[5]) if row[5] else None,
+                "end_time": str(row[6]) if row[6] else None,
             })
 
     return {"total": len(items), "items": items}

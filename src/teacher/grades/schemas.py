@@ -73,6 +73,7 @@ class GradesListResponse(BaseModel):
     subject: str
     max_marks: float
     is_published: bool
+    can_grade: bool = True
     stats: GradeStats
     results: list[GradeResultItem]
 
@@ -121,6 +122,8 @@ class ExamForGradingItem(BaseModel):
     is_graded: bool
     graded_count: int
     total_students: int
+    can_grade: bool = True
+    is_published: bool = False
 
 
 class ExamsForGradingResponse(BaseModel):
@@ -184,3 +187,12 @@ class ImportGradesResponse(BaseModel):
     skipped: int
     errors: list[dict] = Field(default_factory=list)
     message: str
+
+
+class PublishExamResponse(BaseModel):
+    """Response after publishing exam results."""
+
+    message: str
+    exam_id: uuid.UUID
+    exam_name: str
+    published_at: datetime

@@ -558,3 +558,98 @@ async def archive_notification(
         "archived_on": now.strftime("%Y-%m-%d"),
         "message": "Notification archived. Delivery records preserved.",
     }
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# Teacher-sent notifications (admin view)
+# ────────────────────────────────────────────────────────────────────────────────
+
+
+async def list_teacher_notifications(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    pagination: PaginationParams,
+    teacher_id: str | None = None,
+    date_filter: str | None = None,
+) -> dict:
+    """List all notifications sent by teachers (not admins)."""
+    # Get all teacher user IDs
+    teacher_users_result = await db.execute(
+        select(User.id, User.full_name, User.email).where(
+            User.school_id == school_id,
+            User.role == "teacher",
+        )
+    )
+    teacher_users = teacher_users_result.all()
+    teacher_user_ids = [u[0] for u in teacher_users]
+    teacher_name_map = {u[0]: u[1] for u in teacher_users}
+
+    if not teacher_user_ids:
+        return paginate([], 0, pagination)
+
+    # Query notifications created by teachers
+    query = select(Notification).where(
+        Notification.school_id == school_id,
+        Notification.is_active.is_(True),
+        Notification.created_by_user_id.in_(teacher_user_ids),
+    )
+
+    if teacher_id:
+        query = query.where(Notification.created_by_user_id == uuid.UUID(teacher_id))
+
+    if date_filter:
+        query = query.where(func.date(Notification.sent_at) == date_filter)
+
+    # Count
+    count_q = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_q)).scalar() or 0
+
+    # Fetch page
+    query = query.order_by(Notification.sent_at.desc().nullslast()).offset(pagination.offset).limit(pagination.page_size)
+    result = await db.execute(query)
+    notifications = result.scalars().all()
+
+    # Teacher summary stats
+    teacher_stats_q = select(
+        Notification.created_by_user_id,
+        func.count(Notification.id),
+        func.sum(Notification.recipients_count),
+    ).where(
+        Notification.school_id == school_id,
+        Notification.is_active.is_(True),
+        Notification.created_by_user_id.in_(teacher_user_ids),
+    ).group_by(Notification.created_by_user_id)
+    stats_result = await db.execute(teacher_stats_q)
+    teacher_summary = [
+        {
+            "teacher_id": str(row[0]),
+            "teacher_name": teacher_name_map.get(row[0], "Unknown"),
+            "messages_sent": row[1],
+            "total_recipients": row[2] or 0,
+        }
+        for row in stats_result.all()
+    ]
+    teacher_summary.sort(key=lambda t: t["messages_sent"], reverse=True)
+
+    items = []
+    for n in notifications:
+        items.append({
+            "id": n.id,
+            "title": n.title,
+            "message": n.message,
+            "target_type": n.target_type,
+            "target_class_name": n.target_class_name,
+            "target_section": n.target_section,
+            "recipients_count": n.recipients_count,
+            "status": n.status,
+            "sent_at": n.sent_at,
+            "created_at": n.created_at,
+            "sender_name": teacher_name_map.get(n.created_by_user_id, "Unknown"),
+            "sender_id": str(n.created_by_user_id) if n.created_by_user_id else None,
+        })
+
+    paginated = paginate(items, total, pagination)
+    paginated["teacher_summary"] = teacher_summary
+    paginated["total_teachers_sent"] = len(teacher_summary)
+    paginated["total_messages"] = total
+    return paginated
