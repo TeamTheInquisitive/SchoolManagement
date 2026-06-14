@@ -108,6 +108,17 @@ async def get_adhoc_classes(
     return AdhocClassesDashboardResponse(**result)
 
 
+@router.get("/attendance-status")
+async def get_attendance_status(
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+):
+    """Get attendance status for class teacher's classes (today)."""
+    result = await service.get_class_teacher_attendance_status(db, school.id, user)
+    return result
+
+
 @router.get("/profile")
 async def get_teacher_profile(
     db: SessionDep,

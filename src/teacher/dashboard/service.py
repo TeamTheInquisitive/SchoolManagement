@@ -484,3 +484,131 @@ async def get_adhoc_classes_dashboard(db: AsyncSession, school_id: uuid.UUID, us
             })
 
     return {"total": len(items), "items": items}
+
+
+async def get_class_teacher_attendance_status(
+    db: AsyncSession, school_id: uuid.UUID, user: User
+) -> dict:
+    """Get attendance status for last 7 working days for class teacher's classes."""
+    from datetime import timedelta
+    from src.models.attendance import AttendanceSession
+    from src.models.core import Settings
+
+    staff_id = user.staff_id
+    if not staff_id:
+        return {"is_class_teacher": False, "pending_days": []}
+
+    ay = await _get_current_academic_year(db, school_id)
+    if not ay:
+        return {"is_class_teacher": False, "pending_days": []}
+
+    # Get class sections where teacher is class teacher
+    ct_result = await db.execute(
+        select(ClassAssignment).where(
+            ClassAssignment.school_id == school_id,
+            ClassAssignment.staff_id == staff_id,
+            ClassAssignment.academic_year_id == ay.id,
+            ClassAssignment.is_class_teacher.is_(True),
+            ClassAssignment.is_active.is_(True),
+        )
+    )
+    ct_assignments = ct_result.scalars().all()
+
+    if not ct_assignments:
+        return {"is_class_teacher": False, "pending_days": []}
+
+    # Get working days from settings
+    wd_result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school_id,
+            Settings.category == "general",
+            Settings.key == "working_days",
+            Settings.is_active.is_(True),
+        )
+    )
+    wd_row = wd_result.scalar_one_or_none()
+    working_days = wd_row.value if wd_row and wd_row.value else ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    working_day_indices = [["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].index(d) for d in working_days if d in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]]
+
+    # Get holidays
+    ay_key = f"holidays_{ay.id}"
+    hol_result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school_id,
+            Settings.category == "school",
+            Settings.key == ay_key,
+            Settings.is_active.is_(True),
+        )
+    )
+    hol_row = hol_result.scalar_one_or_none()
+    holidays_list = hol_row.value if hol_row and hol_row.value else []
+    holiday_dates = set()
+    for h in holidays_list:
+        if isinstance(h, dict) and h.get("date"):
+            holiday_dates.add(h["date"])
+        elif isinstance(h, str):
+            holiday_dates.add(h)
+
+    # Compute last 7 working days (excluding today, holidays, non-working days)
+    today = date.today()
+    check_dates = []
+    d = today
+    for _ in range(14):
+        if len(check_dates) >= 7:
+            break
+        if d.weekday() in working_day_indices and d.isoformat() not in holiday_dates and d <= today:
+            check_dates.append(d)
+        d -= timedelta(days=1)
+
+    # Get class info
+    class_infos = []
+    for assignment in ct_assignments:
+        cs_id = assignment.class_section_id
+        cs_result = await db.execute(select(ClassSection).where(ClassSection.id == cs_id))
+        cs = cs_result.scalar_one_or_none()
+        if not cs:
+            continue
+        cls_result = await db.execute(select(Class).where(Class.id == cs.class_id))
+        sec_result = await db.execute(select(Section).where(Section.id == cs.section_id))
+        cls = cls_result.scalar_one_or_none()
+        sec = sec_result.scalar_one_or_none()
+        class_section = f"{cls.name}-{sec.name}" if cls and sec else str(cs_id)
+
+        enroll_count = await db.execute(
+            select(func.count(StudentEnrollment.id)).where(
+                StudentEnrollment.school_id == school_id,
+                StudentEnrollment.class_section_id == cs_id,
+                StudentEnrollment.academic_year_id == ay.id,
+                StudentEnrollment.is_active.is_(True),
+            )
+        )
+        student_count = enroll_count.scalar() or 0
+        class_infos.append({"cs_id": cs_id, "class_section": class_section, "student_count": student_count})
+
+    # Check attendance for each date + class
+    pending_days = []
+    for check_date in check_dates:
+        for ci in class_infos:
+            att_result = await db.execute(
+                select(AttendanceSession).where(
+                    AttendanceSession.school_id == school_id,
+                    AttendanceSession.class_section_id == ci["cs_id"],
+                    AttendanceSession.date == check_date,
+                    AttendanceSession.subject_id.is_(None),
+                )
+            )
+            if not att_result.scalar_one_or_none():
+                pending_days.append({
+                    "date": check_date.isoformat(),
+                    "day": check_date.strftime("%A"),
+                    "class_section": ci["class_section"],
+                    "class_section_id": str(ci["cs_id"]),
+                    "student_count": ci["student_count"],
+                    "is_today": check_date == today,
+                })
+
+    return {
+        "is_class_teacher": True,
+        "pending_count": len(pending_days),
+        "pending_days": pending_days,
+    }
