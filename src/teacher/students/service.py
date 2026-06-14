@@ -114,6 +114,44 @@ async def _check_access_to_student(
 
 
 # ---------------------------------------------------------------------------
+# Helper: get transport info for a student
+# ---------------------------------------------------------------------------
+
+
+async def _get_transport_info(db: AsyncSession, school_id: UUID, student_id: UUID, current_ay) -> dict:
+    """Get transport enrollment info for a student."""
+    if not current_ay:
+        return {"enrolled": False}
+    from src.models.transport import StudentTransport, Route, Vehicle, RouteAssignment
+    st_result = await db.execute(
+        select(StudentTransport).where(
+            StudentTransport.student_id == student_id,
+            StudentTransport.school_id == school_id,
+            StudentTransport.academic_year_id == current_ay.id,
+            StudentTransport.is_active.is_(True),
+        )
+    )
+    st_record = st_result.scalar_one_or_none()
+    if not st_record:
+        return {"enrolled": False}
+    route_r = await db.execute(select(Route).where(Route.id == st_record.route_id, Route.is_active.is_(True)))
+    route_obj = route_r.scalar_one_or_none()
+    bus_number = None
+    ra_r = await db.execute(select(RouteAssignment.vehicle_id).where(RouteAssignment.route_id == st_record.route_id, RouteAssignment.is_active.is_(True)))
+    vid = ra_r.scalar_one_or_none()
+    if vid:
+        v_r = await db.execute(select(Vehicle.vehicle_number).where(Vehicle.id == vid))
+        bus_number = v_r.scalar_one_or_none()
+    return {
+        "enrolled": True,
+        "route_name": route_obj.name if route_obj else None,
+        "bus_number": bus_number,
+        "pickup_point": st_record.pickup_point,
+        "drop_point": st_record.drop_point,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Helper: get class/section names for a student
 # ---------------------------------------------------------------------------
 
@@ -178,6 +216,8 @@ async def get_mentees(
             Class.name,
             Section.name,
             StudentMentor.assigned_date,
+            StudentMentor.notes,
+            StudentMentor.updated_at,
         )
         .join(StudentMentor, StudentMentor.student_id == Student.id)
         .join(StudentEnrollment, and_(
@@ -212,6 +252,8 @@ async def get_mentees(
             "section": row[7],
             "class_section": f"{row[6]}-{row[7]}",
             "assigned_date": row[8],
+            "notes": row[9] or "",
+            "notes_updated_at": row[10],
         })
 
     return {"total": len(mentees), "mentees": mentees}
@@ -238,17 +280,16 @@ async def list_students(
     # Get mentee student IDs
     mentee_ids = await _get_mentee_ids(db, school_id, staff.id, current_ay.id)
 
-    # Get class section IDs where teacher is class teacher
+    # Get class section IDs where teacher has ANY assignment (class teacher or subject teacher)
     ct_result = await db.execute(
         select(ClassAssignment.class_section_id).where(
             ClassAssignment.school_id == school_id,
             ClassAssignment.staff_id == staff.id,
             ClassAssignment.academic_year_id == current_ay.id,
-            ClassAssignment.is_class_teacher.is_(True),
             ClassAssignment.is_active.is_(True),
         )
     )
-    ct_class_section_ids = list(ct_result.scalars().all())
+    ct_class_section_ids = list(set(ct_result.scalars().all()))
 
     # Get student IDs enrolled in those class sections
     ct_student_ids: list[UUID] = []
@@ -508,12 +549,7 @@ async def get_student_detail(
             "medical_conditions": student.medical_conditions or "None",
             "allergies": student.allergies,
         },
-        "transport_info": {
-            "transport_service": None,
-            "route": None,
-            "bus_number": None,
-            "pickup_point": None,
-        },
+        "transport_info": await _get_transport_info(db, school_id, student.id, current_ay),
         "assigned_mentor": mentor_info,
         "academic_summary": {
             "overall_attendance": None,
@@ -944,3 +980,76 @@ async def update_student_by_mentor(
 
     await db.commit()
     return {"message": "Student updated successfully"}
+
+
+# ---------------------------------------------------------------------------
+# Mentor Notes
+# ---------------------------------------------------------------------------
+
+
+async def get_mentor_notes(
+    db: AsyncSession, school_id: UUID, user: User, student_id: UUID
+) -> dict:
+    """Get the mentor's notes for a student."""
+    staff = await _get_staff_for_user(db, user)
+    if not staff:
+        raise AccessDenied("No staff record associated with this user")
+    current_ay = await _get_current_academic_year(db, school_id)
+    if not current_ay:
+        return {"student_id": student_id, "notes": "", "updated_at": None}
+
+    result = await db.execute(
+        select(StudentMentor).where(
+            StudentMentor.staff_id == staff.id,
+            StudentMentor.student_id == student_id,
+            StudentMentor.academic_year_id == current_ay.id,
+            StudentMentor.school_id == school_id,
+            StudentMentor.is_active.is_(True),
+        )
+    )
+    mentor_record = result.scalar_one_or_none()
+    if not mentor_record:
+        raise AccessDenied("You are not the mentor of this student")
+
+    return {
+        "student_id": student_id,
+        "notes": mentor_record.notes or "",
+        "updated_at": mentor_record.updated_at,
+    }
+
+
+async def update_mentor_notes(
+    db: AsyncSession, school_id: UUID, user: User, student_id: UUID, notes: str
+) -> dict:
+    """Update the mentor's notes for a student."""
+    staff = await _get_staff_for_user(db, user)
+    if not staff:
+        raise AccessDenied("No staff record associated with this user")
+    current_ay = await _get_current_academic_year(db, school_id)
+    if not current_ay:
+        raise NotFound("Academic Year", "current")
+
+    result = await db.execute(
+        select(StudentMentor).where(
+            StudentMentor.staff_id == staff.id,
+            StudentMentor.student_id == student_id,
+            StudentMentor.academic_year_id == current_ay.id,
+            StudentMentor.school_id == school_id,
+            StudentMentor.is_active.is_(True),
+        )
+    )
+    mentor_record = result.scalar_one_or_none()
+    if not mentor_record:
+        raise AccessDenied("You are not the mentor of this student")
+
+    mentor_record.notes = notes
+    mentor_record.updated_by = user.id
+    await db.commit()
+    await db.refresh(mentor_record)
+
+    return {
+        "student_id": student_id,
+        "notes": mentor_record.notes or "",
+        "updated_at": mentor_record.updated_at,
+        "message": "Notes updated successfully",
+    }

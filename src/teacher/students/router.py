@@ -244,3 +244,15 @@ async def update_disciplinary(student_id: UUID, record_id: UUID, data: dict, db:
 async def delete_disciplinary(student_id: UUID, record_id: UUID, db: SessionDep, school: SchoolDep, user: TeacherUser):
     from src.admin.students.service import delete_disciplinary_record
     return await delete_disciplinary_record(db, school.id, student_id, record_id)
+
+
+@router.get("/{student_id}/mentor-notes")
+async def get_mentor_notes(student_id: UUID, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    """Get mentor notes for a student."""
+    return await service.get_mentor_notes(db, school.id, user, student_id)
+
+
+@router.put("/{student_id}/mentor-notes")
+async def update_mentor_notes(student_id: UUID, data: dict, db: SessionDep, school: SchoolDep, user: TeacherUser):
+    """Update mentor notes for a student."""
+    return await service.update_mentor_notes(db, school.id, user, student_id, data.get("notes", ""))

@@ -300,6 +300,29 @@ async def create_staff(
     db.add(staff)
     await db.flush()
 
+    # Create user account for the staff member
+    from src.models.core import User
+    import bcrypt
+    email = staff_data["email"]
+    existing_user = await db.execute(
+        select(User).where(User.email == email, User.school_id == school_id)
+    )
+    if not existing_user.scalar_one_or_none():
+        password_hash = bcrypt.hashpw(email.encode(), bcrypt.gensalt()).decode()
+        user = User(
+            school_id=school_id,
+            email=email,
+            password_hash=password_hash,
+            full_name=staff_data["full_name"],
+            role="teacher" if staff_data.get("is_teacher") else "staff",
+            phone=staff_data.get("phone"),
+            staff_id=staff.id,
+            created_by=created_by,
+        )
+        db.add(user)
+        await db.flush()
+        staff.user_id = user.id
+
     # Create salary structure if salary fields provided
     if salary_data:
         await _upsert_salary_structure(

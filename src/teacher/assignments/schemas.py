@@ -16,6 +16,7 @@ class CreateAssignmentRequest(BaseModel):
     description: str | None = None
     class_name: str = Field(..., min_length=1)
     section: str = Field(..., min_length=1)
+    subject: str | None = None
     due_date: date
     max_marks: float | None = None
     academic_year: str | None = None

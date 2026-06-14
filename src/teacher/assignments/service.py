@@ -94,21 +94,51 @@ async def _verify_teacher_class_assignment(
     staff_id: uuid.UUID,
     class_section_id: uuid.UUID,
     academic_year_id: uuid.UUID,
+    subject_name: str | None = None,
 ) -> ClassAssignment:
     """Verify teacher is assigned to the class and return the assignment (for subject)."""
-    result = await db.execute(
-        select(ClassAssignment).where(
-            ClassAssignment.school_id == school_id,
-            ClassAssignment.staff_id == staff_id,
-            ClassAssignment.class_section_id == class_section_id,
-            ClassAssignment.academic_year_id == academic_year_id,
-            ClassAssignment.is_active.is_(True),
-        )
+    from src.models.academic import Subject
+    query = select(ClassAssignment).where(
+        ClassAssignment.school_id == school_id,
+        ClassAssignment.staff_id == staff_id,
+        ClassAssignment.class_section_id == class_section_id,
+        ClassAssignment.academic_year_id == academic_year_id,
+        ClassAssignment.is_active.is_(True),
     )
-    ca = result.scalar_one_or_none()
-    if not ca:
+
+    if subject_name:
+        subj_result = await db.execute(
+            select(Subject).where(
+                Subject.school_id == school_id,
+                Subject.name == subject_name,
+                Subject.is_active.is_(True),
+            )
+        )
+        subj = subj_result.scalars().first()
+        if subj:
+            query = query.where(ClassAssignment.subject_id == subj.id)
+
+    result = await db.execute(query)
+    assignments = result.scalars().all()
+
+    if not assignments:
         raise AccessDenied("You are not assigned to this class")
-    return ca
+
+    if len(assignments) == 1:
+        return assignments[0]
+
+    if not subject_name:
+        from fastapi import HTTPException
+        subject_ids = [a.subject_id for a in assignments if a.subject_id]
+        if subject_ids:
+            subj_result = await db.execute(select(Subject).where(Subject.id.in_(subject_ids)))
+            subjects = [s.name for s in subj_result.scalars().all()]
+            raise HTTPException(
+                status_code=400,
+                detail=f"You teach multiple subjects in this class ({', '.join(subjects)}). Please select a subject.",
+            )
+
+    return assignments[0]
 
 
 async def _get_enrolled_students(
@@ -325,7 +355,7 @@ async def create_assignment(
 
     # Verify teacher is assigned to this class
     class_assignment = await _verify_teacher_class_assignment(
-        db, school_id, staff.id, cs.id, ay.id
+        db, school_id, staff.id, cs.id, ay.id, subject_name=data.subject
     )
 
     # Get subject from teacher's class assignment
