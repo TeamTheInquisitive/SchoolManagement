@@ -225,3 +225,49 @@ async def list_users(
     school_id: uuid.UUID | None = Query(default=None),
 ):
     return await service.get_users(db, role=role, school_id=school_id)
+
+
+@router.post("/users/{user_id}/unlock")
+async def unlock_user(
+    user_id: uuid.UUID,
+    db: SessionDep,
+    user: SuperAdminUser,
+):
+    """Unlock a locked user account and reset failed attempts."""
+    from src.models.core import User
+    result = await db.execute(select(User).where(User.id == user_id))
+    target_user = result.scalar_one_or_none()
+    if not target_user:
+        from src.core.exceptions import NotFound
+        raise NotFound("User", str(user_id))
+    target_user.is_locked = False
+    target_user.failed_login_attempts = 0
+    await db.commit()
+    return {"message": f"User {target_user.email} unlocked successfully", "user_id": str(user_id), "email": target_user.email}
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: uuid.UUID,
+    data: dict,
+    db: SessionDep,
+    user: SuperAdminUser,
+):
+    """Reset a user's password (superadmin override)."""
+    from src.models.core import User
+    from src.core.security import hash_password
+    result = await db.execute(select(User).where(User.id == user_id))
+    target_user = result.scalar_one_or_none()
+    if not target_user:
+        from src.core.exceptions import NotFound
+        raise NotFound("User", str(user_id))
+    new_password = data.get("password")
+    if not new_password or len(new_password) < 4:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
+    target_user.password_hash = hash_password(new_password)
+    target_user.is_locked = False
+    target_user.failed_login_attempts = 0
+    target_user.password_changed = False
+    await db.commit()
+    return {"message": f"Password reset for {target_user.email}", "user_id": str(user_id), "email": target_user.email}

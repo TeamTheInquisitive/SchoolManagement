@@ -316,6 +316,7 @@ async def get_users(db: AsyncSession, role: str | None = None, school_id: uuid.U
         items.append({
             "id": u.id, "email": u.email, "full_name": u.full_name,
             "role": u.role, "phone": u.phone, "is_active": u.is_active,
+            "is_locked": u.is_locked, "failed_login_attempts": u.failed_login_attempts,
             "school_name": school_name, "last_login_at": u.last_login_at,
         })
     return {"users": items, "total": len(items)}

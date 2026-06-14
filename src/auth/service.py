@@ -61,12 +61,12 @@ async def authenticate_user(
         raise AuthenticationError("Invalid credentials")
 
     if user.is_locked:
-        raise AuthenticationError("Account is locked due to too many failed attempts")
+        raise AuthenticationError("Account is locked due to too many failed attempts. Please contact your administrator to unlock.")
 
     if not verify_password(password, user.password_hash):
         # Increment failed login attempts
         user.failed_login_attempts += 1
-        if user.failed_login_attempts >= 5:
+        if user.failed_login_attempts >= 10:
             user.is_locked = True
         await db.commit()
         raise AuthenticationError("Invalid credentials")
