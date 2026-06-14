@@ -714,9 +714,12 @@ async def delete_class(
 async def delete_class_section(
     db: AsyncSession, school_id: uuid.UUID, class_section_id: str, user_id: uuid.UUID
 ) -> dict:
-    """Soft-delete a class-section mapping."""
+    """Soft-delete a class-section mapping. Blocked if students are enrolled."""
     from src.models.academic import ClassSection
+    from src.models.student import StudentEnrollment
+    from sqlalchemy import func
     from datetime import datetime, timezone
+    from fastapi import HTTPException
 
     result = await db.execute(
         select(ClassSection).where(
@@ -727,8 +730,24 @@ async def delete_class_section(
     )
     cs = result.scalar_one_or_none()
     if not cs:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Section not found")
+
+    # Check if students are enrolled in this section
+    student_count_result = await db.execute(
+        select(func.count(StudentEnrollment.id)).where(
+            StudentEnrollment.class_section_id == class_section_id,
+            StudentEnrollment.school_id == school_id,
+            StudentEnrollment.is_active.is_(True),
+            StudentEnrollment.status == "Active",
+        )
+    )
+    student_count = student_count_result.scalar() or 0
+
+    if student_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete this section — {student_count} student(s) are currently enrolled. Move or remove students first."
+        )
 
     cs.is_active = False
     cs.deleted_by = user_id
@@ -795,15 +814,22 @@ async def bulk_create_sections(
         ay_id = academic_year.id if academic_year else None
 
         for section_id in section_ids:
-            # Check if mapping already exists
-            existing_cs = await db.execute(
+            # Check if mapping already exists (including soft-deleted)
+            existing_cs_result = await db.execute(
                 select(ClassSection).where(
                     ClassSection.school_id == school_id,
                     ClassSection.class_id == class_id,
                     ClassSection.section_id == section_id,
                 )
             )
-            if existing_cs.scalar_one_or_none():
+            existing_cs = existing_cs_result.scalar_one_or_none()
+            if existing_cs:
+                if not existing_cs.is_active:
+                    # Reactivate soft-deleted class-section
+                    existing_cs.is_active = True
+                    existing_cs.deleted_at = None
+                    existing_cs.deleted_by = None
+                    existing_cs.updated_by = created_by
                 continue
             cs = ClassSection(
                 school_id=school_id,
