@@ -118,13 +118,12 @@ async def get_weekly_timetable(
     class_name = cs.class_.name if cs.class_ else ""
     section = cs.section.name if cs.section else ""
 
-    # Get periods (non-break) for header
+    # Get all periods (including breaks) for display
     periods_result = await db.execute(
         select(PeriodConfig).where(
             PeriodConfig.school_id == school_id,
             PeriodConfig.academic_year_id == ay.id,
             PeriodConfig.is_active.is_(True),
-            PeriodConfig.is_break.is_(False),
         ).order_by(PeriodConfig.start_time)
     )
     periods = periods_result.scalars().all()
@@ -153,6 +152,18 @@ async def get_weekly_timetable(
         day_slots: list[dict] = []
         for period in periods:
             duration = _compute_duration(period.start_time, period.end_time)
+
+            if period.is_break:
+                day_slots.append({
+                    "id": period.id,
+                    "subject": None,
+                    "teacher": None,
+                    "type": "break",
+                    "label": period.name or "Break",
+                    "duration_minutes": duration,
+                })
+                continue
+
             slot = slot_map.get((day, period.id))
 
             if slot and slot.subject:
@@ -215,11 +226,13 @@ async def get_weekly_timetable(
         "periods": [
             {
                 "id": p.id,
+                "name": p.name or (f"Period {i + 1}" if not p.is_break else p.name or "Break"),
                 "start_time": p.start_time.strftime("%H:%M"),
                 "end_time": p.end_time.strftime("%H:%M"),
+                "is_break": p.is_break,
                 "duration_minutes": _compute_duration(p.start_time, p.end_time),
             }
-            for p in periods
+            for i, p in enumerate(periods)
         ],
         "timetable": timetable,
         "subject_summary": subject_summary,
@@ -263,13 +276,12 @@ async def get_day_schedule(
     class_name = cs.class_.name if cs.class_ else ""
     section = cs.section.name if cs.section else ""
 
-    # Get non-break periods
+    # Get all periods (including breaks)
     periods_result = await db.execute(
         select(PeriodConfig).where(
             PeriodConfig.school_id == school_id,
             PeriodConfig.academic_year_id == ay.id,
             PeriodConfig.is_active.is_(True),
-            PeriodConfig.is_break.is_(False),
         ).order_by(PeriodConfig.start_time)
     )
     periods = periods_result.scalars().all()

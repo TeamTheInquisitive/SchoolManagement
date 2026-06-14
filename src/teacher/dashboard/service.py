@@ -327,33 +327,38 @@ async def get_classes_summary(db: AsyncSession, school_id: uuid.UUID, user: User
         )
         rows = result.all()
 
+        student_count_cache = {}
         for row in rows:
-            cs_id_str = str(row[1])
-            # Skip duplicate class_section entries (teacher may have multiple assignments)
-            if any(c["class_section_id"] == cs_id_str for c in classes):
-                existing = next(c for c in classes if c["class_section_id"] == cs_id_str)
-                if row[0]:  # is_class_teacher
-                    existing["is_class_teacher"] = True
-                if row[4] and not existing.get("subject"):
-                    existing["subject"] = row[4]
-                continue
+            cs_id = row[1]
+            cs_id_str = str(cs_id)
+            subject_name = row[4]
 
-            # Count students enrolled in this class section
-            count_result = await db.execute(
-                select(func.count(StudentEnrollment.id)).where(
-                    StudentEnrollment.class_section_id == row[1],
-                    StudentEnrollment.is_active.is_(True),
+            # For class teacher assignment without subject, check if we already have it
+            if not subject_name:
+                if any(c["class_section_id"] == cs_id_str and not c.get("subject") for c in classes):
+                    continue
+            else:
+                # For subject assignments, skip duplicates of same class+subject
+                if any(c["class_section_id"] == cs_id_str and c.get("subject") == subject_name for c in classes):
+                    continue
+
+            # Count students (cached per class_section)
+            if cs_id_str not in student_count_cache:
+                count_result = await db.execute(
+                    select(func.count(StudentEnrollment.id)).where(
+                        StudentEnrollment.class_section_id == cs_id,
+                        StudentEnrollment.is_active.is_(True),
+                    )
                 )
-            )
-            student_count = count_result.scalar() or 0
+                student_count_cache[cs_id_str] = count_result.scalar() or 0
 
             classes.append({
                 "class_section_id": cs_id_str,
                 "class_name": row[2],
                 "section": row[3],
                 "class_section": f"{row[2]}-{row[3]}",
-                "subject": row[4],
-                "student_count": student_count,
+                "subject": subject_name,
+                "student_count": student_count_cache[cs_id_str],
                 "is_class_teacher": row[0],
             })
 

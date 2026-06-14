@@ -21,13 +21,13 @@ ATTENDANCE_MIN_DAYS = 30
 
 async def _get_attendance_settings(db: AsyncSession, school_id: uuid.UUID) -> tuple[int, int]:
     """Get attendance threshold and min days from school settings."""
-    from src.models.core import Setting
+    from src.models.core import Settings
     result = await db.execute(
-        select(Setting.value).where(
-            Setting.school_id == school_id,
-            Setting.category == "attendance",
-            Setting.key == "config",
-            Setting.is_active.is_(True),
+        select(Settings.value).where(
+            Settings.school_id == school_id,
+            Settings.category == "attendance",
+            Settings.key == "config",
+            Settings.is_active.is_(True),
         )
     )
     row = result.scalar_one_or_none()

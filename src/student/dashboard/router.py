@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from src.auth.dependencies import SchoolDep, StudentUser
 from src.core.dependencies import SessionDep
@@ -37,9 +37,10 @@ async def get_today_schedule(
     db: SessionDep,
     school: SchoolDep,
     user: StudentUser,
+    date: str | None = Query(default=None),
 ) -> StudentTodayScheduleResponse:
-    """Get today's classes."""
-    result = await service.get_today_schedule(db, school.id, user)
+    """Get classes for a given date (defaults to today)."""
+    result = await service.get_today_schedule(db, school.id, user, date)
     return StudentTodayScheduleResponse(**result)
 
 
