@@ -22,8 +22,8 @@ class ParentMeeting(BaseModel):
     )
     meeting_date: Mapped[date] = mapped_column(Date, nullable=False)
     meeting_time: Mapped[time | None] = mapped_column(Time, nullable=True)
-    conducted_by: Mapped[uuid.UUID] = mapped_column(
-        UUIDType, ForeignKey("staff.id"), nullable=False
+    conducted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType, ForeignKey("staff.id"), nullable=True
     )
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUIDType, ForeignKey("parents.id"), nullable=True

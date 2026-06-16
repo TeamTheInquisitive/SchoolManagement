@@ -79,8 +79,8 @@ class DisciplinaryRecord(BaseModel):
     severity: Mapped[str] = mapped_column(String(20), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     action_taken: Mapped[str | None] = mapped_column(Text, nullable=True)
-    reported_by: Mapped[uuid.UUID] = mapped_column(
-        UUIDType, ForeignKey("staff.id"), nullable=False
+    reported_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType, ForeignKey("staff.id"), nullable=True
     )
     parent_notified: Mapped[bool] = mapped_column(nullable=False, default=False)
     parent_notified_date: Mapped[date | None] = mapped_column(Date, nullable=True)

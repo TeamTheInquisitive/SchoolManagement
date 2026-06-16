@@ -53,6 +53,8 @@ class SchoolProfileResponse(BaseModel):
     principal_name: str | None = None
     established_year: int | None = None
     board: str | None = None
+    working_hours: str | None = None
+    motto: str | None = None
     metadata: dict = Field(default_factory=dict)
 
 
@@ -69,6 +71,8 @@ class SchoolProfileUpdateRequest(BaseModel):
     principal_name: str | None = None
     established_year: int | None = None
     board: str | None = None
+    working_hours: str | None = None
+    motto: str | None = None
 
     @field_validator('established_year', mode='before')
     @classmethod
@@ -77,7 +81,7 @@ class SchoolProfileUpdateRequest(BaseModel):
             return None
         return int(v)
 
-    @field_validator('school_name', 'address', 'city', 'state', 'pin_code', 'phone', 'email', 'website', 'principal_name', 'board', mode='before')
+    @field_validator('school_name', 'address', 'city', 'state', 'pin_code', 'phone', 'email', 'website', 'principal_name', 'board', 'working_hours', 'motto', mode='before')
     @classmethod
     def empty_to_none(cls, v):
         if v == '':

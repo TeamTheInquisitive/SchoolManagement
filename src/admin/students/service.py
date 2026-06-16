@@ -27,8 +27,8 @@ from src.models.fee import FeeRecord, FeeStructure
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_staff_id(db: AsyncSession, user_id: UUID, school_id: UUID) -> UUID:
-    """Resolve staff.id from a user_id. Tries user_id link first, then email fallback."""
+async def _resolve_staff_id(db: AsyncSession, user_id: UUID, school_id: UUID) -> UUID | None:
+    """Resolve staff.id from a user_id. Tries user_id link first, then email fallback. Returns None if not found."""
     staff_result = await db.execute(select(Staff).where(Staff.user_id == user_id, Staff.school_id == school_id))
     staff = staff_result.scalar_one_or_none()
     if staff:
@@ -45,7 +45,7 @@ async def _resolve_staff_id(db: AsyncSession, user_id: UUID, school_id: UUID) ->
         if staff:
             staff.user_id = user_id
             return staff.id
-    raise HTTPException(status_code=400, detail="No staff record found for this user")
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -223,8 +223,20 @@ async def list_students(
         )
         parent_map = {row.student_id: {"parent_name": row.full_name, "parent_phone": row.phone, "parent_email": row.email, "parent_relationship": row.relation} for row in sp_result}
 
+        # Transport enrollment lookup
+        from src.models.transport import StudentTransport
+        transport_result = await db.execute(
+            select(StudentTransport.student_id).where(
+                StudentTransport.school_id == school_id,
+                StudentTransport.student_id.in_(student_ids),
+                StudentTransport.is_active.is_(True),
+            )
+        )
+        transport_enrolled_ids = set(row[0] for row in transport_result.all())
+
         for item in items:
             item["password_changed"] = pw_changed_map.get(item["id"], False)
+            item["transport_enrolled"] = item["id"] in transport_enrolled_ids
             item.update(parent_map.get(item["id"], {}))
 
     # Compute summary scoped to current academic year

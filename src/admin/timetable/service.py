@@ -242,6 +242,19 @@ async def create_period(
     start_time = data["start_time"]
     end_time = data["end_time"]
 
+    # Remove any soft-deleted period with the same start_time to avoid unique constraint violation
+    deleted_result = await db.execute(
+        select(PeriodConfig).where(
+            PeriodConfig.school_id == school_id,
+            PeriodConfig.academic_year_id == ay.id,
+            PeriodConfig.start_time == start_time,
+            PeriodConfig.is_active.is_(False),
+        )
+    )
+    for deleted_period in deleted_result.scalars().all():
+        await db.delete(deleted_period)
+    await db.flush()
+
     # Check for time overlap
     await _check_time_overlap(db, school_id, ay.id, start_time, end_time)
 
@@ -488,7 +501,7 @@ async def create_slot(
 
     day = data["day"]
 
-    # Check if slot already occupied
+    # Check if slot already exists (active or soft-deleted)
     existing_result = await db.execute(
         select(TimetableSlot).where(
             TimetableSlot.school_id == school_id,
@@ -496,13 +509,57 @@ async def create_slot(
             TimetableSlot.class_section_id == cs.id,
             TimetableSlot.period_config_id == period.id,
             TimetableSlot.day_of_week == day,
-            TimetableSlot.is_active.is_(True),
         )
     )
-    if existing_result.scalar_one_or_none():
-        class_name = cs.class_.name if cs.class_ else ""
-        section = cs.section.name if cs.section else ""
-        raise SlotAlreadyOccupied(day, period.start_time.strftime("%H:%M"), f"{class_name}-{section}")
+    existing_slot = existing_result.scalar_one_or_none()
+    if existing_slot:
+        if existing_slot.is_active:
+            # Update existing active slot instead of raising error (upsert behavior)
+            existing_slot.subject_id = data.get("subject_id") if is_subject_slot else None
+            existing_slot.staff_id = data.get("teacher_id")
+            existing_slot.slot_type = slot_type
+            existing_slot.updated_by = created_by
+            await db.commit()
+            await db.refresh(existing_slot)
+            cs_ref = existing_slot.class_section
+            return {
+                "id": existing_slot.id,
+                "class_name": cs_ref.class_.name if cs_ref and cs_ref.class_ else "",
+                "section": cs_ref.section.name if cs_ref and cs_ref.section else "",
+                "day": existing_slot.day_of_week,
+                "period_start_time": period.start_time.strftime("%H:%M"),
+                "period_end_time": period.end_time.strftime("%H:%M"),
+                "subject": existing_slot.subject.name if existing_slot.subject else existing_slot.slot_type,
+                "subject_id": existing_slot.subject_id,
+                "teacher_name": existing_slot.staff.full_name if existing_slot.staff else None,
+                "teacher_id": existing_slot.staff_id,
+                "slot_type": existing_slot.slot_type,
+            }
+        else:
+            # Reactivate soft-deleted slot with new data
+            existing_slot.is_active = True
+            existing_slot.subject_id = data.get("subject_id") if is_subject_slot else None
+            existing_slot.staff_id = data.get("teacher_id")
+            existing_slot.slot_type = slot_type
+            existing_slot.updated_by = created_by
+            existing_slot.deleted_at = None
+            existing_slot.deleted_by = None
+            await db.commit()
+            await db.refresh(existing_slot)
+            cs_ref = existing_slot.class_section
+            return {
+                "id": existing_slot.id,
+                "class_name": cs_ref.class_.name if cs_ref and cs_ref.class_ else "",
+                "section": cs_ref.section.name if cs_ref and cs_ref.section else "",
+                "day": existing_slot.day_of_week,
+                "period_start_time": period.start_time.strftime("%H:%M"),
+                "period_end_time": period.end_time.strftime("%H:%M"),
+                "subject": existing_slot.subject.name if existing_slot.subject else existing_slot.slot_type,
+                "subject_id": existing_slot.subject_id,
+                "teacher_name": existing_slot.staff.full_name if existing_slot.staff else None,
+                "teacher_id": existing_slot.staff_id,
+                "slot_type": existing_slot.slot_type,
+            }
 
     # Check teacher conflict only for Subject slots
     if is_subject_slot:

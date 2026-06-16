@@ -165,6 +165,7 @@ async def get_school_profile(db: AsyncSession, school_id: uuid.UUID) -> dict:
     if not school:
         return {}
 
+    meta = school.metadata_ or {}
     return {
         "school_name": school.name,
         "school_code": school.code,
@@ -179,6 +180,8 @@ async def get_school_profile(db: AsyncSession, school_id: uuid.UUID) -> dict:
         "principal_name": school.principal_name,
         "established_year": school.established_year,
         "board": school.board_affiliation,
+        "working_hours": meta.get("working_hours"),
+        "motto": meta.get("motto"),
         "metadata": {},
     }
 
@@ -213,6 +216,18 @@ async def update_school_profile(
         if req_field in data and data[req_field] is not None:
             setattr(school, model_field, data[req_field])
             updated_fields.append(req_field)
+
+    # Store working_hours and motto in metadata
+    metadata_fields = ["working_hours", "motto"]
+    meta = dict(school.metadata_ or {})
+    for mf in metadata_fields:
+        if mf in data and data[mf] is not None:
+            meta[mf] = data[mf]
+            updated_fields.append(mf)
+    if any(mf in data for mf in metadata_fields):
+        school.metadata_ = meta
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(school, "metadata_")
 
     if updated_fields:
         school.updated_by = updated_by
@@ -1540,25 +1555,8 @@ async def generate_next_id(
 
     generated = prefix + str(seq).zfill(pad)
 
-    # Increment sequence and persist
-    cfg["next_seq"] = seq + 1
-    config[entity_type] = cfg
-
-    if setting:
-        setting.value = config
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(setting, "value")
-    else:
-        new_setting = Settings(
-            school_id=school_id,
-            category="id_generation",
-            key="config",
-            value=config,
-            created_by=school_id,
-        )
-        db.add(new_setting)
-
-    await db.commit()
+    # Do NOT increment here - only preview the next ID
+    # The sequence will be incremented when the entity is actually created successfully
     return {"enabled": True, "id": generated}
 
 

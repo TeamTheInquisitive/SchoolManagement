@@ -722,15 +722,12 @@ async def get_attendance_monthly_comparison(db: AsyncSession, school_id: uuid.UU
 
 
 async def get_gender_ratio(db: AsyncSession, school_id: uuid.UUID) -> dict:
-    """Get overall male/female/other ratio for active students."""
+    """Get dayscholar/hostler ratio for active students."""
+    from sqlalchemy import text
     result = await db.execute(
         select(
-            func.count(case((Student.gender == "Male", 1))).label("male"),
-            func.count(case((Student.gender == "Female", 1))).label("female"),
-            func.count(
-                case((and_(Student.gender != "Male", Student.gender != "Female", Student.gender.isnot(None)), 1))
-            ).label("other"),
-            func.count(Student.id).label("total"),
+            Student.id,
+            Student.metadata_,
         )
         .where(
             Student.school_id == school_id,
@@ -738,14 +735,22 @@ async def get_gender_ratio(db: AsyncSession, school_id: uuid.UUID) -> dict:
             Student.status == "Active",
         )
     )
-    row = result.one_or_none()
-
-    if not row:
-        return {"male": 0, "female": 0, "other": 0, "total": 0}
+    rows = result.all()
+    total = len(rows)
+    hostler = 0
+    dayscholar = 0
+    for row in rows:
+        meta = row[1] or {}
+        student_type = meta.get("student_type", "").lower() if isinstance(meta, dict) else ""
+        if student_type in ("hosteller", "hostler", "boarding"):
+            hostler += 1
+        else:
+            dayscholar += 1
 
     return {
-        "male": row[0],
-        "female": row[1],
+        "dayscholar": dayscholar,
+        "hostler": hostler,
+        "total": total,
         "other": row[2],
         "total": row[3],
     }

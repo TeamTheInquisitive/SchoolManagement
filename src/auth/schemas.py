@@ -9,6 +9,7 @@ class LoginRequest(BaseModel):
     email: str | None = None
     identifier: str | None = None
     password: str
+    portal: str | None = None
 
 
 class UserResponse(BaseModel):

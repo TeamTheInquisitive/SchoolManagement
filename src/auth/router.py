@@ -81,6 +81,20 @@ async def login(
             school_id = school.id
     user = await auth_service.authenticate_user(db, data.identifier or data.email, data.password, school_id)
 
+    # Portal-based access control: prevent cross-account login
+    if data.portal:
+        portal_role_map = {
+            "admin": "admin",
+            "teacher": "teacher",
+            "student": "student",
+            "superadmin": "super_admin",
+        }
+        expected_role = portal_role_map.get(data.portal)
+        if expected_role and user.role != expected_role:
+            raise AccessDenied(
+                "This account doesn't have access to this portal. Please use the correct portal."
+            )
+
     # Skip subscription check for super_admin
     if user.role != "super_admin":
         school_obj = user.school
