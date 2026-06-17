@@ -134,6 +134,8 @@ async def update_settings(
         if existing:
             existing.value = value
             existing.updated_by = updated_by
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(existing, "value")
         else:
             new_setting = Settings(
                 school_id=school_id,

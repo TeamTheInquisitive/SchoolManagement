@@ -61,6 +61,9 @@ class LeaveApplicationListItem(BaseModel):
     applied_on: datetime
     approved_by: str | None = None
     approved_on: datetime | None = None
+    rejected_by: str | None = None
+    rejected_on: datetime | None = None
+    remarks: str | None = None
     substitute_teacher: str | None = None
     substitute_teacher_id: uuid.UUID | None = None
 

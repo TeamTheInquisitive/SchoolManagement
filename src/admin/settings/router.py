@@ -636,12 +636,24 @@ async def get_attendance_config(
         )
     )
     config = result.scalar_one_or_none()
-    if isinstance(config, dict):
-        # Ensure attendance_mode field exists with default
-        if "attendance_mode" not in config:
-            config["attendance_mode"] = "daily"
-        return config
-    return {"threshold": 75, "min_days": 30, "attendance_mode": "daily"}
+    if not isinstance(config, dict):
+        config = {"threshold": 75, "min_days": 30, "attendance_mode": "daily"}
+    if "attendance_mode" not in config:
+        config["attendance_mode"] = "daily"
+
+    # Also include working_days from general settings
+    wd_result = await db.execute(
+        select(Settings.value).where(
+            Settings.school_id == school.id,
+            Settings.category == "general",
+            Settings.key == "working_days",
+            Settings.is_active.is_(True),
+        )
+    )
+    working_days = wd_result.scalar_one_or_none()
+    config["working_days"] = working_days if isinstance(working_days, list) else []
+
+    return config
 
 
 @router.put("/attendance-config")

@@ -723,7 +723,6 @@ async def get_attendance_monthly_comparison(db: AsyncSession, school_id: uuid.UU
 
 async def get_gender_ratio(db: AsyncSession, school_id: uuid.UUID) -> dict:
     """Get dayscholar/hostler ratio for active students."""
-    from sqlalchemy import text
     result = await db.execute(
         select(
             Student.id,
@@ -751,8 +750,6 @@ async def get_gender_ratio(db: AsyncSession, school_id: uuid.UUID) -> dict:
         "dayscholar": dayscholar,
         "hostler": hostler,
         "total": total,
-        "other": row[2],
-        "total": row[3],
     }
 
 

@@ -98,6 +98,9 @@ async def list_leave_applications(
                 "applied_on": app.applied_on,
                 "approved_by": app.approver.email if app.approver else None,
                 "approved_on": app.approved_on,
+                "rejected_by": app.rejector.email if app.rejector else None,
+                "rejected_on": app.rejected_on,
+                "remarks": app.remarks,
                 "substitute_teacher": (
                     app.substitute_teacher.full_name if app.substitute_teacher else None
                 ),
@@ -530,7 +533,7 @@ async def approve_leave(
     remarks: str | None = None,
     substitute_teacher_id: uuid.UUID | None = None,
 ) -> dict:
-    """Approve a pending leave application."""
+    """Approve a pending or rejected leave application."""
     result = await db.execute(
         select(LeaveApplication).where(
             LeaveApplication.id == leave_id,
@@ -542,24 +545,28 @@ async def approve_leave(
     if not application:
         raise NotFound("Leave application", str(leave_id))
 
-    if application.status != "Pending":
+    if application.status not in ("Pending", "Rejected"):
         raise ConflictError(
             f"Cannot approve a leave that is already {application.status}"
         )
 
+    previous_status = application.status
     now = datetime.utcnow()
     application.status = "Approved"
     application.approved_by = user.id
     application.approved_on = now
+    application.rejected_by = None
+    application.rejected_on = None
     application.remarks = remarks
     if substitute_teacher_id:
         application.substitute_teacher_id = substitute_teacher_id
 
-    # Update balance: move from pending to used
+    # Update balance
     balance = await _get_or_create_balance(
         db, school_id, application.staff_id, application.academic_year_id, application.leave_type
     )
-    balance.pending -= application.days
+    if previous_status == "Pending":
+        balance.pending -= application.days
     balance.used += application.days
 
     await db.commit()
@@ -599,7 +606,7 @@ async def reject_leave(
     leave_id: uuid.UUID,
     remarks: str,
 ) -> dict:
-    """Reject a pending leave application."""
+    """Reject a pending or approved leave application."""
     result = await db.execute(
         select(LeaveApplication).where(
             LeaveApplication.id == leave_id,
@@ -611,22 +618,28 @@ async def reject_leave(
     if not application:
         raise NotFound("Leave application", str(leave_id))
 
-    if application.status != "Pending":
+    if application.status not in ("Pending", "Approved"):
         raise ConflictError(
             f"Cannot reject a leave that is already {application.status}"
         )
 
+    previous_status = application.status
     now = datetime.utcnow()
     application.status = "Rejected"
     application.rejected_by = user.id
     application.rejected_on = now
+    application.approved_by = None
+    application.approved_on = None
     application.remarks = remarks
 
-    # Restore pending balance
+    # Restore balance
     balance = await _get_or_create_balance(
         db, school_id, application.staff_id, application.academic_year_id, application.leave_type
     )
-    balance.pending -= application.days
+    if previous_status == "Pending":
+        balance.pending -= application.days
+    elif previous_status == "Approved":
+        balance.used -= application.days
 
     await db.commit()
 

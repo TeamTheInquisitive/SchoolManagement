@@ -324,6 +324,8 @@ async def create_student(
         city=data.get("city"),
         state=data.get("state"),
         pincode=data.get("pincode"),
+        medical_conditions=data.get("medical_conditions"),
+        allergies=data.get("allergies"),
         metadata_={k: v for k, v in {
             "student_type": data.get("student_type"),
             "previous_school": data.get("previous_school"),
@@ -858,6 +860,8 @@ async def update_student(
         "state": "state",
         "pincode": "pincode",
         "status": "status",
+        "medical_conditions": "medical_conditions",
+        "allergies": "allergies",
     }
 
     for req_field, model_field in field_map.items():
@@ -1157,6 +1161,7 @@ async def get_parent_meetings(
                 "agenda": m.agenda,
                 "remarks": m.remarks,
                 "follow_up_required": m.follow_up_required,
+                "parent_attended": m.parent_attended,
                 "next_meeting_date": m.next_meeting_date,
             }
             for m in meetings
@@ -1194,6 +1199,7 @@ async def create_parent_meeting(
         discussion_notes=data.get("discussion_notes"),
         remarks=data.get("remarks"),
         follow_up_required=data.get("follow_up_required", False),
+        parent_attended=data.get("parent_attended", True),
         next_meeting_date=data.get("next_meeting_date"),
         status=data.get("status", "Scheduled"),
         conducted_by=staff_id,
@@ -1233,7 +1239,7 @@ async def update_parent_meeting(
         from src.core.exceptions import NotFound
         raise NotFound("Parent Meeting")
 
-    for field in ("meeting_date", "meeting_type", "agenda", "discussion_notes", "remarks", "follow_up_required", "next_meeting_date", "status"):
+    for field in ("meeting_date", "meeting_type", "agenda", "discussion_notes", "remarks", "follow_up_required", "parent_attended", "next_meeting_date", "status"):
         if field in data and data[field] is not None:
             setattr(meeting, field, data[field])
 
@@ -1248,6 +1254,7 @@ async def update_parent_meeting(
         "agenda": meeting.agenda,
         "remarks": meeting.remarks,
         "follow_up_required": meeting.follow_up_required,
+        "parent_attended": meeting.parent_attended,
         "next_meeting_date": meeting.next_meeting_date,
     }
 
