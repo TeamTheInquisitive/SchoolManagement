@@ -37,6 +37,8 @@ class CreateStudentRequest(BaseModel):
     student_type: str | None = None
     blood_group: str | None = None
     religion: str | None = None
+    medical_conditions: str | None = None
+    allergies: str | None = None
     address: str | None = None
     address_line2: str | None = None
     city: str | None = None
@@ -86,6 +88,8 @@ class UpdateStudentRequest(BaseModel):
     student_type: str | None = None
     blood_group: str | None = None
     religion: str | None = None
+    medical_conditions: str | None = None
+    allergies: str | None = None
     address: str | None = None
     address_line2: str | None = None
     city: str | None = None
@@ -329,6 +333,7 @@ class MeetingItem(BaseModel):
     remarks: str | None = None
     follow_up_required: bool | None = None
     next_meeting_date: Optional[date] = None
+    parent_attended: bool | None = None
 
 
 class ParentMeetingsResponse(BaseModel):
@@ -478,6 +483,7 @@ class CreateParentMeetingRequest(BaseModel):
     follow_up_required: bool = False
     next_meeting_date: date | None = None
     status: str | None = "Scheduled"
+    parent_attended: bool = True
 
 
 class UpdateParentMeetingRequest(BaseModel):
@@ -490,6 +496,7 @@ class UpdateParentMeetingRequest(BaseModel):
     follow_up_required: bool | None = None
     next_meeting_date: date | None = None
     status: str | None = None
+    parent_attended: bool | None = None
 
 
 class CreateDisciplinaryRequest(BaseModel):

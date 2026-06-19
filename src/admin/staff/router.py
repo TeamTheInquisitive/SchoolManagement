@@ -7,6 +7,8 @@ from fastapi.responses import StreamingResponse
 
 from src.admin.staff import service
 from src.admin.staff.schemas import (
+    BulkImportStaffRequest,
+    BulkImportStaffResponse,
     CreateStaffRequest,
     DeleteStaffRequest,
     StaffDeleteResponse,
@@ -53,6 +55,31 @@ async def export_staff(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=staff_export.csv"},
     )
+
+
+@router.post("/bulk-import", response_model=BulkImportStaffResponse)
+async def bulk_import_staff(
+    data: BulkImportStaffRequest,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> BulkImportStaffResponse:
+    """Bulk import staff members via JSON payload."""
+    results = []
+    passed = 0
+    failed = 0
+    for idx, staff_item in enumerate(data.staff, start=1):
+        try:
+            staff_data = staff_item.model_dump(exclude_none=True)
+            await service.create_staff(db, school.id, staff_data, user.id)
+            await db.commit()
+            passed += 1
+            results.append({"row": idx, "employee_id": staff_item.employee_id, "success": True})
+        except Exception as e:
+            await db.rollback()
+            failed += 1
+            results.append({"row": idx, "employee_id": staff_item.employee_id, "success": False, "error": str(e)})
+    return BulkImportStaffResponse(results=results, total=len(data.staff), passed=passed, failed=failed)
 
 
 @router.post("", response_model=StaffResponse, status_code=201)

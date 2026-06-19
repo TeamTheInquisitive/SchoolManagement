@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.admin.timetable.exceptions import SlotAlreadyOccupied, TeacherConflict, TimeOverlap
+from src.admin.timetable.exceptions import TeacherConflict, TimeOverlap
 from src.core.exceptions import NotFound
 from src.models.academic import ClassSection, Subject
 from src.models.core import AcademicYear
@@ -78,7 +78,6 @@ async def _check_time_overlap(
     query = select(PeriodConfig).where(
         PeriodConfig.school_id == school_id,
         PeriodConfig.academic_year_id == academic_year_id,
-        PeriodConfig.is_active.is_(True),
         # Overlap condition: existing.start < new.end AND existing.end > new.start
         PeriodConfig.start_time < end_time,
         PeriodConfig.end_time > start_time,
@@ -115,7 +114,6 @@ async def get_teacher_availability(
             TimetableSlot.school_id == school_id,
             TimetableSlot.period_config_id == period_config_id,
             TimetableSlot.day_of_week == day,
-            TimetableSlot.is_active.is_(True),
         )
     )
     slots = result.scalars().all()
@@ -151,7 +149,6 @@ async def _check_teacher_conflict(
         TimetableSlot.staff_id == staff_id,
         TimetableSlot.period_config_id == period_config_id,
         TimetableSlot.day_of_week == day_of_week,
-        TimetableSlot.is_active.is_(True),
     )
     if exclude_slot_id:
         query = query.where(TimetableSlot.id != exclude_slot_id)
@@ -202,8 +199,7 @@ async def list_periods(
         select(PeriodConfig).where(
             PeriodConfig.school_id == school_id,
             PeriodConfig.academic_year_id == ay.id,
-            PeriodConfig.is_active.is_(True),
-        ).order_by(PeriodConfig.start_time)
+            ).order_by(PeriodConfig.start_time)
     )
     all_periods = result.scalars().all()
 
@@ -242,19 +238,6 @@ async def create_period(
     start_time = data["start_time"]
     end_time = data["end_time"]
 
-    # Remove any soft-deleted period with the same start_time to avoid unique constraint violation
-    deleted_result = await db.execute(
-        select(PeriodConfig).where(
-            PeriodConfig.school_id == school_id,
-            PeriodConfig.academic_year_id == ay.id,
-            PeriodConfig.start_time == start_time,
-            PeriodConfig.is_active.is_(False),
-        )
-    )
-    for deleted_period in deleted_result.scalars().all():
-        await db.delete(deleted_period)
-    await db.flush()
-
     # Check for time overlap
     await _check_time_overlap(db, school_id, ay.id, start_time, end_time)
 
@@ -265,8 +248,7 @@ async def create_period(
         select(PeriodConfig).where(
             PeriodConfig.school_id == school_id,
             PeriodConfig.academic_year_id == ay.id,
-            PeriodConfig.is_active.is_(True),
-        ).order_by(PeriodConfig.start_time.desc())
+            ).order_by(PeriodConfig.start_time.desc())
     )
     last_period = result.scalars().first()
     sort_order = (last_period.sort_order + 1) if last_period else 0
@@ -304,8 +286,7 @@ async def update_period(
         select(PeriodConfig).where(
             PeriodConfig.id == period_id,
             PeriodConfig.school_id == school_id,
-            PeriodConfig.is_active.is_(True),
-        )
+            )
     )
     period = result.scalar_one_or_none()
     if not period:
@@ -346,24 +327,20 @@ async def delete_period(
     school_id: uuid.UUID,
     period_id: uuid.UUID,
     deleted_by: uuid.UUID,
-) -> PeriodConfig:
-    """Soft-delete a period config."""
+) -> None:
+    """Delete a period config."""
     result = await db.execute(
         select(PeriodConfig).where(
             PeriodConfig.id == period_id,
             PeriodConfig.school_id == school_id,
-            PeriodConfig.is_active.is_(True),
         )
     )
     period = result.scalar_one_or_none()
     if not period:
         raise NotFound("PeriodConfig", str(period_id))
 
-    period.is_active = False
-    period.deleted_by = deleted_by
+    await db.delete(period)
     await db.commit()
-    await db.refresh(period)
-    return period
 
 
 # ---------------------------------------------------------------------------
@@ -386,8 +363,7 @@ async def get_timetable_grid(
         select(PeriodConfig).where(
             PeriodConfig.school_id == school_id,
             PeriodConfig.academic_year_id == ay.id,
-            PeriodConfig.is_active.is_(True),
-            PeriodConfig.is_break.is_(False),
+                PeriodConfig.is_break.is_(False),
         ).order_by(PeriodConfig.start_time)
     )
     periods = list(periods_result.scalars().all())
@@ -401,7 +377,6 @@ async def get_timetable_grid(
             TimetableSlot.school_id == school_id,
             TimetableSlot.academic_year_id == ay.id,
             TimetableSlot.class_section_id == class_section_id,
-            TimetableSlot.is_active.is_(True),
         )
     )
     slots = slots_result.scalars().all()
@@ -492,8 +467,7 @@ async def create_slot(
         select(PeriodConfig).where(
             PeriodConfig.id == data["period_config_id"],
             PeriodConfig.school_id == school_id,
-            PeriodConfig.is_active.is_(True),
-        )
+            )
     )
     period = period_result.scalar_one_or_none()
     if not period:
@@ -501,7 +475,7 @@ async def create_slot(
 
     day = data["day"]
 
-    # Check if slot already exists (active or soft-deleted)
+    # Check if slot already exists at this position (upsert behavior)
     existing_result = await db.execute(
         select(TimetableSlot).where(
             TimetableSlot.school_id == school_id,
@@ -513,55 +487,35 @@ async def create_slot(
     )
     existing_slot = existing_result.scalar_one_or_none()
     if existing_slot:
-        if existing_slot.is_active:
-            # Update existing active slot instead of raising error (upsert behavior)
-            existing_slot.subject_id = data.get("subject_id") if is_subject_slot else None
-            existing_slot.staff_id = data.get("teacher_id")
-            existing_slot.slot_type = slot_type
-            existing_slot.updated_by = created_by
-            await db.commit()
-            await db.refresh(existing_slot)
-            cs_ref = existing_slot.class_section
-            return {
-                "id": existing_slot.id,
-                "class_name": cs_ref.class_.name if cs_ref and cs_ref.class_ else "",
-                "section": cs_ref.section.name if cs_ref and cs_ref.section else "",
-                "day": existing_slot.day_of_week,
-                "period_start_time": period.start_time.strftime("%H:%M"),
-                "period_end_time": period.end_time.strftime("%H:%M"),
-                "subject": existing_slot.subject.name if existing_slot.subject else existing_slot.slot_type,
-                "subject_id": existing_slot.subject_id,
-                "teacher_name": existing_slot.staff.full_name if existing_slot.staff else None,
-                "teacher_id": existing_slot.staff_id,
-                "slot_type": existing_slot.slot_type,
-            }
-        else:
-            # Reactivate soft-deleted slot with new data
-            existing_slot.is_active = True
-            existing_slot.subject_id = data.get("subject_id") if is_subject_slot else None
-            existing_slot.staff_id = data.get("teacher_id")
-            existing_slot.slot_type = slot_type
-            existing_slot.updated_by = created_by
-            existing_slot.deleted_at = None
-            existing_slot.deleted_by = None
-            await db.commit()
-            await db.refresh(existing_slot)
-            cs_ref = existing_slot.class_section
-            return {
-                "id": existing_slot.id,
-                "class_name": cs_ref.class_.name if cs_ref and cs_ref.class_ else "",
-                "section": cs_ref.section.name if cs_ref and cs_ref.section else "",
-                "day": existing_slot.day_of_week,
-                "period_start_time": period.start_time.strftime("%H:%M"),
-                "period_end_time": period.end_time.strftime("%H:%M"),
-                "subject": existing_slot.subject.name if existing_slot.subject else existing_slot.slot_type,
-                "subject_id": existing_slot.subject_id,
-                "teacher_name": existing_slot.staff.full_name if existing_slot.staff else None,
-                "teacher_id": existing_slot.staff_id,
-                "slot_type": existing_slot.slot_type,
-            }
+        new_teacher_id = data.get("teacher_id")
+        # Check teacher conflict only if teacher is changing
+        if is_subject_slot and new_teacher_id and new_teacher_id != existing_slot.staff_id:
+            await _check_teacher_conflict(
+                db, school_id, ay.id, new_teacher_id, period.id, day,
+                exclude_slot_id=existing_slot.id,
+            )
+        existing_slot.subject_id = data.get("subject_id") if is_subject_slot else None
+        existing_slot.staff_id = new_teacher_id
+        existing_slot.slot_type = slot_type
+        existing_slot.updated_by = created_by
+        await db.commit()
+        await db.refresh(existing_slot)
+        cs_ref = existing_slot.class_section
+        return {
+            "id": existing_slot.id,
+            "class_name": cs_ref.class_.name if cs_ref and cs_ref.class_ else "",
+            "section": cs_ref.section.name if cs_ref and cs_ref.section else "",
+            "day": existing_slot.day_of_week,
+            "period_start_time": period.start_time.strftime("%H:%M"),
+            "period_end_time": period.end_time.strftime("%H:%M"),
+            "subject": existing_slot.subject.name if existing_slot.subject else existing_slot.slot_type,
+            "subject_id": existing_slot.subject_id,
+            "teacher_name": existing_slot.staff.full_name if existing_slot.staff else None,
+            "teacher_id": existing_slot.staff_id,
+            "slot_type": existing_slot.slot_type,
+        }
 
-    # Check teacher conflict only for Subject slots
+    # New slot: check teacher conflict only for Subject slots
     if is_subject_slot:
         await _check_teacher_conflict(
             db, school_id, ay.id, data["teacher_id"], period.id, day
@@ -633,7 +587,6 @@ async def update_slot(
         select(TimetableSlot).where(
             TimetableSlot.id == slot_id,
             TimetableSlot.school_id == school_id,
-            TimetableSlot.is_active.is_(True),
         )
     )
     slot = result.scalar_one_or_none()
@@ -643,12 +596,35 @@ async def update_slot(
     new_slot_type = data.get("slot_type", slot.slot_type)
     is_subject_slot = new_slot_type == "Subject"
     new_teacher_id = data.get("teacher_id", slot.staff_id)
+    new_day = data.get("day", slot.day_of_week)
+    new_period_id = data.get("period_config_id", slot.period_config_id)
 
-    # If teacher is changing, check for conflicts (only for Subject slots)
+    # If day or period is changing, check for slot position conflict in same class-section
+    if new_day != slot.day_of_week or new_period_id != slot.period_config_id:
+        position_result = await db.execute(
+            select(TimetableSlot).where(
+                TimetableSlot.school_id == school_id,
+                TimetableSlot.academic_year_id == slot.academic_year_id,
+                TimetableSlot.class_section_id == slot.class_section_id,
+                TimetableSlot.period_config_id == new_period_id,
+                TimetableSlot.day_of_week == new_day,
+                TimetableSlot.id != slot_id,
+            )
+        )
+        if position_result.scalar_one_or_none():
+            period = slot.period_config
+            cs = slot.class_section
+            class_name = cs.class_.name if cs and cs.class_ else "?"
+            section = cs.section.name if cs and cs.section else "?"
+            period_start = period.start_time.strftime("%H:%M") if period else "?"
+            from src.admin.timetable.exceptions import SlotAlreadyOccupied
+            raise SlotAlreadyOccupied(day=new_day, period_start_time=period_start, class_section=f"{class_name}-{section}")
+
+    # If teacher is changing, check for teacher conflicts (only for Subject slots)
     if is_subject_slot and new_teacher_id and new_teacher_id != slot.staff_id:
         await _check_teacher_conflict(
             db, school_id, slot.academic_year_id, new_teacher_id,
-            slot.period_config_id, slot.day_of_week, exclude_slot_id=slot_id,
+            new_period_id, new_day, exclude_slot_id=slot_id,
         )
 
     if "subject_id" in data:
@@ -670,6 +646,11 @@ async def update_slot(
         slot.slot_type = data["slot_type"]
         if data["slot_type"] != "Subject":
             slot.subject_id = None
+
+    if "day" in data:
+        slot.day_of_week = data["day"]
+    if "period_config_id" in data:
+        slot.period_config_id = data["period_config_id"]
 
     slot.updated_by = updated_by
     await db.commit()
@@ -701,162 +682,20 @@ async def delete_slot(
     school_id: uuid.UUID,
     slot_id: uuid.UUID,
     deleted_by: uuid.UUID,
-) -> TimetableSlot:
-    """Soft-delete a timetable slot."""
+) -> None:
+    """Delete a timetable slot."""
     result = await db.execute(
         select(TimetableSlot).where(
             TimetableSlot.id == slot_id,
             TimetableSlot.school_id == school_id,
-            TimetableSlot.is_active.is_(True),
         )
     )
     slot = result.scalar_one_or_none()
     if not slot:
         raise NotFound("TimetableSlot", str(slot_id))
 
-    slot.is_active = False
-    slot.deleted_by = deleted_by
+    await db.delete(slot)
     await db.commit()
-    await db.refresh(slot)
-    return slot
-
-
-# ---------------------------------------------------------------------------
-# Bulk Assign Service
-# ---------------------------------------------------------------------------
-
-
-async def bulk_assign_slots(
-    db: AsyncSession,
-    school_id: uuid.UUID,
-    data: dict,
-    created_by: uuid.UUID,
-    academic_year_name: str | None = None,
-) -> dict:
-    """Bulk assign multiple slots. Returns partial success (207) if some conflict."""
-    # Validate entries not empty
-    if not data.get("slots"):
-        raise HTTPException(status_code=400, detail="slots entries must not be empty")
-
-    ay = await _get_current_academic_year(db, school_id, academic_year_name)
-    cs = await _get_class_section(db, school_id, data["class_section_id"])
-
-    results: list[dict] = []
-    assigned_count = 0
-    conflict_count = 0
-
-    for item in data["slots"]:
-        day = item["day"]
-        period_config_id = item["period_config_id"]
-        subject_id = item.get("subject_id")
-        teacher_id = item["teacher_id"]
-        slot_type = item.get("slot_type", "Subject")
-        is_subject_slot = slot_type == "Subject"
-
-        # Check if slot already occupied
-        existing_result = await db.execute(
-            select(TimetableSlot).where(
-                TimetableSlot.school_id == school_id,
-                TimetableSlot.academic_year_id == ay.id,
-                TimetableSlot.class_section_id == cs.id,
-                TimetableSlot.period_config_id == period_config_id,
-                TimetableSlot.day_of_week == day,
-                TimetableSlot.is_active.is_(True),
-            )
-        )
-        if existing_result.scalar_one_or_none():
-            conflict_count += 1
-            results.append({
-                "id": None,
-                "day": day,
-                "period_config_id": period_config_id,
-                "subject": None,
-                "teacher_name": None,
-                "teacher_id": teacher_id,
-                "slot_type": slot_type,
-                "status": "Conflict",
-                "conflict": {"reason": "Slot already occupied"},
-            })
-            continue
-
-        # Check teacher conflict only for Subject slots
-        if is_subject_slot:
-            teacher_conflict_result = await db.execute(
-                select(TimetableSlot).where(
-                    TimetableSlot.school_id == school_id,
-                    TimetableSlot.academic_year_id == ay.id,
-                    TimetableSlot.staff_id == teacher_id,
-                    TimetableSlot.period_config_id == period_config_id,
-                    TimetableSlot.day_of_week == day,
-                    TimetableSlot.is_active.is_(True),
-                )
-            )
-            conflicting_slot = teacher_conflict_result.scalar_one_or_none()
-            if conflicting_slot:
-                conflict_count += 1
-                conflict_cs = conflicting_slot.class_section
-                conflict_class = conflict_cs.class_.name if conflict_cs and conflict_cs.class_ else "?"
-                conflict_section = conflict_cs.section.name if conflict_cs and conflict_cs.section else "?"
-                staff = conflicting_slot.staff
-                teacher_name = staff.full_name if staff else "Unknown"
-                results.append({
-                    "id": None,
-                    "day": day,
-                    "period_config_id": period_config_id,
-                    "subject": None,
-                    "teacher_name": None,
-                    "teacher_id": teacher_id,
-                    "slot_type": slot_type,
-                    "status": "Conflict",
-                    "conflict": {
-                        "teacher_name": teacher_name,
-                        "existing_class": f"{conflict_class}-{conflict_section}",
-                    },
-                })
-                continue
-
-        # Get subject and staff names
-        subject = None
-        if is_subject_slot and subject_id:
-            subject_result = await db.execute(select(Subject).where(Subject.id == subject_id))
-            subject = subject_result.scalar_one_or_none()
-        staff_result = await db.execute(select(Staff).where(Staff.id == teacher_id))
-        staff = staff_result.scalar_one_or_none()
-
-        slot = TimetableSlot(
-            school_id=school_id,
-            academic_year_id=ay.id,
-            class_section_id=cs.id,
-            period_config_id=period_config_id,
-            day_of_week=day,
-            subject_id=subject_id if is_subject_slot else None,
-            staff_id=teacher_id,
-            slot_type=slot_type,
-            created_by=created_by,
-        )
-        db.add(slot)
-        await db.flush()
-
-        assigned_count += 1
-        results.append({
-            "id": slot.id,
-            "day": day,
-            "period_config_id": period_config_id,
-            "subject": subject.name if subject else slot_type,
-            "teacher_name": staff.full_name if staff else None,
-            "teacher_id": teacher_id,
-            "slot_type": slot_type,
-            "status": "Assigned",
-            "conflict": None,
-        })
-
-    await db.commit()
-
-    return {
-        "assigned": assigned_count,
-        "conflicts": conflict_count,
-        "slots": results,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -886,8 +725,7 @@ async def get_teacher_timetable(
         select(PeriodConfig).where(
             PeriodConfig.school_id == school_id,
             PeriodConfig.academic_year_id == ay.id,
-            PeriodConfig.is_active.is_(True),
-            PeriodConfig.is_break.is_(False),
+                PeriodConfig.is_break.is_(False),
         ).order_by(PeriodConfig.start_time)
     )
     all_periods = periods_result.scalars().all()
@@ -898,7 +736,6 @@ async def get_teacher_timetable(
             TimetableSlot.school_id == school_id,
             TimetableSlot.academic_year_id == ay.id,
             TimetableSlot.staff_id == teacher_id,
-            TimetableSlot.is_active.is_(True),
         )
     )
     slots = slots_result.scalars().all()
@@ -967,7 +804,6 @@ async def detect_conflicts(
     query = select(TimetableSlot).where(
         TimetableSlot.school_id == school_id,
         TimetableSlot.academic_year_id == ay.id,
-        TimetableSlot.is_active.is_(True),
         TimetableSlot.staff_id.isnot(None),
     )
     if class_section_id:

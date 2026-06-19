@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import case, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import AppException, NotFound
@@ -231,6 +231,17 @@ async def run_payroll(
             error=f"Payroll already generated for {MONTH_NAMES[month]} {year}",
             code="PAYROLL_ALREADY_GENERATED",
         )
+
+    # Remove any previously soft-deleted payslips for this month to avoid unique constraint violation
+    await db.execute(
+        delete(Payslip).where(
+            Payslip.school_id == school_id,
+            Payslip.month == month,
+            Payslip.year == year,
+            Payslip.is_active.is_(False),
+        )
+    )
+    await db.flush()
 
     # Get all active staff with salary structures
     structures_result = await db.execute(

@@ -1069,81 +1069,235 @@ Soft-delete all payslips for a given month/year.
 
 ## 12. Timetable (`/admin/timetable`)
 
+> **Note:** Timetable uses hard-delete (no soft-delete). Deleting a period or slot permanently removes it.
+
+### GET /api/v1/admin/timetable/periods
+
+**Query Params:** `academic_year` (optional)
+
+**Response: 200**
+```json
+{
+  "academic_year": "2025-2026",
+  "total_periods": 6,
+  "periods": [
+    {"id": "uuid", "name": "Period 1", "start_time": "09:00", "end_time": "09:45", "duration_minutes": 45, "is_break": false, "sort_order": 0}
+  ],
+  "breaks": [
+    {"id": "uuid", "name": "Lunch", "start_time": "12:30", "end_time": "13:00", "duration_minutes": 30, "is_break": true, "sort_order": 4}
+  ],
+  "working_days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+}
+```
+
+---
+
 ### POST /api/v1/admin/timetable/periods
 
 **Request:**
 ```json
 {
-  "start_time": "08:00",
-  "end_time": "08:45",
-  "type": "class",
-  "order": 1,
-  "label": null
+  "name": "Period 1",
+  "start_time": "09:00",
+  "end_time": "09:45",
+  "is_break": false
 }
 ```
 
 **Response: 201**
 ```json
-{"id": "uuid", "start_time": "08:00", "end_time": "08:45", "duration_minutes": 45}
+{"id": "uuid", "name": "Period 1", "start_time": "09:00", "end_time": "09:45", "duration_minutes": 45, "is_break": false, "sort_order": 0}
+```
+
+**Errors:** 400 (time overlap with existing period)
+
+---
+
+### PUT /api/v1/admin/timetable/periods/{period_id}
+
+**Request:**
+```json
+{
+  "name": "Period 1 (Updated)",
+  "start_time": "09:00",
+  "end_time": "09:50"
+}
+```
+
+**Response: 200** (same as create response)
+
+**Errors:** 400 (time overlap), 404 (period not found)
+
+---
+
+### DELETE /api/v1/admin/timetable/periods/{period_id}
+
+**Response: 200**
+```json
+{"id": "uuid", "status": "Deleted", "deactivated_on": "2026-06-19", "message": "Period deleted successfully."}
+```
+
+---
+
+### GET /api/v1/admin/timetable
+
+**Query Params:** `class_section_id` (required), `academic_year` (optional)
+
+**Response: 200**
+```json
+{
+  "class_name": "8",
+  "section": "B",
+  "academic_year": "2025-2026",
+  "periods": [...],
+  "working_days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+  "timetable": {
+    "Monday": [
+      {"id": "uuid", "subject": "English", "subject_id": "uuid", "teacher_name": "Bhupender", "teacher_id": "uuid", "slot_type": "Subject", "start_time": "09:00", "end_time": "09:45"},
+      null
+    ]
+  },
+  "stats": {"total_slots": 36, "filled_slots": 24, "empty_slots": 12, "completion_percentage": 66.7}
+}
 ```
 
 ---
 
 ### POST /api/v1/admin/timetable/slot
 
+Creates a new slot or **upserts** (updates) if a slot already exists at the same position (class_section + period + day).
+
 **Request:**
 ```json
 {
   "class_section_id": "uuid",
-  "period_id": "uuid",
+  "period_config_id": "uuid",
   "day": "Monday",
   "subject_id": "uuid",
   "teacher_id": "uuid",
-  "type": "class"
+  "slot_type": "Subject"
 }
 ```
 
 **Response: 201**
 ```json
-{"id": "uuid", "message": "Slot created"}
+{
+  "id": "uuid",
+  "class_name": "8",
+  "section": "B",
+  "day": "Monday",
+  "period_start_time": "09:00",
+  "period_end_time": "09:45",
+  "subject": "English",
+  "subject_id": "uuid",
+  "teacher_name": "Bhupender",
+  "teacher_id": "uuid",
+  "slot_type": "Subject"
+}
 ```
+
+**Behavior:**
+- If slot already exists at (class_section, period, day) → updates it with new subject/teacher (upsert)
+- Teacher conflict check: raises error if the teacher is already assigned to another class at the same period+day
+- Self-conflict is excluded (editing same slot with same teacher won't conflict)
+
+**Errors:** 409 (teacher conflict with another class)
 
 ---
 
-### POST /api/v1/admin/timetable/bulk-assign
+### PUT /api/v1/admin/timetable/slot/{slot_id}
+
+Updates an existing slot by ID. Supports changing subject, teacher, slot_type, day, or period.
 
 **Request:**
 ```json
 {
-  "class_section_id": "uuid",
-  "slots": [
-    {"period_id": "uuid", "day": "Monday", "subject_id": "uuid", "teacher_id": "uuid"},
-    {"period_id": "uuid", "day": "Monday", "subject_id": "uuid", "teacher_id": "uuid"}
-  ]
+  "subject_id": "uuid",
+  "teacher_id": "uuid"
 }
 ```
 
+**Response: 200** (same structure as create response, with `updated_at`)
+
+**Conflict checks:**
+- If teacher changes → checks teacher is not double-booked (excludes self)
+- If day/period changes → checks no other slot exists at the new position in the same class-section
+
+**Errors:** 409 (teacher conflict or slot position conflict), 404 (slot not found)
+
+---
+
+### DELETE /api/v1/admin/timetable/slot/{slot_id}
+
+Permanently deletes the slot assignment.
+
 **Response: 200**
 ```json
-{"message": "Slots assigned", "created": 10, "conflicts": []}
+{"id": "uuid", "day": "", "status": "Deleted", "removed_on": "2026-06-19", "message": "Slot deleted successfully."}
+```
+
+---
+
+### GET /api/v1/admin/timetable/teacher/{teacher_id}
+
+**Query Params:** `academic_year` (optional)
+
+**Response: 200**
+```json
+{
+  "teacher_id": "uuid",
+  "teacher_name": "Bhupender",
+  "academic_year": "2025-2026",
+  "total_periods_per_week": 18,
+  "timetable": {
+    "Monday": [
+      {"period_start_time": "09:00", "period_end_time": "09:45", "class_name": "8", "section": "B", "subject": "English", "slot_type": "Subject"}
+    ]
+  },
+  "free_slots": {
+    "Monday": ["10:30", "11:15"],
+    "Tuesday": ["09:00"]
+  }
+}
+```
+
+---
+
+### GET /api/v1/admin/timetable/teacher-availability
+
+**Query Params:** `period_config_id` (required), `day` (required)
+
+**Response: 200**
+```json
+{
+  "busy_teachers": {
+    "teacher-uuid-1": {"class": "8-B", "subject": "English"},
+    "teacher-uuid-2": {"class": "9-A", "subject": "Mathematics"}
+  }
+}
 ```
 
 ---
 
 ### GET /api/v1/admin/timetable/conflicts
 
-**Query Params:** `class_section_id` (optional), `teacher_id` (optional)
+**Query Params:** `academic_year` (optional), `class_section_id` (optional)
 
 **Response: 200**
 ```json
 {
+  "total_conflicts": 1,
   "conflicts": [
     {
-      "type": "teacher_overlap",
-      "teacher_name": "Jane Smith",
+      "type": "teacher_double_booked",
+      "teacher_id": "uuid",
+      "teacher_name": "Bhupender",
       "day": "Monday",
-      "period": "08:00-08:45",
-      "classes": ["10-A", "9-B"]
+      "period_start_time": "09:00",
+      "assignments": [
+        {"class_name": "8", "section": "B", "subject": "English"},
+        {"class_name": "9", "section": "A", "subject": "English"}
+      ]
     }
   ]
 }

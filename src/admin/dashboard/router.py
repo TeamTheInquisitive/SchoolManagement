@@ -252,14 +252,14 @@ async def get_attendance_monthly_comparison(
     return await service.get_attendance_monthly_comparison(db, school.id)
 
 
-@router.get("/analytics/gender-ratio", response_model=None)
-async def get_gender_ratio(
+@router.get("/analytics/student-type-ratio", response_model=None)
+async def get_student_type_ratio(
     db: SessionDep,
     school: SchoolDep,
     user: AdminUser,
 ):
-    """Get overall male/female/other student ratio."""
-    return await service.get_gender_ratio(db, school.id)
+    """Get dayscholar/hostler student type ratio."""
+    return await service.get_student_type_ratio(db, school.id)
 
 
 @router.get("/analytics/subject-performance", response_model=None)

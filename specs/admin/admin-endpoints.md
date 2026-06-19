@@ -341,20 +341,21 @@ Every request includes `X-School-Code` header. The backend resolves the school c
 
 ### Timetable (12)
 
+> **Note:** Timetable uses hard-delete. No soft-delete/is_active logic.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/admin/timetable/periods` | List period definitions |
-| POST | `/api/v1/admin/timetable/periods` | Create period |
-| PUT | `/api/v1/admin/timetable/periods/{period_id}` | Update period |
-| DELETE | `/api/v1/admin/timetable/periods/{period_id}` | Delete period |
-| GET | `/api/v1/admin/timetable` | Get timetable grid |
-| POST | `/api/v1/admin/timetable/slot` | Create timetable slot |
-| PUT | `/api/v1/admin/timetable/slot/{slot_id}` | Update slot |
-| DELETE | `/api/v1/admin/timetable/slot/{slot_id}` | Delete slot |
-| POST | `/api/v1/admin/timetable/bulk-assign` | Bulk assign slots |
-| GET | `/api/v1/admin/timetable/teacher/{teacher_id}` | Teacher timetable |
-| GET | `/api/v1/admin/timetable/teacher-availability` | Check teacher availability |
-| GET | `/api/v1/admin/timetable/conflicts` | Detect timetable conflicts |
+| GET | `/api/v1/admin/timetable/periods` | List period configurations (teaching periods + breaks) |
+| POST | `/api/v1/admin/timetable/periods` | Create period (validates time overlap) |
+| PUT | `/api/v1/admin/timetable/periods/{period_id}` | Update period timing/name |
+| DELETE | `/api/v1/admin/timetable/periods/{period_id}` | Hard-delete period |
+| GET | `/api/v1/admin/timetable` | Get timetable grid for a class-section |
+| POST | `/api/v1/admin/timetable/slot` | Create/upsert slot — if slot exists at same (class, period, day), updates it |
+| PUT | `/api/v1/admin/timetable/slot/{slot_id}` | Update slot — checks teacher conflict + position conflict |
+| DELETE | `/api/v1/admin/timetable/slot/{slot_id}` | Hard-delete slot |
+| GET | `/api/v1/admin/timetable/teacher/{teacher_id}` | Teacher's weekly timetable + free slots |
+| GET | `/api/v1/admin/timetable/teacher-availability` | Which teachers are busy at a given period+day |
+| GET | `/api/v1/admin/timetable/conflicts` | Detect teacher double-booking conflicts |
 
 ---
 

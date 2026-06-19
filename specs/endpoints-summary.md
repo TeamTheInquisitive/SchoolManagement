@@ -32,7 +32,7 @@
 | GET | /admin/dashboard/analytics/enrollment-trend | Student count per academic year |
 | GET | /admin/dashboard/analytics/fee-defaulters-by-class | Overdue students per class |
 | GET | /admin/dashboard/analytics/attendance-monthly-comparison | This month vs last month |
-| GET | /admin/dashboard/analytics/gender-ratio | Male/Female/Other counts |
+| GET | /admin/dashboard/analytics/student-type-ratio | Dayscholar/Hostler student type counts |
 
 ## Admin - Settings (37 endpoints)
 | Method | Path | Description |
@@ -249,18 +249,17 @@
 ## Admin - Timetable (12 endpoints)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | /admin/timetable/periods | List periods |
-| POST | /admin/timetable/periods | Create period |
-| PUT | /admin/timetable/periods/{id} | Update period |
-| DELETE | /admin/timetable/periods/{id} | Delete period |
-| GET | /admin/timetable | Timetable grid |
-| POST | /admin/timetable/slot | Create slot |
-| PUT | /admin/timetable/slot/{id} | Update slot |
-| DELETE | /admin/timetable/slot/{id} | Delete slot |
-| POST | /admin/timetable/bulk-assign | Bulk assign |
-| GET | /admin/timetable/teacher/{id} | Teacher timetable |
-| GET | /admin/timetable/teacher-availability | Check availability |
-| GET | /admin/timetable/conflicts | Detect conflicts |
+| GET | /admin/timetable/periods | List period configurations |
+| POST | /admin/timetable/periods | Create period (validates time overlap) |
+| PUT | /admin/timetable/periods/{id} | Update period timing |
+| DELETE | /admin/timetable/periods/{id} | Hard-delete period |
+| GET | /admin/timetable | Timetable grid for a class-section |
+| POST | /admin/timetable/slot | Create/upsert slot (updates if exists at same position) |
+| PUT | /admin/timetable/slot/{id} | Update slot (checks teacher + position conflicts) |
+| DELETE | /admin/timetable/slot/{id} | Hard-delete slot |
+| GET | /admin/timetable/teacher/{id} | Teacher's weekly timetable + free slots |
+| GET | /admin/timetable/teacher-availability | Check which teachers are busy at a period+day |
+| GET | /admin/timetable/conflicts | Detect teacher double-booking conflicts |
 
 ## Admin - Library (6 endpoints)
 | Method | Path | Description |

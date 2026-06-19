@@ -4,12 +4,9 @@ from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Query
-from fastapi.responses import JSONResponse
 
 from src.admin.timetable import service
 from src.admin.timetable.schemas import (
-    BulkAssignRequest,
-    BulkAssignResponse,
     ConflictsResponse,
     CreatePeriodRequest,
     CreateSlotRequest,
@@ -83,13 +80,13 @@ async def delete_period(
     school: SchoolDep,
     user: AdminUser,
 ) -> PeriodDeleteResponse:
-    """Soft-delete a period."""
-    period = await service.delete_period(db, school.id, period_id, user.id)
+    """Delete a period."""
+    await service.delete_period(db, school.id, period_id, user.id)
     return PeriodDeleteResponse(
-        id=period.id,
-        status="Inactive",
+        id=period_id,
+        status="Deleted",
         deactivated_on=str(date.today()),
-        message="Period removed. Existing timetable entries preserved.",
+        message="Period deleted successfully.",
     )
 
 
@@ -153,53 +150,15 @@ async def delete_slot(
     school: SchoolDep,
     user: AdminUser,
 ) -> SlotDeleteResponse:
-    """Remove a slot assignment (soft-delete)."""
-    slot = await service.delete_slot(db, school.id, slot_id, user.id)
+    """Delete a slot assignment."""
+    await service.delete_slot(db, school.id, slot_id, user.id)
     return SlotDeleteResponse(
-        id=slot.id,
-        day=slot.day_of_week,
-        status="Removed",
+        id=slot_id,
+        day="",
+        status="Deleted",
         removed_on=str(date.today()),
-        message="Slot cleared. Historical record preserved.",
+        message="Slot deleted successfully.",
     )
-
-
-# ---------------------------------------------------------------------------
-# Bulk Assign Endpoint
-# ---------------------------------------------------------------------------
-
-
-@router.post("/bulk-assign")
-async def bulk_assign(
-    data: BulkAssignRequest,
-    db: SessionDep,
-    school: SchoolDep,
-    user: AdminUser,
-    academic_year: str | None = Query(default=None),
-) -> JSONResponse:
-    """Bulk assign multiple slots. Returns 207 on partial success."""
-    result = await service.bulk_assign_slots(
-        db, school.id, data.model_dump(), user.id, academic_year
-    )
-    status_code = 207 if result["conflicts"] > 0 else 201
-    return JSONResponse(status_code=status_code, content={
-        "assigned": result["assigned"],
-        "conflicts": result["conflicts"],
-        "slots": [
-            {
-                "id": str(s["id"]) if s["id"] else None,
-                "day": s["day"],
-                "period_config_id": str(s["period_config_id"]),
-                "subject": s["subject"],
-                "teacher_name": s["teacher_name"],
-                "teacher_id": str(s["teacher_id"]) if s["teacher_id"] else None,
-                "slot_type": s["slot_type"],
-                "status": s["status"],
-                "conflict": s["conflict"],
-            }
-            for s in result["slots"]
-        ],
-    })
 
 
 # ---------------------------------------------------------------------------

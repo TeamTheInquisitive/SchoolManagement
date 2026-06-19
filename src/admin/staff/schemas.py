@@ -14,18 +14,19 @@ from pydantic import BaseModel, Field
 
 class CreateStaffRequest(BaseModel):
     employee_id: str
-    first_name: str
+    first_name: str | None = None
     last_name: str | None = None
     full_name: str
     email: str
     phone: str | None = None
     department: str | None = None
     designation: str | None = None
-    employment_type: str | None = None  # Full-time / Part-time / Contract
+    employment_type: str | None = None
     joining_date: date | None = None
     salary: Decimal | None = None
     is_teacher: bool = False
     gender: str | None = None
+    date_of_birth: date | None = None
     qualification: str | None = None
     experience_years: Decimal | None = None
     address_line1: str | None = None
@@ -35,6 +36,7 @@ class CreateStaffRequest(BaseModel):
     blood_group: str | None = None
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
+    emergency_contact_relationship: str | None = None
     # Banking
     bank_name: str | None = None
     bank_account_number: str | None = None
@@ -64,6 +66,7 @@ class UpdateStaffRequest(BaseModel):
     salary: Decimal | None = None
     is_teacher: bool | None = None
     gender: str | None = None
+    date_of_birth: date | None = None
     qualification: str | None = None
     experience_years: Decimal | None = None
     address_line1: str | None = None
@@ -73,6 +76,7 @@ class UpdateStaffRequest(BaseModel):
     blood_group: str | None = None
     emergency_contact_name: str | None = None
     emergency_contact_phone: str | None = None
+    emergency_contact_relationship: str | None = None
     status: str | None = None
     # Banking
     bank_name: str | None = None
@@ -153,3 +157,21 @@ class StaffListResponse(BaseModel):
     page_size: int
     total_pages: int
     results: list[StaffResponse]
+
+
+class BulkImportStaffRequest(BaseModel):
+    staff: list[CreateStaffRequest]
+
+
+class BulkImportStaffResultItem(BaseModel):
+    row: int
+    employee_id: str | None = None
+    success: bool
+    error: str | None = None
+
+
+class BulkImportStaffResponse(BaseModel):
+    results: list[BulkImportStaffResultItem]
+    total: int
+    passed: int
+    failed: int

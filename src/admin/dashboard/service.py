@@ -721,7 +721,7 @@ async def get_attendance_monthly_comparison(db: AsyncSession, school_id: uuid.UU
     return {"data": data}
 
 
-async def get_gender_ratio(db: AsyncSession, school_id: uuid.UUID) -> dict:
+async def get_student_type_ratio(db: AsyncSession, school_id: uuid.UUID) -> dict:
     """Get dayscholar/hostler ratio for active students."""
     result = await db.execute(
         select(
