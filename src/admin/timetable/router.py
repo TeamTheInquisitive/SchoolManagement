@@ -161,6 +161,18 @@ async def delete_slot(
     )
 
 
+@router.delete("/slots/class-section/{class_section_id}")
+async def reset_class_section_slots(
+    class_section_id: UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Delete all timetable slots for a class-section (hard delete)."""
+    deleted = await service.reset_class_section_slots(db, school.id, class_section_id)
+    return {"deleted": deleted, "message": f"All {deleted} slot(s) deleted successfully."}
+
+
 # ---------------------------------------------------------------------------
 # Teacher Timetable Endpoint
 # ---------------------------------------------------------------------------

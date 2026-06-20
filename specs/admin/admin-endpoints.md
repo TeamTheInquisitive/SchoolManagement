@@ -353,6 +353,7 @@ Every request includes `X-School-Code` header. The backend resolves the school c
 | POST | `/api/v1/admin/timetable/slot` | Create/upsert slot — if slot exists at same (class, period, day), updates it |
 | PUT | `/api/v1/admin/timetable/slot/{slot_id}` | Update slot — checks teacher conflict + position conflict |
 | DELETE | `/api/v1/admin/timetable/slot/{slot_id}` | Hard-delete slot |
+| DELETE | `/api/v1/admin/timetable/slots/class-section/{class_section_id}` | Reset all slots for a class-section (hard-delete all) |
 | GET | `/api/v1/admin/timetable/teacher/{teacher_id}` | Teacher's weekly timetable + free slots |
 | GET | `/api/v1/admin/timetable/teacher-availability` | Which teachers are busy at a given period+day |
 | GET | `/api/v1/admin/timetable/conflicts` | Detect teacher double-booking conflicts |

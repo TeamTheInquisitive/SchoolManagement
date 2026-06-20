@@ -804,7 +804,7 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
         "medical": {
             "blood_group": student.blood_group,
             "religion": student.religion,
-            "conditions": student.medical_conditions or "None reported",
+            "conditions": student.medical_conditions or "",
             "allergies": student.allergies.split(",") if student.allergies else [],
         },
         "mentor": mentor_info,

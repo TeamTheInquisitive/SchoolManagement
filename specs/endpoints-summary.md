@@ -257,6 +257,7 @@
 | POST | /admin/timetable/slot | Create/upsert slot (updates if exists at same position) |
 | PUT | /admin/timetable/slot/{id} | Update slot (checks teacher + position conflicts) |
 | DELETE | /admin/timetable/slot/{id} | Hard-delete slot |
+| DELETE | /admin/timetable/slots/class-section/{id} | Reset all slots for a class-section (hard-delete) |
 | GET | /admin/timetable/teacher/{id} | Teacher's weekly timetable + free slots |
 | GET | /admin/timetable/teacher-availability | Check which teachers are busy at a period+day |
 | GET | /admin/timetable/conflicts | Detect teacher double-booking conflicts |

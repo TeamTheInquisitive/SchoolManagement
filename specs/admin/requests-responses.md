@@ -1233,8 +1233,21 @@ Permanently deletes the slot assignment.
 
 **Response: 200**
 ```json
-{"id": "uuid", "day": "", "status": "Deleted", "removed_on": "2026-06-19", "message": "Slot deleted successfully."}
+{"id": "uuid", "day": "", "status": "Deleted", "removed_on": "2026-06-20", "message": "Slot deleted successfully."}
 ```
+
+---
+
+### DELETE /api/v1/admin/timetable/slots/class-section/{class_section_id}
+
+Permanently deletes ALL timetable slots for a given class-section. Used to reset an entire class timetable.
+
+**Response: 200**
+```json
+{"deleted": 54, "message": "All 54 slot(s) deleted successfully."}
+```
+
+**Errors:** Returns `{"deleted": 0, ...}` if no slots exist for the class-section.
 
 ---
 

@@ -15,6 +15,7 @@ from src.superadmin import service
 from src.superadmin.schemas import (
     AdminCreate,
     DashboardStatsResponse,
+    HardDeleteResponse,
     PaymentCreate,
     PaymentListResponse,
     PaymentResponse,
@@ -65,6 +66,15 @@ async def update_school(db: SessionDep, user: SuperAdminUser, school_id: uuid.UU
         raise HTTPException(status_code=404, detail="School not found")
     detail = await service.get_school_detail(db, school.id)
     return detail
+
+
+@router.delete("/schools/{school_id}/hard-delete", response_model=HardDeleteResponse)
+async def hard_delete_school(db: SessionDep, user: SuperAdminUser, school_id: uuid.UUID):
+    """Permanently delete ALL data related to a school. This is irreversible."""
+    result = await service.hard_delete_school(db, school_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="School not found")
+    return result
 
 
 @router.post("/schools/{school_id}/logo")

@@ -1,4 +1,6 @@
 
+from __future__ import annotations
+
 from datetime import date, datetime
 import re
 from typing import Any, Optional
@@ -324,7 +326,7 @@ class ExamResultsResponse(BaseModel):
 class MeetingItem(BaseModel):
     id: UUID | None = None
     type: str | None = None
-    date: Optional[date] = None
+    date: date | None = None
     attendee: str | None = None
     conductor: str | None = None
     notes: str | None = None
@@ -332,7 +334,7 @@ class MeetingItem(BaseModel):
     agenda: str | None = None
     remarks: str | None = None
     follow_up_required: bool | None = None
-    next_meeting_date: Optional[date] = None
+    next_meeting_date: date | None = None
     parent_attended: bool | None = None
 
 

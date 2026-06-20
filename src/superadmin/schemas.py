@@ -186,3 +186,12 @@ class UserItem(BaseModel):
 class UserListResponse(BaseModel):
     users: list[UserItem]
     total: int
+
+
+# --- Hard Delete ---
+
+class HardDeleteResponse(BaseModel):
+    school_id: uuid.UUID
+    school_name: str
+    deleted_tables: dict[str, int]
+    total_records_deleted: int

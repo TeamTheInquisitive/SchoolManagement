@@ -698,6 +698,26 @@ async def delete_slot(
     await db.commit()
 
 
+async def reset_class_section_slots(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    class_section_id: uuid.UUID,
+) -> int:
+    """Delete all timetable slots for a class-section (hard delete)."""
+    result = await db.execute(
+        select(TimetableSlot).where(
+            TimetableSlot.school_id == school_id,
+            TimetableSlot.class_section_id == class_section_id,
+        )
+    )
+    slots = result.scalars().all()
+    count = len(slots)
+    for slot in slots:
+        await db.delete(slot)
+    await db.commit()
+    return count
+
+
 # ---------------------------------------------------------------------------
 # Teacher Timetable Service
 # ---------------------------------------------------------------------------

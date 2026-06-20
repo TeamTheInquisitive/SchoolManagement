@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.security import hash_password
@@ -320,3 +320,133 @@ async def get_users(db: AsyncSession, role: str | None = None, school_id: uuid.U
             "school_name": school_name, "last_login_at": u.last_login_at,
         })
     return {"users": items, "total": len(items)}
+
+
+async def hard_delete_school(db: AsyncSession, school_id: uuid.UUID) -> dict:
+    """
+    Permanently delete ALL data related to a school from every table.
+    Deletes in correct FK order (leaf tables first, school last).
+    Uses raw SQL for efficiency. Wrapped in a transaction (all-or-nothing).
+    """
+    # Verify school exists
+    result = await db.execute(select(School).where(School.id == school_id))
+    school = result.scalar_one_or_none()
+    if not school:
+        return None
+
+    school_name = school.name
+
+    # Deletion order: leaf/child tables first, parent tables last.
+    # All tables with school_id (direct column) are deleted using school_id.
+    # Order respects FK constraints — children before parents.
+    deletion_order = [
+        # --- Deepest leaf tables (no other table references these) ---
+        "notification_recipients",    # FK -> notifications, users
+        "attendance_records",         # FK -> attendance_sessions, students
+        "assignment_submissions",     # FK -> assignments, students
+        "exam_results",               # FK -> exams, students
+        "grade_scales",               # FK -> grade_systems
+        "fee_payments",               # FK -> fee_records, users
+        "fee_penalties",              # FK -> fee_records, users
+        "fee_reminders",              # FK -> academic_years, users
+        "library_issues",             # FK -> library_books, users
+        "student_transport",          # FK -> students, routes, academic_years
+        "route_assignments",          # FK -> routes, vehicles, drivers, helpers
+        "student_parents",            # FK -> students, parents
+        "student_mentors",            # FK -> students, staff, academic_years
+        "student_enrollments",        # FK -> students, class_sections, academic_years
+        "timetable_slots",            # FK -> class_sections, period_configs, subjects, staff
+        "adhoc_classes",              # FK -> staff, class_sections, subjects, academic_years
+        "staff_subjects",             # FK -> staff, subjects
+        "class_assignments",          # FK -> staff, class_sections, subjects, academic_years
+        "parent_meetings",            # FK -> students, staff, parents, academic_years
+        "activities",                 # FK -> students, staff, academic_years
+        "awards",                     # FK -> students, staff, academic_years
+        "disciplinary_records",       # FK -> students, staff, academic_years
+        "leave_applications",         # FK -> staff, users, academic_years
+        "leave_balances",             # FK -> staff, academic_years
+        "payslips",                   # FK -> staff, academic_years, users
+        "salary_advances",            # FK -> staff, users
+        "salary_revisions",           # FK -> staff, academic_years, users
+        "salary_structures",          # FK -> staff, academic_years
+
+        # --- Mid-level tables ---
+        "notifications",              # FK -> users
+        "attendance_sessions",        # FK -> class_sections, subjects, staff, academic_years
+        "assignments",                # FK -> class_sections, subjects, staff, academic_years
+        "exams",                      # FK -> class_sections, subjects, staff, academic_years
+        "fee_records",                # FK -> students, fee_structures, academic_years
+        "fee_structures",             # FK -> classes, class_sections, academic_years
+        "grade_systems",              # FK -> academic_years
+        "leave_policies",             # FK -> academic_years
+        "period_configs",             # FK -> academic_years
+        "library_books",              # no FK to other school tables
+        "subscription_payments",      # FK -> subscriptions
+        "subscriptions",              # FK -> schools (direct)
+
+        # --- Core entity tables ---
+        "class_subjects",             # FK -> classes, subjects, academic_years
+        "class_sections",             # FK -> classes, sections, academic_years
+        "subjects",                   # no FK to other school tables
+        "sections",                   # no FK to other school tables
+        "classes",                    # no FK to other school tables
+
+        # --- Transport entities ---
+        "routes",
+        "vehicles",
+        "drivers",
+        "helpers",
+
+        # --- People tables ---
+        "parents",
+        "students",
+        "staff",
+
+        # --- Users (only those belonging exclusively to this school) ---
+        "users",
+
+        # --- Config tables ---
+        "enum_configs",
+        "settings",
+        "academic_years",
+
+        # --- Finally, the school itself ---
+        "schools",
+    ]
+
+    deleted_counts = {}
+
+    for table in deletion_order:
+        if table == "schools":
+            # Delete the school record itself by its primary key
+            result = await db.execute(
+                text("DELETE FROM schools WHERE id = :school_id"),
+                {"school_id": str(school_id)},
+            )
+            deleted_counts["schools"] = result.rowcount
+        elif table == "users":
+            # Only delete users that belong exclusively to this school
+            # (Users table uses school_id directly)
+            result = await db.execute(
+                text("DELETE FROM users WHERE school_id = :school_id"),
+                {"school_id": str(school_id)},
+            )
+            deleted_counts["users"] = result.rowcount
+        else:
+            # All other tables have school_id column
+            result = await db.execute(
+                text(f"DELETE FROM `{table}` WHERE school_id = :school_id"),
+                {"school_id": str(school_id)},
+            )
+            if result.rowcount > 0:
+                deleted_counts[table] = result.rowcount
+
+    await db.commit()
+
+    total_deleted = sum(deleted_counts.values())
+    return {
+        "school_id": school_id,
+        "school_name": school_name,
+        "deleted_tables": deleted_counts,
+        "total_records_deleted": total_deleted,
+    }
