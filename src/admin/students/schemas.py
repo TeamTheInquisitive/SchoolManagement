@@ -1,12 +1,10 @@
 
-from __future__ import annotations
-
 from datetime import date, datetime
 import re
 from typing import Any, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -324,9 +322,11 @@ class ExamResultsResponse(BaseModel):
 
 
 class MeetingItem(BaseModel):
+    model_config = {"populate_by_name": True}
+
     id: UUID | None = None
     type: str | None = None
-    date: date | None = None
+    meeting_date: date | None = Field(default=None, alias="date", serialization_alias="date")
     attendee: str | None = None
     conductor: str | None = None
     notes: str | None = None
