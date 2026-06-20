@@ -397,13 +397,11 @@ async def hard_delete_school(db: AsyncSession, school_id: uuid.UUID) -> dict:
         "drivers",
         "helpers",
 
-        # --- People tables ---
+        # --- Users and People tables (circular FKs NULLed out above) ---
+        "users",
         "parents",
         "students",
         "staff",
-
-        # --- Users (only those belonging exclusively to this school) ---
-        "users",
 
         # --- Config tables ---
         "enum_configs",
@@ -416,24 +414,25 @@ async def hard_delete_school(db: AsyncSession, school_id: uuid.UUID) -> dict:
 
     deleted_counts = {}
 
+    # First: NULL out circular FK references in users (users → students, staff, parents)
+    # and staff (staff → users) to break circular dependencies
+    await db.execute(
+        text("UPDATE users SET student_id = NULL, staff_id = NULL, parent_id = NULL WHERE school_id = :school_id"),
+        {"school_id": str(school_id)},
+    )
+    await db.execute(
+        text("UPDATE staff SET user_id = NULL WHERE school_id = :school_id"),
+        {"school_id": str(school_id)},
+    )
+
     for table in deletion_order:
         if table == "schools":
-            # Delete the school record itself by its primary key
             result = await db.execute(
                 text("DELETE FROM schools WHERE id = :school_id"),
                 {"school_id": str(school_id)},
             )
             deleted_counts["schools"] = result.rowcount
-        elif table == "users":
-            # Only delete users that belong exclusively to this school
-            # (Users table uses school_id directly)
-            result = await db.execute(
-                text("DELETE FROM users WHERE school_id = :school_id"),
-                {"school_id": str(school_id)},
-            )
-            deleted_counts["users"] = result.rowcount
         else:
-            # All other tables have school_id column
             result = await db.execute(
                 text(f"DELETE FROM `{table}` WHERE school_id = :school_id"),
                 {"school_id": str(school_id)},
