@@ -54,16 +54,15 @@ async def get_mentees(
     return TeacherMenteesResponse(**result)
 
 
-@router.get("/{student_id}", response_model=TeacherStudentDetailResponse)
+@router.get("/{student_id}")
 async def get_student_detail(
     student_id: UUID,
     db: SessionDep,
     school: SchoolDep,
     user: TeacherUser,
-) -> TeacherStudentDetailResponse:
-    """Get full student profile (403 if not mentor/class teacher)."""
-    result = await service.get_student_detail(db, school.id, student_id, user)
-    return TeacherStudentDetailResponse(**result)
+):
+    """Get full student profile. Any teacher can view, edit only for class teacher/mentor."""
+    return await service.get_student_detail(db, school.id, student_id, user)
 
 
 # ---------------------------------------------------------------------------
