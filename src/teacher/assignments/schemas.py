@@ -19,6 +19,7 @@ class CreateAssignmentRequest(BaseModel):
     subject: str | None = None
     due_date: date
     max_marks: float = Field(..., gt=0)
+    allow_file_upload: bool = True
     academic_year: str | None = None
 
     @field_validator('due_date')
@@ -180,6 +181,9 @@ class SubmissionListItem(BaseModel):
     marks: float | None = None
     max_marks: float | None = None
     graded_at: datetime | None = None
+    comments: str | None = None
+    file_urls: list[str] = Field(default_factory=list)
+    feedback: str | None = None
 
 
 class SubmissionListResponse(BaseModel):

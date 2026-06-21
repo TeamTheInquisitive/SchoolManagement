@@ -213,3 +213,56 @@ async def update_teacher_profile(
 
     await db.commit()
     return {"message": "Profile updated successfully"}
+
+
+# ---------------------------------------------------------------------------
+# Awards (self-managed by teacher)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/awards")
+async def get_my_awards(
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+):
+    """Get authenticated teacher's awards."""
+    from src.admin.teachers.service import get_teacher_awards
+    return await get_teacher_awards(db, school.id, user.staff_id)
+
+
+@router.post("/awards", status_code=201)
+async def add_my_award(
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+    data: dict,
+):
+    """Add an award to own profile."""
+    from src.admin.teachers.service import add_teacher_award
+    return await add_teacher_award(db, school.id, user.staff_id, data)
+
+
+@router.put("/awards/{award_id}")
+async def update_my_award(
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+    award_id: str,
+    data: dict,
+):
+    """Update an award on own profile."""
+    from src.admin.teachers.service import update_teacher_award
+    return await update_teacher_award(db, school.id, user.staff_id, award_id, data)
+
+
+@router.delete("/awards/{award_id}", status_code=204)
+async def delete_my_award(
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+    award_id: str,
+):
+    """Delete an award from own profile."""
+    from src.admin.teachers.service import delete_teacher_award
+    await delete_teacher_award(db, school.id, user.staff_id, award_id)

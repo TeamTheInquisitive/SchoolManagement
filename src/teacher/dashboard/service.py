@@ -644,14 +644,20 @@ async def get_upcoming_meetings(
     )
     meetings = result.scalars().all()
 
+    student_ids = [m.student_id for m in meetings]
+    student_map = {}
+    if student_ids:
+        s_result = await db.execute(select(Student).where(Student.id.in_(student_ids)))
+        student_map = {s.id: s for s in s_result.scalars().all()}
+
     items = []
     for m in meetings:
-        student = m.student
+        student = student_map.get(m.student_id)
         items.append({
             "id": m.id,
             "student_id": m.student_id,
             "student_name": student.full_name if student else "",
-            "class_section": f"{student.enrollments[0].class_section.class_.name}-{student.enrollments[0].class_section.section.name}" if student and student.enrollments else "",
+            "class_section": "",
             "meeting_date": m.meeting_date.isoformat(),
             "meeting_type": m.meeting_type or "General",
             "agenda": m.agenda or "",

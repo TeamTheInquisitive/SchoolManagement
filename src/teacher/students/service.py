@@ -509,6 +509,29 @@ async def get_student_detail(
 
     can_edit = is_mentor or is_assigned_class
 
+    # Get class teacher info
+    class_teacher_info = None
+    if cs_id:
+        ct_result = await db.execute(
+            select(ClassAssignment).where(
+                ClassAssignment.school_id == school_id,
+                ClassAssignment.class_section_id == cs_id,
+                ClassAssignment.academic_year_id == current_ay.id,
+                ClassAssignment.is_class_teacher.is_(True),
+                ClassAssignment.is_active.is_(True),
+            )
+        )
+        ct_assignment = ct_result.scalar_one_or_none()
+        if ct_assignment:
+            ct_staff_result = await db.execute(select(Staff).where(Staff.id == ct_assignment.staff_id))
+            ct_staff = ct_staff_result.scalar_one_or_none()
+            if ct_staff:
+                class_teacher_info = {
+                    "name": ct_staff.full_name,
+                    "email": ct_staff.email,
+                    "phone": ct_staff.phone,
+                }
+
     detail = {
         "id": student.id,
         "can_edit": can_edit,
@@ -551,6 +574,7 @@ async def get_student_detail(
         },
         "transport_info": await _get_transport_info(db, school_id, student.id, current_ay),
         "assigned_mentor": mentor_info,
+        "class_teacher": class_teacher_info,
         "academic_summary": {
             "overall_attendance": None,
             "overall_grade": None,

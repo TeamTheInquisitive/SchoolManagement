@@ -238,7 +238,7 @@ async def apply_leave(
     metadata = data.get("metadata", {})
 
     # Fetch holidays for the school
-    from src.models.settings import Settings
+    from src.models.core import Settings
     from datetime import timedelta
 
     holiday_dates = set()
@@ -544,7 +544,7 @@ async def get_holidays(
     school_id: uuid.UUID,
 ) -> dict:
     """Get holidays and working days for leave day calculation."""
-    from src.models.settings import Settings
+    from src.models.core import Settings
 
     ay = await _get_current_academic_year(db, school_id)
     ay_key = f"holidays_{ay.id}" if ay else "holidays"

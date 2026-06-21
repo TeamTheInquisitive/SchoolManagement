@@ -393,6 +393,7 @@ async def create_assignment(
         status="Active",
         assigned_date=date.today(),
         created_by=user.id,
+        metadata_={"allow_file_upload": data.allow_file_upload},
     )
     db.add(assignment)
     await db.flush()
