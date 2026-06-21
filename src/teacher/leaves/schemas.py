@@ -41,6 +41,7 @@ class LeaveHistoryItem(BaseModel):
     from_date: date
     to_date: date
     duration_days: Decimal
+    is_half_day: bool = False
     reason: str
     status: str
     applied_on: datetime

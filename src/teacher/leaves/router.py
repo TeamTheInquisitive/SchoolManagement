@@ -31,6 +31,17 @@ async def get_leave_balance(
     return LeaveBalanceResponse(**result)
 
 
+@router.get("/holidays")
+async def get_holidays(
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+) -> dict:
+    """Get holidays list for leave calculation."""
+    result = await service.get_holidays(db, school.id)
+    return result
+
+
 @router.get("/upcoming", response_model=UpcomingLeavesResponse)
 async def get_upcoming_leaves(
     db: SessionDep,

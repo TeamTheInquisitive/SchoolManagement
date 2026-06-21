@@ -159,6 +159,7 @@ async def get_leave_history(
                 "from_date": app.from_date,
                 "to_date": app.to_date,
                 "duration_days": app.days,
+                "is_half_day": app.is_half_day,
                 "reason": app.reason,
                 "status": app.status,
                 "applied_on": app.applied_on,
@@ -236,12 +237,74 @@ async def apply_leave(
     is_half_day = data.get("is_half_day", False)
     metadata = data.get("metadata", {})
 
-    # Calculate days
+    # Fetch holidays for the school
+    from src.models.settings import Settings
+    from datetime import timedelta
+
+    holiday_dates = set()
+    ay_key = f"holidays_{ay.id}" if ay else "holidays"
+    hol_result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school_id,
+            Settings.category == "school",
+            Settings.key == ay_key,
+            Settings.is_active.is_(True),
+        )
+    )
+    hol_row = hol_result.scalar_one_or_none()
+    if hol_row and hol_row.value:
+        for h in hol_row.value:
+            if isinstance(h, dict) and h.get("date"):
+                holiday_dates.add(h["date"])
+
+    # Fetch working days from settings (default: Mon-Sat)
+    wd_result = await db.execute(
+        select(Settings.value).where(
+            Settings.school_id == school_id,
+            Settings.category == "general",
+            Settings.key == "working_days",
+            Settings.is_active.is_(True),
+        )
+    )
+    working_days_list = wd_result.scalar_one_or_none()
+    if not isinstance(working_days_list, list) or not working_days_list:
+        working_days_list = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    # Calculate days (excluding holidays and non-working days)
     if is_half_day:
+        date_str = from_date.isoformat()
+        day_name = day_names[from_date.weekday()]
+        if date_str in holiday_dates:
+            raise AppException(
+                status_code=400,
+                error="Cannot apply half-day leave on a holiday",
+                code="HOLIDAY_CONFLICT",
+            )
+        if day_name not in working_days_list:
+            raise AppException(
+                status_code=400,
+                error=f"Cannot apply leave on {day_name} — it's a non-working day",
+                code="NON_WORKING_DAY",
+            )
         days = Decimal("0.5")
     else:
-        delta = (to_date - from_date).days + 1
-        days = Decimal(str(delta))
+        count = 0
+        current = from_date
+        while current <= to_date:
+            date_str = current.isoformat()
+            day_name = day_names[current.weekday()]
+            if date_str not in holiday_dates and day_name in working_days_list:
+                count += 1
+            current += timedelta(days=1)
+        days = Decimal(str(count))
+
+    if days <= 0:
+        raise AppException(
+            status_code=400,
+            error="Selected dates fall entirely on holidays/non-working days. No working days to apply leave for.",
+            code="NO_WORKING_DAYS",
+        )
 
     # Check for date overlap
     overlap_query = select(LeaveApplication).where(
@@ -474,3 +537,40 @@ async def _get_or_create_balance(
         await db.flush()
 
     return balance
+
+
+async def get_holidays(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+) -> dict:
+    """Get holidays and working days for leave day calculation."""
+    from src.models.settings import Settings
+
+    ay = await _get_current_academic_year(db, school_id)
+    ay_key = f"holidays_{ay.id}" if ay else "holidays"
+
+    result = await db.execute(
+        select(Settings).where(
+            Settings.school_id == school_id,
+            Settings.category == "school",
+            Settings.key == ay_key,
+            Settings.is_active.is_(True),
+        )
+    )
+    row = result.scalar_one_or_none()
+    holidays = row.value if row and row.value else []
+
+    # Fetch working days
+    wd_result = await db.execute(
+        select(Settings.value).where(
+            Settings.school_id == school_id,
+            Settings.category == "general",
+            Settings.key == "working_days",
+            Settings.is_active.is_(True),
+        )
+    )
+    working_days = wd_result.scalar_one_or_none()
+    if not isinstance(working_days, list) or not working_days:
+        working_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+    return {"holidays": holidays, "working_days": working_days, "academic_year": ay.name if ay else None}

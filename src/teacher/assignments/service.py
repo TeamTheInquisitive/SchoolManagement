@@ -178,6 +178,7 @@ async def list_assignments(
     status_filter: str | None = None,
     search: str | None = None,
     academic_year: str | None = None,
+    subject_filter: str | None = None,
 ) -> dict:
     """List assignments for this teacher with KPI summary."""
     staff = await _get_staff_for_user(db, school_id, user)
@@ -245,6 +246,18 @@ async def list_assignments(
 
     if search:
         query = query.where(Assignment.title.ilike(f"%{search}%"))
+
+    if subject_filter:
+        subj_result = await db.execute(
+            select(Subject).where(
+                Subject.school_id == school_id,
+                Subject.name == subject_filter,
+                Subject.is_active.is_(True),
+            )
+        )
+        subj = subj_result.scalar_one_or_none()
+        if subj:
+            query = query.where(Assignment.subject_id == subj.id)
 
     # Count for pagination
     count_query = select(func.count()).select_from(query.subquery())

@@ -75,7 +75,7 @@ All list endpoints support:
 
 ---
 
-## All Endpoints (58 Teacher-specific + 8 Shared Auth = 66 total)
+## All Endpoints (77 Teacher-specific + 8 Shared Auth = 85 total)
 
 ---
 
@@ -94,7 +94,7 @@ All list endpoints support:
 
 ---
 
-### Dashboard (10)
+### Dashboard (12)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -106,6 +106,8 @@ All list endpoints support:
 | GET | `/api/v1/teacher/dashboard/leave-updates` | Recent leave application updates |
 | GET | `/api/v1/teacher/dashboard/mentees-summary` | Mentee students summary |
 | GET | `/api/v1/teacher/dashboard/adhoc-classes` | Adhoc classes summary |
+| GET | `/api/v1/teacher/dashboard/attendance-status` | Attendance status for class teacher's classes (today) |
+| GET | `/api/v1/teacher/dashboard/upcoming-meetings` | Upcoming parent-teacher meetings |
 | GET | `/api/v1/teacher/dashboard/profile` | Get own profile |
 | PUT | `/api/v1/teacher/dashboard/profile` | Update own profile |
 
@@ -130,14 +132,16 @@ All list endpoints support:
 | `GET /attendance` | `date` | date? | Target date |
 | `GET /attendance/history` | `page`, `page_size` | int | Pagination |
 | `GET /attendance/history` | `class_section_id` | uuid? | Filter by class |
-| `GET /attendance/history` | `month` | string? | Filter by month (YYYY-MM) |
+| `GET /attendance/history` | `from_date` | date? | Filter from date |
+| `GET /attendance/history` | `to_date` | date? | Filter to date |
 | `GET /attendance/summary` | `class_section_id` | uuid | Class section |
-| `GET /attendance/summary` | `month` | int? | Month number |
-| `GET /attendance/summary` | `year` | int? | Year |
+| `GET /attendance/summary` | `month` | int | Month number (required) |
+| `GET /attendance/summary` | `year` | int | Year (required) |
+| `GET /attendance/summary` | `academic_year` | string? | Academic year |
 
 ---
 
-### Grades (8)
+### Grades (9)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -145,26 +149,29 @@ All list endpoints support:
 | POST | `/api/v1/teacher/grades` | Submit grades (bulk) |
 | PUT | `/api/v1/teacher/grades` | Update grades |
 | GET | `/api/v1/teacher/grades/exams` | List exams available for grading |
+| POST | `/api/v1/teacher/grades/exams/{exam_id}/publish` | Publish exam results |
 | GET | `/api/v1/teacher/grades/report` | Grade report with distribution |
 | GET | `/api/v1/teacher/grades/leaderboard` | Leaderboard for a class/exam |
 | POST | `/api/v1/teacher/grades/import` | Import grades from CSV |
-| GET | `/api/v1/teacher/grades/export` | Export grades as CSV |
+| GET | `/api/v1/teacher/grades/export` | Export grades as CSV/PDF |
 
 **Query Parameters:**
 
 | Endpoint | Param | Type | Description |
 |----------|-------|------|-------------|
-| `GET /grades` | `class_id` | uuid | Class section ID |
-| `GET /grades` | `exam_id` | uuid | Exam ID |
+| `GET /grades` | `class_id` | uuid? | Class section ID |
+| `GET /grades` | `exam_id` | uuid? | Exam ID |
 | `GET /grades` | `page`, `page_size` | int | Pagination |
 | `GET /grades/exams` | `class_id` | uuid? | Filter by class |
 | `GET /grades/exams` | `academic_year` | string? | Filter by year |
-| `GET /grades/report` | `class_id` | uuid | Class section |
-| `GET /grades/report` | `exam_id` | uuid | Exam ID |
-| `GET /grades/leaderboard` | `class_id` | uuid | Class section |
-| `GET /grades/leaderboard` | `exam_id` | uuid | Exam ID |
-| `GET /grades/export` | `class_id` | uuid | Class section |
-| `GET /grades/export` | `exam_id` | uuid | Exam ID |
+| `GET /grades/report` | `class_id` | uuid? | Class section |
+| `GET /grades/report` | `exam_id` | uuid? | Exam ID |
+| `GET /grades/leaderboard` | `class_id` | uuid? | Class section |
+| `GET /grades/leaderboard` | `exam_id` | uuid? | Exam ID |
+| `GET /grades/leaderboard` | `limit` | int? | Limit results (default=20, max=100) |
+| `GET /grades/export` | `class_id` | uuid? | Class section |
+| `GET /grades/export` | `exam_id` | uuid? | Exam ID |
+| `GET /grades/export` | `format` | string? | Export format (default="csv") |
 
 ---
 
@@ -186,8 +193,9 @@ All list endpoints support:
 | Endpoint | Param | Type | Description |
 |----------|-------|------|-------------|
 | `GET /assignments` | `page`, `page_size` | int | Pagination |
-| `GET /assignments` | `class_name` | string? | Filter by class |
-| `GET /assignments` | `section` | string? | Filter by section |
+| `GET /assignments` | `class_id` | uuid? | Filter by class |
+| `GET /assignments` | `search` | string? | Search assignments |
+| `GET /assignments` | `subject` | string? | Filter by subject |
 | `GET /assignments` | `status` | string? | Filter by status |
 | `GET /assignments` | `academic_year` | string? | Filter by year |
 | `GET /{id}/submissions` | `page`, `page_size` | int | Pagination |
@@ -209,18 +217,18 @@ All list endpoints support:
 | Endpoint | Param | Type | Description |
 |----------|-------|------|-------------|
 | `GET /adhoc-classes` | `page`, `page_size` | int | Pagination |
-| `GET /adhoc-classes` | `type` | string? | Filter by type (Extra/Substitute) |
 | `GET /adhoc-classes` | `status` | string? | Filter by status |
 | `GET /adhoc-classes` | `from_date` | date? | Filter from date |
 | `GET /adhoc-classes` | `to_date` | date? | Filter to date |
 
 ---
 
-### Leaves (6)
+### Leaves (7)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/teacher/leaves/balance` | Get leave balance by type |
+| GET | `/api/v1/teacher/leaves/holidays` | Get holidays list for leave calculation |
 | GET | `/api/v1/teacher/leaves/upcoming` | Get upcoming approved leaves |
 | GET | `/api/v1/teacher/leaves` | Leave application history (paginated) |
 | POST | `/api/v1/teacher/leaves` | Apply for leave |
@@ -234,11 +242,10 @@ All list endpoints support:
 | `GET /leaves` | `page`, `page_size` | int | Pagination |
 | `GET /leaves` | `status` | string? | Filter by status |
 | `GET /leaves` | `leave_type` | string? | Filter by type |
-| `GET /leaves` | `academic_year` | string? | Filter by year |
 
 ---
 
-### Students (11)
+### Students (25)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -247,31 +254,47 @@ All list endpoints support:
 | GET | `/api/v1/teacher/students/{student_id}` | Get full student detail |
 | GET | `/api/v1/teacher/students/{student_id}/exam-results` | Student exam results & performance |
 | GET | `/api/v1/teacher/students/{student_id}/parent-meetings` | Parent meeting history |
+| POST | `/api/v1/teacher/students/{student_id}/parent-meetings` | Create a parent meeting |
+| PUT | `/api/v1/teacher/students/{student_id}/parent-meetings/{meeting_id}` | Update a parent meeting |
+| DELETE | `/api/v1/teacher/students/{student_id}/parent-meetings/{meeting_id}` | Delete a parent meeting |
 | GET | `/api/v1/teacher/students/{student_id}/activities` | Activities & awards |
+| POST | `/api/v1/teacher/students/{student_id}/activities` | Create an activity |
+| PUT | `/api/v1/teacher/students/{student_id}/activities/{activity_id}` | Update an activity |
+| DELETE | `/api/v1/teacher/students/{student_id}/activities/{activity_id}` | Delete an activity |
+| POST | `/api/v1/teacher/students/{student_id}/awards` | Create an award |
+| PUT | `/api/v1/teacher/students/{student_id}/awards/{award_id}` | Update an award |
+| DELETE | `/api/v1/teacher/students/{student_id}/awards/{award_id}` | Delete an award |
+| POST | `/api/v1/teacher/students/{student_id}/disciplinary-records` | Create a disciplinary record |
+| PUT | `/api/v1/teacher/students/{student_id}/disciplinary-records/{record_id}` | Update a disciplinary record |
+| DELETE | `/api/v1/teacher/students/{student_id}/disciplinary-records/{record_id}` | Delete a disciplinary record |
 | GET | `/api/v1/teacher/students/{student_id}/fee-summary` | Student fee summary |
 | GET | `/api/v1/teacher/students/{student_id}/behavior` | Behavior & conduct |
 | GET | `/api/v1/teacher/students/{student_id}/recent-attendance` | Recent attendance records |
 | GET | `/api/v1/teacher/students/{student_id}/assignments` | Student assignment submissions |
 | PUT | `/api/v1/teacher/students/{student_id}` | Update student info (mentor notes) |
+| GET | `/api/v1/teacher/students/{student_id}/mentor-notes` | Get mentor notes for a student |
+| PUT | `/api/v1/teacher/students/{student_id}/mentor-notes` | Update mentor notes for a student |
 
 **Query Parameters:**
 
 | Endpoint | Param | Type | Description |
 |----------|-------|------|-------------|
 | `GET /students` | `page`, `page_size` | int | Pagination |
+| `GET /students` | `search` | string? | Search by name/roll |
 | `GET /students` | `class_name` | string? | Filter by class |
 | `GET /students` | `section` | string? | Filter by section |
-| `GET /students` | `search` | string? | Search by name/roll |
-| `GET /{id}/parent-meetings` | `page`, `page_size` | int | Pagination |
-| `GET /{id}/assignments` | `page`, `page_size` | int | Pagination |
-| `GET /{id}/assignments` | `status` | string? | Filter by status |
+| `GET /{id}/exam-results` | `academic_year` | string? | Filter by academic year |
+| `GET /{id}/fee-summary` | `academic_year` | string? | Filter by academic year |
+| `GET /{id}/recent-attendance` | `limit` | int? | Number of records (default=10) |
+| `GET /{id}/assignments` | `academic_year` | string? | Filter by academic year |
 
 ---
 
-### Notifications (3)
+### Notifications (4)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/v1/teacher/notifications/sent` | List notifications sent by this teacher |
 | GET | `/api/v1/teacher/notifications` | List notifications (paginated) |
 | GET | `/api/v1/teacher/notifications/{notification_id}` | Get notification detail |
 | PUT | `/api/v1/teacher/notifications/{notification_id}/read` | Mark notification as read |
@@ -280,6 +303,7 @@ All list endpoints support:
 
 | Endpoint | Param | Type | Description |
 |----------|-------|------|-------------|
+| `GET /notifications/sent` | `page`, `page_size` | int | Pagination |
 | `GET /notifications` | `page`, `page_size` | int | Pagination |
 | `GET /notifications` | `type` | string? | Filter by type |
 | `GET /notifications` | `is_read` | bool? | Filter by read status |
@@ -298,6 +322,7 @@ All list endpoints support:
 | Endpoint | Param | Type | Description |
 |----------|-------|------|-------------|
 | `GET /timetable` | `academic_year` | string? | Filter by academic year |
+| `GET /timetable` | `day` | string? | Filter by day of week |
 | `GET /timetable/today` | `date` | date? | Target date (defaults to today) |
 
 ---
@@ -307,14 +332,14 @@ All list endpoints support:
 | Module | Endpoints | Notes |
 |--------|-----------|-------|
 | Auth (shared) | 8 | Same as admin/student |
-| Dashboard | 10 | KPIs, schedule, reviews, exams, classes, leaves, mentees, adhoc, profile |
+| Dashboard | 12 | KPIs, schedule, reviews, exams, classes, leaves, mentees, adhoc, attendance-status, upcoming-meetings, profile |
 | Attendance | 6 | Submit + update + history + cancel + summary |
-| Grades | 8 | Submit + update + exams list + report + leaderboard + import/export |
+| Grades | 9 | Submit + update + exams list + publish + report + leaderboard + import/export |
 | Assignments | 8 | CRUD + submissions + grading + export |
 | Adhoc Classes | 4 | CRUD for extra/substitute classes |
-| Leaves | 6 | Balance + upcoming + history + apply + detail + cancel |
-| Students | 11 | List + mentees + detail + results + meetings + activities + fees + behavior + attendance + assignments + update |
-| Notifications | 3 | List + detail + mark read |
+| Leaves | 7 | Balance + holidays + upcoming + history + apply + detail + cancel |
+| Students | 25 | List + mentees + detail + results + meetings CRUD + activities CRUD + awards CRUD + disciplinary CRUD + fees + behavior + attendance + assignments + update + mentor-notes |
+| Notifications | 4 | Sent + list + detail + mark read |
 | Timetable | 2 | Weekly + today |
-| **Teacher-specific** | **58** | |
-| **Total (incl. shared auth)** | **66** | |
+| **Teacher-specific** | **77** | |
+| **Total (incl. shared auth)** | **85** | |

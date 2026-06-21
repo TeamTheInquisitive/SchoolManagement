@@ -955,28 +955,57 @@ async def update_student_by_mentor(
     # Update parent info
     from src.models.student import StudentParent, Parent
     parent_fields = ["parent_name", "parent_phone", "parent_email", "parent_emergency", "parent_relationship"]
-    if any(f in data for f in parent_fields):
+    if any(f in data and data[f] for f in parent_fields):
         sp_r = await db.execute(
             select(StudentParent).where(StudentParent.student_id == student_id, StudentParent.is_active.is_(True))
         )
         sp = sp_r.scalar_one_or_none()
+        parent = None
         if sp:
             p_r = await db.execute(select(Parent).where(Parent.id == sp.parent_id))
             parent = p_r.scalar_one_or_none()
-            if parent:
-                if "parent_name" in data and data["parent_name"]:
-                    parent.full_name = data["parent_name"]
-                    parts = data["parent_name"].split(" ", 1)
-                    parent.first_name = parts[0]
-                    parent.last_name = parts[1] if len(parts) > 1 else None
-                if "parent_phone" in data and data["parent_phone"]:
-                    parent.phone = data["parent_phone"]
-                if "parent_email" in data:
-                    parent.email = data["parent_email"] or None
-                if "parent_emergency" in data and data["parent_emergency"]:
-                    parent.alternate_phone = data["parent_emergency"]
-                if "parent_relationship" in data and data["parent_relationship"]:
-                    parent.relation = data["parent_relationship"]
+
+        if not parent:
+            # Create a new parent record if none exists
+            name = data.get("parent_name", "Parent")
+            parts = name.split(" ", 1)
+            parent = Parent(
+                school_id=school_id,
+                first_name=parts[0],
+                last_name=parts[1] if len(parts) > 1 else None,
+                full_name=name,
+                phone=data.get("parent_phone"),
+                email=data.get("parent_email"),
+                relation=data.get("parent_relationship", "Parent/Guardian"),
+                alternate_phone=data.get("parent_emergency"),
+                created_by=user.id,
+            )
+            db.add(parent)
+            await db.flush()
+            # Link parent to student
+            if not sp:
+                sp = StudentParent(
+                    school_id=school_id,
+                    student_id=student_id,
+                    parent_id=parent.id,
+                    relationship=data.get("parent_relationship", "Parent/Guardian"),
+                    created_by=user.id,
+                )
+                db.add(sp)
+        else:
+            if "parent_name" in data and data["parent_name"]:
+                parent.full_name = data["parent_name"]
+                parts = data["parent_name"].split(" ", 1)
+                parent.first_name = parts[0]
+                parent.last_name = parts[1] if len(parts) > 1 else None
+            if "parent_phone" in data and data["parent_phone"]:
+                parent.phone = data["parent_phone"]
+            if "parent_email" in data:
+                parent.email = data["parent_email"] or None
+            if "parent_emergency" in data and data["parent_emergency"]:
+                parent.alternate_phone = data["parent_emergency"]
+            if "parent_relationship" in data and data["parent_relationship"]:
+                parent.relation = data["parent_relationship"]
 
     await db.commit()
     return {"message": "Student updated successfully"}

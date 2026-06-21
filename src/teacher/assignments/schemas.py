@@ -3,7 +3,7 @@ from typing import Optional
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Request Schemas ---
@@ -18,8 +18,15 @@ class CreateAssignmentRequest(BaseModel):
     section: str = Field(..., min_length=1)
     subject: str | None = None
     due_date: date
-    max_marks: float | None = None
+    max_marks: float = Field(..., gt=0)
     academic_year: str | None = None
+
+    @field_validator('due_date')
+    @classmethod
+    def due_date_not_in_past(cls, v):
+        if v < date.today():
+            raise ValueError('Due date cannot be in the past')
+        return v
 
 
 class UpdateAssignmentRequest(BaseModel):

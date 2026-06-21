@@ -617,3 +617,46 @@ async def get_class_teacher_attendance_status(
         "pending_count": len(pending_days),
         "pending_days": pending_days,
     }
+
+
+async def get_upcoming_meetings(
+    db: AsyncSession, school_id: uuid.UUID, user: User
+) -> dict:
+    """Get upcoming parent-teacher meetings for the logged-in teacher."""
+    from src.models.meeting import ParentMeeting
+    from src.models.student import Student
+
+    if not user.staff_id:
+        return {"meetings": [], "total": 0}
+
+    today = date.today()
+
+    result = await db.execute(
+        select(ParentMeeting)
+        .where(
+            ParentMeeting.school_id == school_id,
+            ParentMeeting.conducted_by == user.staff_id,
+            ParentMeeting.meeting_date >= today,
+            ParentMeeting.is_active.is_(True),
+        )
+        .order_by(ParentMeeting.meeting_date)
+        .limit(10)
+    )
+    meetings = result.scalars().all()
+
+    items = []
+    for m in meetings:
+        student = m.student
+        items.append({
+            "id": m.id,
+            "student_id": m.student_id,
+            "student_name": student.full_name if student else "",
+            "class_section": f"{student.enrollments[0].class_section.class_.name}-{student.enrollments[0].class_section.section.name}" if student and student.enrollments else "",
+            "meeting_date": m.meeting_date.isoformat(),
+            "meeting_type": m.meeting_type or "General",
+            "agenda": m.agenda or "",
+            "status": m.status,
+            "parent_attended": m.parent_attended,
+        })
+
+    return {"meetings": items, "total": len(items)}

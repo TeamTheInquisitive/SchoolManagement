@@ -119,6 +119,17 @@ async def get_attendance_status(
     return result
 
 
+@router.get("/upcoming-meetings")
+async def get_upcoming_meetings(
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+):
+    """Get upcoming parent-teacher meetings for the logged-in teacher."""
+    result = await service.get_upcoming_meetings(db, school.id, user)
+    return result
+
+
 @router.get("/profile")
 async def get_teacher_profile(
     db: SessionDep,

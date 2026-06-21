@@ -125,8 +125,10 @@
   "total_classes": 4,
   "classes": [
     {
+      "class_section_id": "uuid",
       "class_name": "10",
       "section": "A",
+      "class_section": "10-A",
       "subject": "Mathematics",
       "student_count": 40,
       "is_class_teacher": true
@@ -198,24 +200,76 @@
 
 ---
 
+### GET /api/v1/teacher/dashboard/attendance-status
+
+**Response: 200**
+```json
+{
+  "classes": [
+    {
+      "class_section_id": "uuid",
+      "class_name": "10",
+      "section": "A",
+      "attendance_marked": true,
+      "date": "2024-01-15"
+    }
+  ]
+}
+```
+
+---
+
+### GET /api/v1/teacher/dashboard/upcoming-meetings
+
+**Response: 200**
+```json
+{
+  "meetings": [
+    {
+      "id": "uuid",
+      "student_name": "Rahul Kumar",
+      "class_section": "10-A",
+      "meeting_type": "PTM",
+      "date": "2024-01-20",
+      "status": "Scheduled"
+    }
+  ]
+}
+```
+
+---
+
 ### GET /api/v1/teacher/dashboard/profile
 
 **Response: 200**
 ```json
 {
   "id": "uuid",
+  "staff_id": "uuid",
   "full_name": "Jane Smith",
   "email": "jane@teacher.com",
   "phone": "9876543210",
+  "role": "teacher",
+  "employee_id": "EMP001",
   "department": "Mathematics",
   "designation": "Senior Teacher",
   "qualification": "M.Sc, B.Ed",
-  "experience_years": 12,
+  "joining_date": "2012-06-01",
+  "date_of_birth": "1985-03-15",
+  "gender": "Female",
+  "employment_type": "Full-time",
+  "address": "123 Main St",
+  "city": "Gurugram",
+  "state": "Haryana",
+  "pincode": "122001",
+  "emergency_contact_name": "John Smith",
+  "emergency_contact_phone": "9876543200",
+  "emergency_contact_relationship": "Spouse",
+  "blood_group": "O+",
+  "primary_subject": "Mathematics",
   "subjects": ["Mathematics"],
-  "class_assignments": ["10-A", "10-B", "9-A"],
-  "is_class_teacher": true,
-  "class_teacher_of": "10-A",
-  "avatar_url": null
+  "max_workload_hours": 30,
+  "experience_years": 12.0
 }
 ```
 
@@ -223,20 +277,19 @@
 
 ### PUT /api/v1/teacher/dashboard/profile
 
-**Request:**
+**Request:** (updatable fields: `phone`, `address`, `city`, `state`, `pincode`, `emergency_contact_name`, `emergency_contact_phone`, `emergency_contact_relationship`, `blood_group`, `date_of_birth`, `gender`, `qualification`)
 ```json
 {
   "phone": "9876543211",
   "qualification": "M.Sc, B.Ed, PhD",
-  "experience_years": 13
+  "city": "Delhi"
 }
 ```
 
 **Response: 200**
 ```json
 {
-  "message": "Profile updated successfully",
-  "updated_fields": ["phone", "qualification", "experience_years"]
+  "message": "Profile updated successfully"
 }
 ```
 
@@ -285,6 +338,8 @@
   "class_id": "uuid",
   "date": "2024-01-15",
   "academic_year": "2024-25",
+  "subject_id": "uuid (optional)",
+  "period_number": 1,
   "records": [
     {"student_id": "uuid", "status": "Present"},
     {"student_id": "uuid", "status": "Absent"},
@@ -319,6 +374,8 @@
 {
   "class_id": "uuid",
   "date": "2024-01-15",
+  "subject_id": "uuid (optional)",
+  "period_number": 1,
   "records": [
     {"student_id": "uuid", "status": "Present"},
     {"student_id": "uuid", "status": "Late"}
@@ -347,7 +404,7 @@
 
 ### GET /api/v1/teacher/attendance/history
 
-**Query Params:** `page`, `page_size`, `class_section_id` (optional), `month` (optional)
+**Query Params:** `page`, `page_size`, `class_section_id` (optional), `from_date` (optional), `to_date` (optional)
 
 **Response: 200 — `AttendanceHistoryResponse`**
 ```json
@@ -394,7 +451,7 @@
 
 ### GET /api/v1/teacher/attendance/summary
 
-**Query Params:** `class_section_id` (required), `month` (optional), `year` (optional)
+**Query Params:** `class_section_id` (required), `month` (required, 1-12), `year` (required), `academic_year` (optional)
 
 **Response: 200 — `AttendanceSummaryResponse`**
 ```json
@@ -423,7 +480,7 @@
 
 ### GET /api/v1/teacher/grades
 
-**Query Params:** `class_id` (uuid), `exam_id` (uuid), `page`, `page_size`
+**Query Params:** `class_id` (uuid, optional), `exam_id` (uuid, optional), `page`, `page_size`
 
 **Response: 200 — `GradesListResponse`**
 ```json
@@ -438,6 +495,7 @@
   "subject": "Mathematics",
   "max_marks": 100.0,
   "is_published": false,
+  "can_grade": true,
   "stats": {
     "class_average": 72.5,
     "highest_score": 98.0,
@@ -542,7 +600,9 @@
       "max_marks": 100.0,
       "is_graded": true,
       "graded_count": 38,
-      "total_students": 40
+      "total_students": 40,
+      "can_grade": true,
+      "is_published": false
     }
   ]
 }
@@ -550,9 +610,23 @@
 
 ---
 
+### POST /api/v1/teacher/grades/exams/{exam_id}/publish
+
+**Response: 200 — `PublishExamResponse`**
+```json
+{
+  "message": "Exam results published successfully",
+  "exam_id": "uuid",
+  "exam_name": "Mid-Term",
+  "published_at": "2024-01-20T16:00:00Z"
+}
+```
+
+---
+
 ### GET /api/v1/teacher/grades/report
 
-**Query Params:** `class_id` (uuid), `exam_id` (uuid)
+**Query Params:** `class_id` (uuid, optional), `exam_id` (uuid, optional)
 
 **Response: 200 — `GradeReportResponse`**
 ```json
@@ -585,7 +659,7 @@
 
 ### GET /api/v1/teacher/grades/leaderboard
 
-**Query Params:** `class_id` (uuid), `exam_id` (uuid)
+**Query Params:** `class_id` (uuid, optional), `exam_id` (uuid, optional), `limit` (int, default=20, max=100)
 
 **Response: 200 — `LeaderboardResponse`**
 ```json
@@ -627,7 +701,7 @@
 
 ### GET /api/v1/teacher/grades/export
 
-**Query Params:** `class_id` (uuid), `exam_id` (uuid)
+**Query Params:** `class_id` (uuid, optional), `exam_id` (uuid, optional), `format` (string, default="csv")
 
 **Response:** CSV file download
 
@@ -637,7 +711,7 @@
 
 ### GET /api/v1/teacher/assignments
 
-**Query Params:** `page`, `page_size`, `class_name` (optional), `section` (optional), `status` (optional), `academic_year` (optional)
+**Query Params:** `page`, `page_size`, `class_id` (uuid, optional), `search` (optional), `subject` (optional), `status` (optional), `academic_year` (optional)
 
 **Response: 200 — `AssignmentListResponse`**
 ```json
@@ -686,6 +760,7 @@
   "description": "Solve exercises 1-20",
   "class_name": "10",
   "section": "A",
+  "subject": "Mathematics",
   "due_date": "2024-01-20",
   "max_marks": 50.0,
   "academic_year": "2024-25"
@@ -858,7 +933,7 @@
 
 ### GET /api/v1/teacher/adhoc-classes
 
-**Query Params:** `page`, `page_size`, `type` (optional), `status` (optional), `from_date` (optional), `to_date` (optional)
+**Query Params:** `page`, `page_size`, `status` (optional), `from_date` (optional), `to_date` (optional)
 
 **Response: 200 — `AdhocClassListResponse`**
 ```json
@@ -956,6 +1031,7 @@
   "balances": [
     {
       "leave_type": "Casual Leave",
+      "display_name": "Casual Leave",
       "total_allocated": 12,
       "available": 8.0,
       "used": 3.0,
@@ -963,6 +1039,7 @@
     },
     {
       "leave_type": "Sick Leave",
+      "display_name": "Sick Leave",
       "total_allocated": 10,
       "available": 9.0,
       "used": 1.0,
@@ -975,6 +1052,23 @@
     "used": 4.0,
     "pending": 1.0
   }
+}
+```
+
+---
+
+### GET /api/v1/teacher/leaves/holidays
+
+**Response: 200**
+```json
+{
+  "holidays": [
+    {
+      "date": "2024-01-26",
+      "name": "Republic Day",
+      "type": "National Holiday"
+    }
+  ]
 }
 ```
 
@@ -1006,7 +1100,7 @@
 
 ### GET /api/v1/teacher/leaves
 
-**Query Params:** `page`, `page_size`, `status` (optional), `leave_type` (optional), `academic_year` (optional)
+**Query Params:** `page`, `page_size`, `status` (optional), `leave_type` (optional)
 
 **Response: 200 — `LeaveHistoryResponse`**
 ```json
@@ -1046,7 +1140,8 @@
   "to_date": "2024-01-26",
   "reason": "Family function",
   "is_half_day": false,
-  "academic_year": "2024-25"
+  "academic_year": "2024-25",
+  "metadata": {}
 }
 ```
 
@@ -1171,6 +1266,7 @@
 ```json
 {
   "id": "uuid",
+  "can_edit": false,
   "roll_number": "10A-001",
   "full_name": "Rahul Kumar",
   "email": "rahul@student.com",
@@ -1259,6 +1355,7 @@
       "notes": "Good progress in academics",
       "attendance_status": "Attended",
       "follow_up_required": false,
+      "parent_attended": true,
       "metadata": {}
     }
   ]
@@ -1379,7 +1476,281 @@
 
 ---
 
+### POST /api/v1/teacher/students/{student_id}/parent-meetings
+
+**Request:**
+```json
+{
+  "meeting_type": "PTM",
+  "date": "2024-02-15",
+  "attendee": "Suresh Kumar (Father)",
+  "notes": "Discussion about academic progress",
+  "follow_up_required": false,
+  "parent_attended": true
+}
+```
+
+**Response: 201**
+```json
+{
+  "id": "uuid",
+  "message": "Parent meeting created successfully"
+}
+```
+
+---
+
+### PUT /api/v1/teacher/students/{student_id}/parent-meetings/{meeting_id}
+
+**Request:**
+```json
+{
+  "notes": "Updated notes after follow-up",
+  "follow_up_required": true
+}
+```
+
+**Response: 200**
+```json
+{
+  "id": "uuid",
+  "message": "Parent meeting updated successfully"
+}
+```
+
+---
+
+### DELETE /api/v1/teacher/students/{student_id}/parent-meetings/{meeting_id}
+
+**Response: 200**
+```json
+{
+  "message": "Parent meeting deleted successfully"
+}
+```
+
+---
+
+### POST /api/v1/teacher/students/{student_id}/activities
+
+**Request:**
+```json
+{
+  "activity_name": "Science Club",
+  "date": "2024-01-10",
+  "role": "Member"
+}
+```
+
+**Response: 201**
+```json
+{
+  "id": "uuid",
+  "message": "Activity created successfully"
+}
+```
+
+---
+
+### PUT /api/v1/teacher/students/{student_id}/activities/{activity_id}
+
+**Request:**
+```json
+{
+  "role": "President",
+  "is_active": true
+}
+```
+
+**Response: 200**
+```json
+{
+  "id": "uuid",
+  "message": "Activity updated successfully"
+}
+```
+
+---
+
+### DELETE /api/v1/teacher/students/{student_id}/activities/{activity_id}
+
+**Response: 200**
+```json
+{
+  "message": "Activity deleted successfully"
+}
+```
+
+---
+
+### POST /api/v1/teacher/students/{student_id}/awards
+
+**Request:**
+```json
+{
+  "award_name": "Best in Science",
+  "category": "Academic",
+  "year": 2024,
+  "description": "Outstanding performance in science fair",
+  "award_date": "2024-01-15"
+}
+```
+
+**Response: 201**
+```json
+{
+  "id": "uuid",
+  "message": "Award created successfully"
+}
+```
+
+---
+
+### PUT /api/v1/teacher/students/{student_id}/awards/{award_id}
+
+**Request:**
+```json
+{
+  "description": "Updated description"
+}
+```
+
+**Response: 200**
+```json
+{
+  "id": "uuid",
+  "message": "Award updated successfully"
+}
+```
+
+---
+
+### DELETE /api/v1/teacher/students/{student_id}/awards/{award_id}
+
+**Response: 200**
+```json
+{
+  "message": "Award deleted successfully"
+}
+```
+
+---
+
+### POST /api/v1/teacher/students/{student_id}/disciplinary-records
+
+**Request:**
+```json
+{
+  "incident_type": "Misconduct",
+  "date": "2024-01-12",
+  "description": "Disrupted class",
+  "action_taken": "Warning issued",
+  "severity": "Minor"
+}
+```
+
+**Response: 201**
+```json
+{
+  "id": "uuid",
+  "message": "Disciplinary record created successfully"
+}
+```
+
+---
+
+### PUT /api/v1/teacher/students/{student_id}/disciplinary-records/{record_id}
+
+**Request:**
+```json
+{
+  "action_taken": "Verbal warning and parent notified",
+  "follow_up_notes": "Student showed improvement"
+}
+```
+
+**Response: 200**
+```json
+{
+  "id": "uuid",
+  "message": "Disciplinary record updated successfully"
+}
+```
+
+---
+
+### DELETE /api/v1/teacher/students/{student_id}/disciplinary-records/{record_id}
+
+**Response: 200**
+```json
+{
+  "message": "Disciplinary record deleted successfully"
+}
+```
+
+---
+
+### GET /api/v1/teacher/students/{student_id}/mentor-notes
+
+**Response: 200**
+```json
+{
+  "student_id": "uuid",
+  "notes": "Needs extra attention in Physics. Shows great potential in Mathematics."
+}
+```
+
+---
+
+### PUT /api/v1/teacher/students/{student_id}/mentor-notes
+
+**Request:**
+```json
+{
+  "notes": "Updated mentor notes for the student"
+}
+```
+
+**Response: 200**
+```json
+{
+  "message": "Mentor notes updated successfully"
+}
+```
+
+---
+
 ## 9. Notifications (`/teacher/notifications`)
+
+### GET /api/v1/teacher/notifications/sent
+
+**Query Params:** `page`, `page_size`
+
+**Response: 200 — `SentNotificationListResponse`**
+```json
+{
+  "count": 5,
+  "page": 1,
+  "page_size": 20,
+  "total_pages": 1,
+  "results": [
+    {
+      "id": "uuid",
+      "title": "Homework Reminder",
+      "message": "Please submit Chapter 5 problems by Friday",
+      "type": "assignment",
+      "target_type": "class",
+      "target_class_name": "10-A",
+      "recipients_count": 40,
+      "status": "Sent",
+      "sent_at": "2024-01-16T09:00:00Z",
+      "is_read": true
+    }
+  ]
+}
+```
+
+---
 
 ### GET /api/v1/teacher/notifications
 
@@ -1449,7 +1820,7 @@
 
 ### GET /api/v1/teacher/timetable
 
-**Query Params:** `academic_year` (optional)
+**Query Params:** `academic_year` (optional), `day` (optional, e.g. "Monday")
 
 **Response: 200 — `TeacherWeeklyTimetableResponse`**
 ```json

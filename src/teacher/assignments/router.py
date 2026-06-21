@@ -34,10 +34,12 @@ async def list_assignments(
     status: str | None = Query(default=None),
     search: str | None = Query(default=None),
     academic_year: str | None = Query(default=None),
+    subject: str | None = Query(default=None),
 ) -> AssignmentListResponse:
     """List teacher's assignments with filters and KPI summary."""
     result = await service.list_assignments(
-        db, school.id, user, pagination, class_id, status, search, academic_year
+        db, school.id, user, pagination, class_id, status, search, academic_year,
+        subject_filter=subject,
     )
     return AssignmentListResponse(**result)
 
