@@ -65,6 +65,23 @@ async def get_student_detail(
     return await service.get_student_detail(db, school.id, student_id, user)
 
 
+@router.post("/{student_id}/reset-password")
+async def reset_student_password(
+    student_id: UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+):
+    """Reset student password. Only class teacher or mentor can do this."""
+    from src.admin.students.service import reset_student_password as admin_reset_password
+    # Verify can_edit access
+    detail = await service.get_student_detail(db, school.id, student_id, user)
+    if not detail.get("can_edit"):
+        from src.core.exceptions import AccessDenied
+        raise AccessDenied("Only class teacher or mentor can reset student password")
+    return await admin_reset_password(db, school.id, student_id)
+
+
 # ---------------------------------------------------------------------------
 # Sub-resource endpoints
 # ---------------------------------------------------------------------------

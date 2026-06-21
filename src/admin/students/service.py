@@ -62,6 +62,7 @@ async def list_students(
     section: str | None = None,
     status: str | None = None,
     gender: str | None = None,
+    student_type: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> dict:
@@ -109,6 +110,10 @@ async def list_students(
     # Apply gender filter
     if gender:
         query = query.where(Student.gender == gender)
+
+    # Apply student type filter (Day Scholar / Hosteller) — stored in metadata_
+    if student_type:
+        query = query.where(Student.metadata_["student_type"].as_string() == student_type)
 
     # Apply search filter
     if search:
