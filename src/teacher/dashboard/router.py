@@ -216,6 +216,48 @@ async def update_teacher_profile(
 
 
 # ---------------------------------------------------------------------------
+# All class-sections in the school (for student list dropdown)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/all-classes")
+async def get_all_classes(
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+):
+    """Get all class-sections in the school for dropdown."""
+    from src.models.academic import Class, ClassSection, Section
+    from src.models.core import AcademicYear
+    from sqlalchemy import select as sa_select
+
+    ay_result = await db.execute(
+        sa_select(AcademicYear).where(
+            AcademicYear.school_id == school.id,
+            AcademicYear.is_current.is_(True),
+        )
+    )
+    ay = ay_result.scalar_one_or_none()
+    if not ay:
+        return {"classes": []}
+
+    cs_result = await db.execute(
+        sa_select(ClassSection, Class.name.label("class_name"), Section.name.label("section_name"))
+        .join(Class, ClassSection.class_id == Class.id)
+        .join(Section, ClassSection.section_id == Section.id)
+        .where(
+            ClassSection.school_id == school.id,
+            ClassSection.academic_year_id == ay.id,
+            ClassSection.is_active.is_(True),
+        )
+        .order_by(Class.name, Section.name)
+    )
+    rows = cs_result.all()
+    classes = [{"class_name": r.class_name, "section": r.section_name, "class_section": f"{r.class_name}-{r.section_name}"} for r in rows]
+    return {"classes": classes}
+
+
+# ---------------------------------------------------------------------------
 # Awards (self-managed by teacher)
 # ---------------------------------------------------------------------------
 

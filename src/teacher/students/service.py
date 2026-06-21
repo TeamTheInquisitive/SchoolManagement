@@ -268,7 +268,7 @@ async def list_students(
     class_name: str | None = None,
     section: str | None = None,
 ) -> dict:
-    """List students accessible to teacher (mentees + class teacher's students)."""
+    """List students in the school. Any teacher can view any class/section."""
     staff = await _get_staff_for_user(db, user)
     if not staff:
         raise AccessDenied("No staff record associated with this user")
@@ -277,51 +277,65 @@ async def list_students(
     if not current_ay:
         return paginate([], 0, pagination)
 
-    # Get mentee student IDs
-    mentee_ids = await _get_mentee_ids(db, school_id, staff.id, current_ay.id)
-
-    # Get class section IDs where teacher has ANY assignment (class teacher or subject teacher)
-    ct_result = await db.execute(
-        select(ClassAssignment.class_section_id).where(
-            ClassAssignment.school_id == school_id,
-            ClassAssignment.staff_id == staff.id,
-            ClassAssignment.academic_year_id == current_ay.id,
-            ClassAssignment.is_active.is_(True),
+    # If class_name and section are provided, get students from that class-section
+    # Otherwise return all students in the school
+    target_student_ids = None
+    if class_name and section:
+        # Find the class_section_id
+        cs_query = (
+            select(ClassSection.id)
+            .join(Class, ClassSection.class_id == Class.id)
+            .join(Section, ClassSection.section_id == Section.id)
+            .where(
+                ClassSection.school_id == school_id,
+                ClassSection.academic_year_id == current_ay.id,
+                ClassSection.is_active.is_(True),
+                Class.name == class_name,
+                Section.name == section,
+            )
         )
-    )
-    ct_class_section_ids = list(set(ct_result.scalars().all()))
+        cs_result = await db.execute(cs_query)
+        cs_id = cs_result.scalar_one_or_none()
+        if not cs_id:
+            return paginate([], 0, pagination)
 
-    # Get student IDs enrolled in those class sections
-    ct_student_ids: list[UUID] = []
-    if ct_class_section_ids:
         enroll_result = await db.execute(
             select(StudentEnrollment.student_id).where(
                 StudentEnrollment.school_id == school_id,
                 StudentEnrollment.academic_year_id == current_ay.id,
-                StudentEnrollment.class_section_id.in_(ct_class_section_ids),
+                StudentEnrollment.class_section_id == cs_id,
                 StudentEnrollment.is_active.is_(True),
             )
         )
-        ct_student_ids = list(enroll_result.scalars().all())
-
-    # Combine (unique)
-    all_student_ids = list(set(mentee_ids + ct_student_ids))
-
-    if not all_student_ids:
-        return paginate([], 0, pagination)
+        target_student_ids = list(enroll_result.scalars().all())
+        if not target_student_ids:
+            return paginate([], 0, pagination)
 
     # Query students
     query = select(Student).where(
-        Student.id.in_(all_student_ids),
         Student.school_id == school_id,
         Student.is_active.is_(True),
     )
+    if target_student_ids is not None:
+        query = query.where(Student.id.in_(target_student_ids))
 
     if search:
         search_pattern = f"%{search}%"
         query = query.where(Student.full_name.ilike(search_pattern))
 
-    result = await db.execute(query.order_by(Student.full_name))
+    # Count
+    from sqlalchemy import func as sa_func
+    count_result = await db.execute(
+        select(sa_func.count()).select_from(query.subquery())
+    )
+    total = count_result.scalar() or 0
+
+    # Paginate
+    result = await db.execute(
+        query.order_by(Student.full_name)
+        .offset(pagination.offset)
+        .limit(pagination.page_size)
+    )
     students = result.scalars().all()
 
     # Build items with class/section info
@@ -330,13 +344,7 @@ async def list_students(
         cls_name, sec_name = await _get_student_class_info(
             db, student.id, school_id, current_ay.id
         )
-        # Apply class/section filter
-        if class_name and cls_name != class_name:
-            continue
-        if section and sec_name != section:
-            continue
-
-        class_section = f"{cls_name}-{sec_name}" if cls_name and sec_name else None
+        class_section_str = f"{cls_name}-{sec_name}" if cls_name and sec_name else None
         items.append({
             "id": student.id,
             "roll_number": student.admission_number,
@@ -344,18 +352,12 @@ async def list_students(
             "email": student.email,
             "class_name": cls_name,
             "section": sec_name,
-            "class_section": class_section,
+            "class_section": class_section_str,
             "avatar_url": student.photo_url,
             "status": student.status,
         })
 
-    total = len(items)
-    # Manual pagination on filtered results
-    start = pagination.offset
-    end = start + pagination.page_size
-    page_items = items[start:end]
-
-    return paginate(page_items, total, pagination)
+    return paginate(items, total, pagination)
 
 
 # ---------------------------------------------------------------------------
@@ -369,105 +371,22 @@ async def get_student_detail(
     student_id: UUID,
     user: User,
 ) -> dict:
-    """Get full student profile. Any teacher in the school can view."""
+    """Get full student profile. Reuses admin service, adds can_edit flag."""
     staff = await _get_staff_for_user(db, user)
     if not staff:
         raise AccessDenied("No staff record associated with this user")
 
+    # Reuse admin's get_student which has complete data (class_teacher, transport, stats, etc.)
+    from src.admin.students.service import get_student as admin_get_student
+    detail = await admin_get_student(db, school_id, student_id)
+
+    # Calculate can_edit: only class teacher or mentor
     current_ay = await _get_current_academic_year(db, school_id)
     if not current_ay:
-        raise NotFound("Academic Year", "current")
+        detail["can_edit"] = False
+        return detail
 
-    # Get student
-    result = await db.execute(
-        select(Student).where(
-            Student.id == student_id,
-            Student.school_id == school_id,
-            Student.is_active.is_(True),
-        )
-    )
-    student = result.scalar_one_or_none()
-    if not student:
-        raise NotFound("Student", str(student_id))
-
-    cls_name, sec_name = await _get_student_class_info(db, student.id, school_id, current_ay.id)
-    class_section = f"{cls_name}-{sec_name}" if cls_name and sec_name else None
-
-    # Get parent info
-    parent_info = None
-    sp_result = await db.execute(
-        select(StudentParent).where(
-            StudentParent.student_id == student.id,
-            StudentParent.school_id == school_id,
-            StudentParent.is_active.is_(True),
-        )
-    )
-    parents_links = sp_result.scalars().all()
-    father_name = father_phone = father_email = None
-    mother_name = mother_phone = mother_email = None
-    emergency_contact = None
-    relationship = None
-
-    for sp in parents_links:
-        p_result = await db.execute(select(Parent).where(Parent.id == sp.parent_id))
-        parent = p_result.scalar_one_or_none()
-        if parent:
-            if parent.relation and parent.relation.lower() == "father":
-                father_name = parent.full_name
-                father_phone = parent.phone
-                father_email = parent.email
-            elif parent.relation and parent.relation.lower() == "mother":
-                mother_name = parent.full_name
-                mother_phone = parent.phone
-                mother_email = parent.email
-            else:
-                father_name = father_name or parent.full_name
-                father_phone = father_phone or parent.phone
-                father_email = father_email or parent.email
-            if parent.is_primary_contact:
-                emergency_contact = parent.alternate_phone or parent.phone
-                relationship = parent.relation
-
-    if not emergency_contact and father_phone:
-        emergency_contact = father_phone
-        relationship = "Father"
-
-    parent_info = {
-        "father_name": father_name,
-        "father_phone": father_phone,
-        "father_email": father_email,
-        "mother_name": mother_name,
-        "mother_phone": mother_phone,
-        "mother_email": mother_email,
-        "emergency_contact": emergency_contact,
-        "relationship": relationship,
-    }
-
-    # Get mentor info
-    mentor_info = None
-    mentor_result = await db.execute(
-        select(StudentMentor).where(
-            StudentMentor.student_id == student.id,
-            StudentMentor.academic_year_id == current_ay.id,
-            StudentMentor.school_id == school_id,
-            StudentMentor.is_active.is_(True),
-        )
-    )
-    mentor_record = mentor_result.scalar_one_or_none()
-    if mentor_record:
-        staff_result = await db.execute(select(Staff).where(Staff.id == mentor_record.staff_id))
-        mentor_staff = staff_result.scalar_one_or_none()
-        if mentor_staff:
-            mentor_info = {
-                "id": mentor_staff.id,
-                "full_name": mentor_staff.full_name,
-                "subject": None,
-                "qualification": mentor_staff.qualification,
-                "email": mentor_staff.email,
-                "phone": mentor_staff.phone,
-            }
-
-    # Check if teacher is mentor or class teacher (can edit)
+    # Check if mentor
     mentor_result = await db.execute(
         select(StudentMentor).where(
             StudentMentor.staff_id == staff.id, StudentMentor.student_id == student_id,
@@ -476,8 +395,8 @@ async def get_student_detail(
     )
     is_mentor = mentor_result.scalar_one_or_none() is not None
 
-    # Also check if teacher is assigned to this student's class (any assignment)
-    is_assigned_class = False
+    # Check if class teacher
+    is_class_teacher = False
     enr_r = await db.execute(
         select(StudentEnrollment.class_section_id).where(
             StudentEnrollment.student_id == student_id,
@@ -487,201 +406,11 @@ async def get_student_detail(
     )
     cs_id = enr_r.scalar_one_or_none()
     if cs_id:
-        assign_check = await db.execute(
-            select(ClassAssignment).where(
-                ClassAssignment.school_id == school_id,
-                ClassAssignment.staff_id == staff.id,
-                ClassAssignment.academic_year_id == current_ay.id,
-                ClassAssignment.class_section_id == cs_id,
-                ClassAssignment.is_active.is_(True),
-            )
+        is_class_teacher = await _is_class_teacher_of(
+            db, school_id, staff.id, current_ay.id, cs_id
         )
-        is_assigned_class = assign_check.scalar_one_or_none() is not None
 
-    can_edit = is_mentor or is_assigned_class
-
-    # Get class teacher info
-    class_teacher_info = None
-    if cs_id:
-        ct_result = await db.execute(
-            select(ClassAssignment).where(
-                ClassAssignment.school_id == school_id,
-                ClassAssignment.class_section_id == cs_id,
-                ClassAssignment.academic_year_id == current_ay.id,
-                ClassAssignment.is_class_teacher.is_(True),
-                ClassAssignment.is_active.is_(True),
-            )
-        )
-        ct_assignment = ct_result.scalar_one_or_none()
-        if ct_assignment:
-            ct_staff_result = await db.execute(select(Staff).where(Staff.id == ct_assignment.staff_id))
-            ct_staff = ct_staff_result.scalar_one_or_none()
-            if ct_staff:
-                class_teacher_info = {
-                    "name": ct_staff.full_name,
-                    "email": ct_staff.email,
-                    "phone": ct_staff.phone,
-                }
-
-    detail = {
-        "id": student.id,
-        "can_edit": can_edit,
-        "roll_number": student.admission_number,
-        "full_name": student.full_name,
-        "email": student.email,
-        "phone": student.phone,
-        "class_name": cls_name,
-        "section": sec_name,
-        "class_section": class_section,
-        "date_of_birth": student.date_of_birth,
-        "gender": student.gender,
-        "admission_date": student.admission_date,
-        "student_type": (student.metadata_ or {}).get("student_type"),
-        "blood_group": student.blood_group,
-        "religion": student.religion,
-        "address": student.address_line1,
-        "avatar_url": student.photo_url,
-        "status": student.status,
-        "is_active": student.is_active,
-        "quick_stats": {
-            "attendance_percentage": None,
-            "average_grade": None,
-            "assignments_submitted": None,
-            "fee_due": None,
-        },
-        "personal_info": {
-            "date_of_birth": student.date_of_birth,
-            "admission_date": student.admission_date,
-            "address": student.address_line1,
-            "nationality": student.nationality,
-        },
-        "parent_info": parent_info,
-        "medical_info": {
-            "blood_group": student.blood_group,
-            "gender": student.gender,
-            "religion": student.religion,
-            "medical_conditions": student.medical_conditions or "None",
-            "allergies": student.allergies,
-        },
-        "transport_info": await _get_transport_info(db, school_id, student.id, current_ay),
-        "assigned_mentor": mentor_info,
-        "class_teacher": class_teacher_info,
-        "academic_summary": {
-            "overall_attendance": None,
-            "overall_grade": None,
-            "assignments_submitted": None,
-            "assignments_total": None,
-            "class_rank": None,
-            "class_strength": None,
-        },
-        "behavior_conduct": {
-            "overall_rating": None,
-            "discipline_percentage": None,
-            "punctuality_percentage": None,
-        },
-        "metadata": {},
-    }
-
-    # Fetch parent meetings
-    from src.models.meeting import ParentMeeting
-    meetings_result = await db.execute(
-        select(ParentMeeting).where(
-            ParentMeeting.student_id == student.id, ParentMeeting.school_id == school_id, ParentMeeting.is_active.is_(True)
-        ).order_by(ParentMeeting.meeting_date.desc())
-    )
-    meetings = meetings_result.scalars().all()
-    staff_ids = {m.conducted_by for m in meetings}
-    staff_map = {}
-    if staff_ids:
-        sr = await db.execute(select(Staff).where(Staff.id.in_(staff_ids)))
-        staff_map = {s.id: s.full_name for s in sr.scalars().all()}
-    detail["parent_meetings"] = [
-        {
-            "id": m.id,
-            "meeting_date": m.meeting_date,
-            "date": m.meeting_date,
-            "meeting_type": m.meeting_type,
-            "conducted_by": staff_map.get(m.conducted_by),
-            "discussion_notes": m.discussion_notes,
-            "notes": m.discussion_notes,
-            "status": m.status,
-            "agenda": m.agenda,
-            "remarks": m.remarks,
-            "follow_up_required": m.follow_up_required,
-            "parent_attended": m.parent_attended,
-            "next_meeting_date": m.next_meeting_date,
-        }
-        for m in meetings
-    ]
-
-    # Fetch activities and awards
-    from src.models.activity import Activity, Award
-    activities_result = await db.execute(
-        select(Activity).where(
-            Activity.student_id == student.id, Activity.school_id == school_id, Activity.is_active.is_(True)
-        ).order_by(Activity.start_date.desc())
-    )
-    detail["extra_curricular"] = [
-        {
-            "id": a.id,
-            "name": a.name,
-            "activity_name": a.name,
-            "activity_type": a.activity_type,
-            "description": a.description,
-            "role": a.role,
-            "start_date": a.start_date,
-            "date": a.start_date,
-            "end_date": a.end_date,
-            "achievement": a.achievement,
-            "since": str(a.start_date.year) if a.start_date else None,
-            "status": a.status,
-        }
-        for a in activities_result.scalars().all()
-    ]
-
-    awards_result = await db.execute(
-        select(Award).where(
-            Award.student_id == student.id, Award.school_id == school_id, Award.is_active.is_(True)
-        ).order_by(Award.awarded_date.desc())
-    )
-    detail["awards"] = [
-        {
-            "id": a.id,
-            "title": a.title,
-            "name": a.title,
-            "category": a.category,
-            "year": str(a.awarded_date.year) if a.awarded_date else None,
-            "awarded_date": a.awarded_date,
-            "award_date": a.awarded_date,
-            "date": a.awarded_date,
-            "awarded_by": a.awarded_by,
-            "level": a.level,
-            "description": a.description,
-        }
-        for a in awards_result.scalars().all()
-    ]
-
-    # Fetch disciplinary records
-    from src.models.activity import DisciplinaryRecord
-    disc_result = await db.execute(
-        select(DisciplinaryRecord).where(
-            DisciplinaryRecord.student_id == student.id, DisciplinaryRecord.school_id == school_id, DisciplinaryRecord.is_active.is_(True)
-        ).order_by(DisciplinaryRecord.incident_date.desc())
-    )
-    detail["disciplinary_records"] = [
-        {
-            "id": d.id,
-            "incident_date": d.incident_date,
-            "category": d.category,
-            "severity": d.severity,
-            "description": d.description,
-            "action_taken": d.action_taken,
-            "status": d.status,
-            "parent_notified": d.parent_notified,
-        }
-        for d in disc_result.scalars().all()
-    ]
-
+    detail["can_edit"] = is_mentor or is_class_teacher
     return detail
 
 
@@ -693,18 +422,10 @@ async def get_student_detail(
 async def _verify_access(
     db: AsyncSession, school_id: UUID, student_id: UUID, user: User
 ) -> None:
-    """Verify teacher has access to student. Raises AccessDenied if not."""
+    """Verify teacher is a staff member and student exists."""
     staff = await _get_staff_for_user(db, user)
     if not staff:
         raise AccessDenied("No staff record associated with this user")
-    current_ay = await _get_current_academic_year(db, school_id)
-    if not current_ay:
-        raise NotFound("Academic Year", "current")
-    has_access = await _check_access_to_student(db, school_id, staff.id, student_id, current_ay.id)
-    if not has_access:
-        raise AccessDenied(
-            "Access denied. Student details are only accessible to the student's assigned mentor or class teacher."
-        )
     # Also verify student exists
     result = await db.execute(
         select(Student).where(
