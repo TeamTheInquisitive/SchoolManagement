@@ -272,31 +272,24 @@ async def apply_leave(
     day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
     # Calculate days (excluding holidays and non-working days)
+    count = 0
+    current = from_date
+    while current <= to_date:
+        date_str = current.isoformat()
+        day_name = day_names[current.weekday()]
+        if date_str not in holiday_dates and day_name in working_days_list:
+            count += 1
+        current += timedelta(days=1)
+
     if is_half_day:
-        date_str = from_date.isoformat()
-        day_name = day_names[from_date.weekday()]
-        if date_str in holiday_dates:
+        if count == 0:
             raise AppException(
                 status_code=400,
-                error="Cannot apply half-day leave on a holiday",
-                code="HOLIDAY_CONFLICT",
+                error="Selected dates fall entirely on holidays/non-working days",
+                code="NO_WORKING_DAYS",
             )
-        if day_name not in working_days_list:
-            raise AppException(
-                status_code=400,
-                error=f"Cannot apply leave on {day_name} — it's a non-working day",
-                code="NON_WORKING_DAY",
-            )
-        days = Decimal("0.5")
+        days = Decimal(str(count)) - Decimal("0.5")
     else:
-        count = 0
-        current = from_date
-        while current <= to_date:
-            date_str = current.isoformat()
-            day_name = day_names[current.weekday()]
-            if date_str not in holiday_dates and day_name in working_days_list:
-                count += 1
-            current += timedelta(days=1)
         days = Decimal(str(count))
 
     if days <= 0:

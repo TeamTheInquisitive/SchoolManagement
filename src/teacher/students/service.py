@@ -369,7 +369,7 @@ async def get_student_detail(
     student_id: UUID,
     user: User,
 ) -> dict:
-    """Get full student profile. Only mentor or class teacher can access."""
+    """Get full student profile. Any teacher in the school can view."""
     staff = await _get_staff_for_user(db, user)
     if not staff:
         raise AccessDenied("No staff record associated with this user")
@@ -377,15 +377,6 @@ async def get_student_detail(
     current_ay = await _get_current_academic_year(db, school_id)
     if not current_ay:
         raise NotFound("Academic Year", "current")
-
-    # Check access
-    has_access = await _check_access_to_student(
-        db, school_id, staff.id, student_id, current_ay.id
-    )
-    if not has_access:
-        raise AccessDenied(
-            "Access denied. Student details are only accessible to the student's assigned mentor or class teacher."
-        )
 
     # Get student
     result = await db.execute(
