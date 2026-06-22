@@ -15,7 +15,7 @@ from src.models.academic import Class, ClassSection, Section, Subject
 from src.models.core import AcademicYear, User
 from src.models.examination import Exam, ExamResult, GradeScale, GradeSystem
 from src.models.staff import ClassAssignment, Staff
-from src.models.student import Student, StudentEnrollment
+from src.models.student import Student, StudentEnrollment, StudentMentor
 
 from src.teacher.grades.schemas import (
     SubmitGradesRequest,
@@ -164,6 +164,80 @@ async def _is_subject_teacher_for_exam(
     return result.scalar_one_or_none() is not None
 
 
+async def _get_mentored_section_ids(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    staff_id: uuid.UUID,
+    academic_year_id: uuid.UUID,
+) -> set[uuid.UUID]:
+    """Return class_section_ids of students this staff mentors (current AY)."""
+    mentor_result = await db.execute(
+        select(StudentMentor.student_id).where(
+            StudentMentor.school_id == school_id,
+            StudentMentor.staff_id == staff_id,
+            StudentMentor.academic_year_id == academic_year_id,
+            StudentMentor.is_active.is_(True),
+        )
+    )
+    student_ids = [r[0] for r in mentor_result.all()]
+    if not student_ids:
+        return set()
+
+    enroll_result = await db.execute(
+        select(StudentEnrollment.class_section_id).where(
+            StudentEnrollment.school_id == school_id,
+            StudentEnrollment.student_id.in_(student_ids),
+            StudentEnrollment.academic_year_id == academic_year_id,
+            StudentEnrollment.is_active.is_(True),
+        )
+    )
+    return {r[0] for r in enroll_result.all() if r[0] is not None}
+
+
+async def _is_mentor_for_section(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    staff_id: uuid.UUID,
+    class_section_id: uuid.UUID,
+    academic_year_id: uuid.UUID,
+) -> bool:
+    """Check if teacher mentors at least one student in the given section."""
+    section_ids = await _get_mentored_section_ids(
+        db, school_id, staff_id, academic_year_id
+    )
+    return class_section_id in section_ids
+
+
+async def _assert_can_view_exam(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    staff_id: uuid.UUID,
+    exam: Exam,
+    academic_year_id: uuid.UUID,
+) -> None:
+    """Allow read access if the teacher is the subject teacher, the class
+    teacher, or a mentor of a student in the exam's section."""
+    is_subject_teacher = await _is_subject_teacher_for_exam(
+        db, school_id, staff_id, exam.class_section_id, exam.subject_id, academic_year_id
+    )
+    if is_subject_teacher:
+        return
+    is_class_teacher = await _is_class_teacher_for_section(
+        db, school_id, staff_id, exam.class_section_id, academic_year_id
+    )
+    if is_class_teacher:
+        return
+    is_mentor = await _is_mentor_for_section(
+        db, school_id, staff_id, exam.class_section_id, academic_year_id
+    )
+    if is_mentor:
+        return
+    raise AccessDenied(
+        "You do not have access to this exam. Only the subject teacher, "
+        "class teacher, or assigned mentor can view it."
+    )
+
+
 async def get_grades(
     db: AsyncSession,
     school_id: uuid.UUID,
@@ -192,16 +266,24 @@ async def get_grades(
 
     ay = exam.academic_year
 
-    # Check access: teacher must be either subject teacher or class teacher
+    # Check access: teacher must be subject teacher, class teacher, or mentor
     is_subject_teacher = await _is_subject_teacher_for_exam(
         db, school_id, staff.id, exam.class_section_id, exam.subject_id, ay.id
     )
     is_class_teacher = await _is_class_teacher_for_section(
         db, school_id, staff.id, exam.class_section_id, ay.id
     )
-
+    is_mentor = False
     if not is_subject_teacher and not is_class_teacher:
-        raise AccessDenied("You are not assigned to teach this subject or class")
+        is_mentor = await _is_mentor_for_section(
+            db, school_id, staff.id, exam.class_section_id, ay.id
+        )
+
+    if not is_subject_teacher and not is_class_teacher and not is_mentor:
+        raise AccessDenied(
+            "You do not have access to this exam. Only the subject teacher, "
+            "class teacher, or assigned mentor can view it."
+        )
 
     # can_grade is True only if subject teacher and exam is not published
     can_grade = is_subject_teacher and exam.status != "Published"
@@ -522,9 +604,13 @@ async def get_exams_for_grading(
 ) -> dict:
     """List exams available for grading by this teacher.
 
-    Returns exams where teacher is:
-    - Subject teacher (can_grade=True) — can edit/submit grades
-    - Class teacher (can_grade=False) — read-only view of all subjects
+    Returns exams where the teacher is:
+    - Subject teacher (can_grade=True)  — can edit/submit grades
+    - Class teacher  (can_grade=False) — read-only view of all subjects
+    - Mentor         (can_grade=False) — read-only view of mentored students' sections
+
+    Evaluation (entering/editing grades) is only allowed for sections/subjects
+    the teacher actually teaches; class-teacher and mentor access is view-only.
     """
     staff = await _get_staff_for_user(db, school_id, user)
     ay = await _get_academic_year(db, school_id, academic_year)
@@ -540,9 +626,6 @@ async def get_exams_for_grading(
     )
     assignments = list(assignments_result.scalars().all())
 
-    if not assignments:
-        return {"results": []}
-
     # Build subject teacher pairs: (class_section_id, subject_id)
     subject_teacher_pairs = set()
     # Build class teacher section ids
@@ -554,13 +637,24 @@ async def get_exams_for_grading(
         if a.is_class_teacher:
             class_teacher_section_ids.add(a.class_section_id)
 
+    # Sections where the teacher is a mentor (via mentored students' enrollments)
+    mentor_section_ids = await _get_mentored_section_ids(db, school_id, staff.id, ay.id)
+
     # Filter by class_id if provided
     if class_id:
         subject_teacher_pairs = {(cs_id, subj_id) for cs_id, subj_id in subject_teacher_pairs if cs_id == class_id}
         class_teacher_section_ids = {cs_id for cs_id in class_teacher_section_ids if cs_id == class_id}
+        mentor_section_ids = {cs_id for cs_id in mentor_section_ids if cs_id == class_id}
 
     # Collect all class_section_ids we need exams for
-    all_section_ids = {cs_id for cs_id, _ in subject_teacher_pairs} | class_teacher_section_ids
+    all_section_ids = (
+        {cs_id for cs_id, _ in subject_teacher_pairs}
+        | class_teacher_section_ids
+        | mentor_section_ids
+    )
+
+    if not all_section_ids:
+        return {"results": []}
 
     # Get exams for all relevant sections
     items = []
@@ -603,8 +697,25 @@ async def get_exams_for_grading(
             )
             total_students = total_result.scalar() or 0
 
-            # Determine if teacher can grade this exam
-            can_grade = (exam.class_section_id, exam.subject_id) in subject_teacher_pairs
+            # Determine teacher's relationship to this exam and grading rights.
+            # Grading is allowed ONLY when the teacher teaches this subject in
+            # this section (subject teacher). Class-teacher / mentor are view-only.
+            is_subject_teacher = (exam.class_section_id, exam.subject_id) in subject_teacher_pairs
+            is_class_teacher_sec = exam.class_section_id in class_teacher_section_ids
+            is_mentor_sec = exam.class_section_id in mentor_section_ids
+
+            # Skip "other subject" exams in sections where the teacher is only a
+            # subject teacher (of a different subject) — they have no access to
+            # those. Class teachers and mentors see all exams in their sections.
+            if not (is_subject_teacher or is_class_teacher_sec or is_mentor_sec):
+                continue
+
+            if is_subject_teacher:
+                relationship = "subject_teacher"
+            elif is_class_teacher_sec:
+                relationship = "class_teacher"
+            else:
+                relationship = "mentor"
             is_published = exam.status == "Published"
 
             items.append({
@@ -612,14 +723,19 @@ async def get_exams_for_grading(
                 "name": exam.name,
                 "exam_type": exam.exam_type,
                 "class_section": f"{cls.name}-{sec.name}",
+                "class_section_id": exam.class_section_id,
                 "subject": exam.subject.name if exam.subject else "",
                 "date": exam.date,
+                "start_time": str(exam.start_time) if exam.start_time else None,
+                "end_time": str(exam.end_time) if exam.end_time else None,
                 "max_marks": float(exam.total_marks),
+                "total_marks": float(exam.total_marks),
                 "is_graded": graded_count >= total_students and total_students > 0,
                 "graded_count": graded_count,
                 "total_students": total_students,
-                "can_grade": can_grade and not is_published,
+                "can_grade": is_subject_teacher and not is_published,
                 "is_published": is_published,
+                "relationship": relationship,
             })
 
     return {"results": items}
@@ -650,8 +766,8 @@ async def get_report(
         raise NotFound("Exam", str(exam_id))
 
     ay = exam.academic_year
-    await _verify_teacher_assignment(
-        db, school_id, staff.id, exam.class_section_id, exam.subject_id, ay.id
+    await _assert_can_view_exam(
+        db, school_id, staff.id, exam, ay.id
     )
 
     cs = exam.class_section
@@ -746,8 +862,8 @@ async def get_leaderboard(
         raise NotFound("Exam", str(exam_id))
 
     ay = exam.academic_year
-    await _verify_teacher_assignment(
-        db, school_id, staff.id, exam.class_section_id, exam.subject_id, ay.id
+    await _assert_can_view_exam(
+        db, school_id, staff.id, exam, ay.id
     )
 
     cs = exam.class_section

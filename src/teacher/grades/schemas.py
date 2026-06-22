@@ -116,14 +116,20 @@ class ExamForGradingItem(BaseModel):
     name: str
     exam_type: str
     class_section: str
+    class_section_id: uuid.UUID
     subject: str
     date: Optional[date_type] = None
+    start_time: str | None = None
+    end_time: str | None = None
     max_marks: float
+    total_marks: float
     is_graded: bool
     graded_count: int
     total_students: int
     can_grade: bool = True
     is_published: bool = False
+    # Why the teacher can see this exam: "subject_teacher" | "class_teacher" | "mentor"
+    relationship: str = "subject_teacher"
 
 
 class ExamsForGradingResponse(BaseModel):
