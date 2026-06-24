@@ -329,10 +329,12 @@ async def get_grades(
         student = student_result.scalar_one()
 
         result = results_map.get(student.id)
+        attendance = result.attendance if result else "Pending"
+        is_absent = attendance == "Absent"
         marks = float(result.marks_obtained) if result and result.marks_obtained is not None else None
         pct = round(marks / total_marks * 100, 1) if marks is not None else None
         grade = result.grade if result else None
-        status_str = "Graded" if marks is not None else "Pending"
+        status_str = "Absent" if is_absent else ("Graded" if marks is not None else "Pending")
 
         if marks is not None:
             marks_list.append(marks)
@@ -344,8 +346,9 @@ async def get_grades(
             "marks": marks,
             "total_marks": total_marks,
             "percentage": pct,
-            "grade": grade or "Pending",
+            "grade": grade or ("Absent" if is_absent else "Pending"),
             "status": status_str,
+            "attendance": attendance,
         })
 
     # Stats
@@ -423,7 +426,7 @@ async def submit_grades(
 
     # Validate marks
     for entry in data.grades:
-        if entry.marks > total_marks:
+        if entry.attendance == "Present" and entry.marks is not None and entry.marks > total_marks:
             raise ValidationError(f"Marks cannot exceed max_marks ({total_marks})")
 
     # Get grade system
@@ -432,9 +435,20 @@ async def submit_grades(
 
     marks_values = []
     for entry in data.grades:
-        pct = entry.marks / total_marks * 100
-        grade = _compute_grade(pct, scales)
-        is_pass = entry.marks >= passing_marks if passing_marks is not None else None
+        is_absent = entry.attendance == "Absent"
+
+        if is_absent:
+            pct = 0
+            grade = None
+            is_pass = None
+            entry_marks = None
+        else:
+            if entry.marks is None:
+                continue
+            pct = entry.marks / total_marks * 100
+            grade = _compute_grade(pct, scales)
+            is_pass = entry.marks >= passing_marks if passing_marks is not None else None
+            entry_marks = entry.marks
 
         # Upsert
         existing = await db.execute(
@@ -446,25 +460,26 @@ async def submit_grades(
         )
         exam_res = existing.scalar_one_or_none()
         if exam_res:
-            exam_res.marks_obtained = Decimal(str(entry.marks))
+            exam_res.marks_obtained = Decimal(str(entry_marks)) if entry_marks is not None else None
             exam_res.grade = grade
             exam_res.is_pass = is_pass
-            exam_res.attendance = "Present"
+            exam_res.attendance = entry.attendance
             exam_res.updated_by = user.id
         else:
             exam_res = ExamResult(
                 school_id=school_id,
                 exam_id=data.exam_id,
                 student_id=entry.student_id,
-                marks_obtained=Decimal(str(entry.marks)),
+                marks_obtained=Decimal(str(entry_marks)) if entry_marks is not None else None,
                 grade=grade,
                 is_pass=is_pass,
-                attendance="Present",
+                attendance=entry.attendance,
                 created_by=user.id,
             )
             db.add(exam_res)
 
-        marks_values.append(entry.marks)
+        if entry_marks is not None:
+            marks_values.append(entry_marks)
 
     await db.flush()
 

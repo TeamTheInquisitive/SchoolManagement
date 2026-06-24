@@ -13,7 +13,8 @@ class GradeEntryItem(BaseModel):
     """Single grade entry for a student."""
 
     student_id: uuid.UUID
-    marks: float
+    marks: float | None = None
+    attendance: str = "Present"
 
 
 class SubmitGradesRequest(BaseModel):
@@ -58,6 +59,7 @@ class GradeResultItem(BaseModel):
     percentage: float | None = None
     grade: str | None = None
     status: str
+    attendance: str = "Pending"
 
 
 class GradesListResponse(BaseModel):
