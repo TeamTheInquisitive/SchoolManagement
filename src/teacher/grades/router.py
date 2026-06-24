@@ -9,6 +9,7 @@ from src.auth.dependencies import SchoolDep, TeacherUser
 from src.core.dependencies import PaginationDep, SessionDep
 from src.teacher.grades import service
 from src.teacher.grades.schemas import (
+    ExamDetailResponse,
     ExamsForGradingResponse,
     GradeReportResponse,
     GradesListResponse,
@@ -67,12 +68,35 @@ async def get_exams_for_grading(
     db: SessionDep,
     school: SchoolDep,
     user: TeacherUser,
+    pagination: PaginationDep,
     class_id: uuid.UUID | None = Query(default=None),
     academic_year: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    role: str | None = Query(default=None),
+    class_section: str | None = Query(default=None),
+    subject: str | None = Query(default=None),
+    exam_type: str | None = Query(default=None),
 ) -> ExamsForGradingResponse:
     """List available exams for grading."""
-    result = await service.get_exams_for_grading(db, school.id, user, class_id, academic_year)
+    result = await service.get_exams_for_grading(
+        db, school.id, user, pagination, class_id, academic_year,
+        status=status, search=search, role=role,
+        class_section_filter=class_section, subject_filter=subject, exam_type_filter=exam_type,
+    )
     return ExamsForGradingResponse(**result)
+
+
+@router.get("/exams/{exam_id}", response_model=ExamDetailResponse)
+async def get_exam_detail(
+    exam_id: uuid.UUID,
+    db: SessionDep,
+    school: SchoolDep,
+    user: TeacherUser,
+) -> ExamDetailResponse:
+    """Get single exam detail for grading page."""
+    result = await service.get_exam_detail(db, school.id, user, exam_id)
+    return ExamDetailResponse(**result)
 
 
 @router.post("/exams/{exam_id}/publish", response_model=PublishExamResponse)

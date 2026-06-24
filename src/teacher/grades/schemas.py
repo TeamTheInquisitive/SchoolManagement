@@ -132,10 +132,43 @@ class ExamForGradingItem(BaseModel):
     relationship: str = "subject_teacher"
 
 
+class ExamTabCounts(BaseModel):
+    """Counts for each tab."""
+
+    upcoming: int = 0
+    unpublished: int = 0
+    completed: int = 0
+
+
 class ExamsForGradingResponse(BaseModel):
     """Response listing exams available for grading."""
 
+    count: int = 0
+    page: int = 1
+    page_size: int = 10
+    total_pages: int = 1
+    tab_counts: ExamTabCounts = ExamTabCounts()
     results: list[ExamForGradingItem]
+
+
+class ExamDetailResponse(BaseModel):
+    """Response for a single exam detail."""
+
+    id: uuid.UUID
+    name: str
+    exam_type: str
+    class_section: str
+    class_section_id: uuid.UUID
+    subject: str
+    date: Optional[date_type] = None
+    start_time: str | None = None
+    end_time: str | None = None
+    max_marks: float
+    total_students: int
+    graded_count: int
+    can_grade: bool = True
+    is_published: bool = False
+    relationship: str = "subject_teacher"
 
 
 class MarksDistributionItem(BaseModel):

@@ -599,8 +599,15 @@ async def get_exams_for_grading(
     db: AsyncSession,
     school_id: uuid.UUID,
     user: User,
+    pagination: PaginationParams,
     class_id: uuid.UUID | None = None,
     academic_year: str | None = None,
+    status: str | None = None,
+    search: str | None = None,
+    role: str | None = None,
+    class_section_filter: str | None = None,
+    subject_filter: str | None = None,
+    exam_type_filter: str | None = None,
 ) -> dict:
     """List exams available for grading by this teacher.
 
@@ -609,9 +616,11 @@ async def get_exams_for_grading(
     - Class teacher  (can_grade=False) — read-only view of all subjects
     - Mentor         (can_grade=False) — read-only view of mentored students' sections
 
-    Evaluation (entering/editing grades) is only allowed for sections/subjects
-    the teacher actually teaches; class-teacher and mentor access is view-only.
+    Supports server-side filtering by status, search, role, class_section, subject, exam_type.
+    Status values: 'upcoming', 'unpublished', 'completed'
     """
+    from datetime import date as date_mod
+
     staff = await _get_staff_for_user(db, school_id, user)
     ay = await _get_academic_year(db, school_id, academic_year)
 
@@ -654,91 +663,242 @@ async def get_exams_for_grading(
     )
 
     if not all_section_ids:
-        return {"results": []}
+        return {"count": 0, "page": pagination.page, "page_size": pagination.page_size, "total_pages": 0, "results": []}
 
-    # Get exams for all relevant sections
-    items = []
-    seen_exam_ids = set()
+    # Batch fetch all exams for relevant sections in one query
+    exams_result = await db.execute(
+        select(Exam).where(
+            Exam.school_id == school_id,
+            Exam.academic_year_id == ay.id,
+            Exam.class_section_id.in_(all_section_ids),
+            Exam.is_active.is_(True),
+            Exam.status != "Cancelled",
+        ).order_by(Exam.date.desc())
+    )
+    all_exams = list(exams_result.scalars().all())
 
-    for cs_id in all_section_ids:
-        exams_result = await db.execute(
-            select(Exam).where(
-                Exam.school_id == school_id,
-                Exam.academic_year_id == ay.id,
-                Exam.class_section_id == cs_id,
-                Exam.is_active.is_(True),
-                Exam.status != "Cancelled",
-            ).order_by(Exam.date.desc())
+    # Batch fetch class/section names for all relevant sections
+    cs_name_map: dict[uuid.UUID, str] = {}
+    if all_section_ids:
+        cs_rows = await db.execute(
+            select(ClassSection.id, Class.name, Section.name).join(
+                Class, Class.id == ClassSection.class_id
+            ).join(
+                Section, Section.id == ClassSection.section_id
+            ).where(ClassSection.id.in_(all_section_ids))
         )
-        exams = list(exams_result.scalars().all())
+        for cs_id_val, cls_name, sec_name in cs_rows.all():
+            cs_name_map[cs_id_val] = f"{cls_name}-{sec_name}"
 
-        for exam in exams:
-            if exam.id in seen_exam_ids:
+    # Batch fetch student counts per section
+    enrollment_counts: dict[uuid.UUID, int] = {}
+    if all_section_ids:
+        count_rows = await db.execute(
+            select(
+                StudentEnrollment.class_section_id,
+                func.count(StudentEnrollment.id),
+            ).where(
+                StudentEnrollment.school_id == school_id,
+                StudentEnrollment.class_section_id.in_(all_section_ids),
+                StudentEnrollment.academic_year_id == ay.id,
+                StudentEnrollment.is_active.is_(True),
+            ).group_by(StudentEnrollment.class_section_id)
+        )
+        for cs_id_val, cnt in count_rows.all():
+            enrollment_counts[cs_id_val] = cnt
+
+    today = date_mod.today()
+
+    # First pass: build all accessible items (with role/class/subject/search/type filters)
+    # to compute tab counts, then apply status filter for final results.
+    all_items = []
+
+    for exam in all_exams:
+        is_subject_teacher = (exam.class_section_id, exam.subject_id) in subject_teacher_pairs
+        is_class_teacher_sec = exam.class_section_id in class_teacher_section_ids
+        is_mentor_sec = exam.class_section_id in mentor_section_ids
+
+        if not (is_subject_teacher or is_class_teacher_sec or is_mentor_sec):
+            continue
+
+        if is_subject_teacher:
+            relationship = "subject_teacher"
+        elif is_class_teacher_sec:
+            relationship = "class_teacher"
+        else:
+            relationship = "mentor"
+
+        is_published = exam.status == "Published"
+        can_grade = is_subject_teacher and not is_published
+
+        # Role filter
+        if role == "teaching" and not is_subject_teacher:
+            continue
+        if role == "class_teacher" and not is_class_teacher_sec:
+            continue
+        if role == "mentoring" and not is_mentor_sec:
+            continue
+
+        cs_name = cs_name_map.get(exam.class_section_id, "")
+        subject_name = exam.subject.name if exam.subject else ""
+
+        # Class section filter
+        if class_section_filter and cs_name != class_section_filter:
+            continue
+
+        # Subject filter
+        if subject_filter and subject_name != subject_filter:
+            continue
+
+        # Exam type filter
+        if exam_type_filter and exam.exam_type != exam_type_filter:
+            continue
+
+        # Search filter
+        if search:
+            q = search.lower()
+            if q not in (exam.name or "").lower() and q not in subject_name.lower():
                 continue
-            seen_exam_ids.add(exam.id)
 
-            cs = exam.class_section
-            cls_result = await db.execute(select(Class).where(Class.id == cs.class_id))
-            cls = cls_result.scalar_one()
-            sec_result = await db.execute(select(Section).where(Section.id == cs.section_id))
-            sec = sec_result.scalar_one()
+        is_upcoming = exam.date is not None and exam.date >= today
+        graded_count = len([r for r in exam.results if r.is_active and r.marks_obtained is not None])
+        total_students = enrollment_counts.get(exam.class_section_id, 0)
 
-            # Count graded
-            graded_count = len([r for r in exam.results if r.is_active and r.marks_obtained is not None])
+        item = {
+            "id": exam.id,
+            "name": exam.name,
+            "exam_type": exam.exam_type,
+            "class_section": cs_name,
+            "class_section_id": exam.class_section_id,
+            "subject": subject_name,
+            "date": exam.date,
+            "start_time": str(exam.start_time) if exam.start_time else None,
+            "end_time": str(exam.end_time) if exam.end_time else None,
+            "max_marks": float(exam.total_marks),
+            "total_marks": float(exam.total_marks),
+            "is_graded": graded_count >= total_students and total_students > 0,
+            "graded_count": graded_count,
+            "total_students": total_students,
+            "can_grade": can_grade,
+            "is_published": is_published,
+            "relationship": relationship,
+            "_is_upcoming": is_upcoming,
+        }
+        all_items.append(item)
 
-            # Count total students
-            total_result = await db.execute(
-                select(func.count(StudentEnrollment.id)).where(
-                    StudentEnrollment.school_id == school_id,
-                    StudentEnrollment.class_section_id == cs_id,
-                    StudentEnrollment.academic_year_id == ay.id,
-                    StudentEnrollment.is_active.is_(True),
-                )
-            )
-            total_students = total_result.scalar() or 0
+    # Compute tab counts from all filtered items (before status filter)
+    tab_counts = {"upcoming": 0, "unpublished": 0, "completed": 0}
+    for item in all_items:
+        if item["_is_upcoming"]:
+            tab_counts["upcoming"] += 1
+        elif not item["is_published"] and item["can_grade"]:
+            tab_counts["unpublished"] += 1
+        else:
+            tab_counts["completed"] += 1
 
-            # Determine teacher's relationship to this exam and grading rights.
-            # Grading is allowed ONLY when the teacher teaches this subject in
-            # this section (subject teacher). Class-teacher / mentor are view-only.
-            is_subject_teacher = (exam.class_section_id, exam.subject_id) in subject_teacher_pairs
-            is_class_teacher_sec = exam.class_section_id in class_teacher_section_ids
-            is_mentor_sec = exam.class_section_id in mentor_section_ids
+    # Apply status filter
+    items = []
+    for item in all_items:
+        if status == "upcoming" and not item["_is_upcoming"]:
+            continue
+        if status == "unpublished" and (item["_is_upcoming"] or item["is_published"] or not item["can_grade"]):
+            continue
+        if status == "completed" and (item["_is_upcoming"] or (not item["is_published"] and item["can_grade"])):
+            continue
+        del item["_is_upcoming"]
+        items.append(item)
 
-            # Skip "other subject" exams in sections where the teacher is only a
-            # subject teacher (of a different subject) — they have no access to
-            # those. Class teachers and mentors see all exams in their sections.
-            if not (is_subject_teacher or is_class_teacher_sec or is_mentor_sec):
-                continue
+    # Paginate
+    total = len(items)
+    start = pagination.offset
+    end = start + pagination.page_size
+    paginated_items = items[start:end]
 
-            if is_subject_teacher:
-                relationship = "subject_teacher"
-            elif is_class_teacher_sec:
-                relationship = "class_teacher"
-            else:
-                relationship = "mentor"
-            is_published = exam.status == "Published"
+    return {
+        "count": total,
+        "page": pagination.page,
+        "page_size": pagination.page_size,
+        "total_pages": (total + pagination.page_size - 1) // pagination.page_size if total > 0 else 0,
+        "tab_counts": tab_counts,
+        "results": paginated_items,
+    }
 
-            items.append({
-                "id": exam.id,
-                "name": exam.name,
-                "exam_type": exam.exam_type,
-                "class_section": f"{cls.name}-{sec.name}",
-                "class_section_id": exam.class_section_id,
-                "subject": exam.subject.name if exam.subject else "",
-                "date": exam.date,
-                "start_time": str(exam.start_time) if exam.start_time else None,
-                "end_time": str(exam.end_time) if exam.end_time else None,
-                "max_marks": float(exam.total_marks),
-                "total_marks": float(exam.total_marks),
-                "is_graded": graded_count >= total_students and total_students > 0,
-                "graded_count": graded_count,
-                "total_students": total_students,
-                "can_grade": is_subject_teacher and not is_published,
-                "is_published": is_published,
-                "relationship": relationship,
-            })
 
-    return {"results": items}
+async def get_exam_detail(
+    db: AsyncSession,
+    school_id: uuid.UUID,
+    user: User,
+    exam_id: uuid.UUID,
+) -> dict:
+    """Get single exam metadata for grading page."""
+    staff = await _get_staff_for_user(db, school_id, user)
+
+    exam_result = await db.execute(
+        select(Exam).where(
+            Exam.id == exam_id,
+            Exam.school_id == school_id,
+            Exam.is_active.is_(True),
+        )
+    )
+    exam = exam_result.scalar_one_or_none()
+    if not exam:
+        raise NotFound("Exam", str(exam_id))
+
+    ay = exam.academic_year
+    await _assert_can_view_exam(db, school_id, staff.id, exam, ay.id)
+
+    cs = exam.class_section
+    cls_result = await db.execute(select(Class).where(Class.id == cs.class_id))
+    cls = cls_result.scalar_one()
+    sec_result = await db.execute(select(Section).where(Section.id == cs.section_id))
+    sec = sec_result.scalar_one()
+
+    is_subject_teacher = await _is_subject_teacher_for_exam(
+        db, school_id, staff.id, exam.class_section_id, exam.subject_id, ay.id
+    )
+    is_class_teacher = await _is_class_teacher_for_section(
+        db, school_id, staff.id, exam.class_section_id, ay.id
+    )
+
+    if is_subject_teacher:
+        relationship = "subject_teacher"
+    elif is_class_teacher:
+        relationship = "class_teacher"
+    else:
+        relationship = "mentor"
+
+    is_published = exam.status == "Published"
+    can_grade = is_subject_teacher and not is_published
+
+    graded_count = len([r for r in exam.results if r.is_active and r.marks_obtained is not None])
+
+    total_result = await db.execute(
+        select(func.count(StudentEnrollment.id)).where(
+            StudentEnrollment.school_id == school_id,
+            StudentEnrollment.class_section_id == exam.class_section_id,
+            StudentEnrollment.academic_year_id == ay.id,
+            StudentEnrollment.is_active.is_(True),
+        )
+    )
+    total_students = total_result.scalar() or 0
+
+    return {
+        "id": exam.id,
+        "name": exam.name,
+        "exam_type": exam.exam_type,
+        "class_section": f"{cls.name}-{sec.name}",
+        "class_section_id": exam.class_section_id,
+        "subject": exam.subject.name if exam.subject else "",
+        "date": exam.date,
+        "start_time": str(exam.start_time) if exam.start_time else None,
+        "end_time": str(exam.end_time) if exam.end_time else None,
+        "max_marks": float(exam.total_marks),
+        "total_students": total_students,
+        "graded_count": graded_count,
+        "can_grade": can_grade,
+        "is_published": is_published,
+        "relationship": relationship,
+    }
 
 
 async def get_report(
