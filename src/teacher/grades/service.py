@@ -1322,13 +1322,17 @@ async def publish_exam(
     if total_students == 0:
         raise ValidationError("No students enrolled in this class section")
 
-    # Count graded students
-    graded_count = len([r for r in exam.results if r.is_active and r.marks_obtained is not None])
+    # Count graded + absent students (both are "accounted for")
+    accounted_count = len([
+        r for r in exam.results
+        if r.is_active and (r.marks_obtained is not None or r.attendance == "Absent")
+    ])
 
-    if graded_count < total_students:
+    if accounted_count < total_students:
+        pending = total_students - accounted_count
         raise ValidationError(
-            f"Cannot publish: {total_students - graded_count} student(s) still pending grades. "
-            f"All {total_students} students must have marks before publishing."
+            f"Cannot publish: {pending} student(s) still pending grades. "
+            f"All {total_students} students must have marks or be marked absent before publishing."
         )
 
     # Publish
