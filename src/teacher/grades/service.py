@@ -721,12 +721,14 @@ async def get_exams_for_grading(
         if not (is_subject_teacher or is_class_teacher_sec or is_mentor_sec):
             continue
 
+        relationships = []
         if is_subject_teacher:
-            relationship = "subject_teacher"
-        elif is_class_teacher_sec:
-            relationship = "class_teacher"
-        else:
-            relationship = "mentor"
+            relationships.append("subject_teacher")
+        if is_class_teacher_sec:
+            relationships.append("class_teacher")
+        if is_mentor_sec:
+            relationships.append("mentor")
+        relationship = relationships[0]
 
         is_published = exam.status == "Published"
         can_grade = is_subject_teacher and not is_published
@@ -782,6 +784,7 @@ async def get_exams_for_grading(
             "can_grade": can_grade,
             "is_published": is_published,
             "relationship": relationship,
+            "relationships": relationships,
             "_is_upcoming": is_upcoming,
         }
         all_items.append(item)
@@ -859,13 +862,18 @@ async def get_exam_detail(
     is_class_teacher = await _is_class_teacher_for_section(
         db, school_id, staff.id, exam.class_section_id, ay.id
     )
+    is_mentor = await _is_mentor_for_section(
+        db, school_id, staff.id, exam.class_section_id, ay.id
+    )
 
+    relationships = []
     if is_subject_teacher:
-        relationship = "subject_teacher"
-    elif is_class_teacher:
-        relationship = "class_teacher"
-    else:
-        relationship = "mentor"
+        relationships.append("subject_teacher")
+    if is_class_teacher:
+        relationships.append("class_teacher")
+    if is_mentor:
+        relationships.append("mentor")
+    relationship = relationships[0] if relationships else "subject_teacher"
 
     is_published = exam.status == "Published"
     can_grade = is_subject_teacher and not is_published
@@ -898,6 +906,7 @@ async def get_exam_detail(
         "can_grade": can_grade,
         "is_published": is_published,
         "relationship": relationship,
+        "relationships": relationships,
     }
 
 

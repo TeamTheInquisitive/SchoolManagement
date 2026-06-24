@@ -130,6 +130,7 @@ class ExamForGradingItem(BaseModel):
     is_published: bool = False
     # Why the teacher can see this exam: "subject_teacher" | "class_teacher" | "mentor"
     relationship: str = "subject_teacher"
+    relationships: list[str] = []
 
 
 class ExamTabCounts(BaseModel):
@@ -169,6 +170,7 @@ class ExamDetailResponse(BaseModel):
     can_grade: bool = True
     is_published: bool = False
     relationship: str = "subject_teacher"
+    relationships: list[str] = []
 
 
 class MarksDistributionItem(BaseModel):
