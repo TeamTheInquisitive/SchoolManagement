@@ -7,7 +7,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.security import hash_password
-from src.models.core import School, User
+from src.models.core import School, Settings, User
 from src.models.staff import Staff
 from src.models.student import Student
 from src.models.subscription import Subscription, SubscriptionPayment
@@ -170,6 +170,23 @@ async def create_school(db: AsyncSession, data: dict) -> School:
 
     school = School(**data)
     db.add(school)
+    await db.flush()
+
+    # Seed ID generation config using the school's prefix
+    prefix = data["id_prefix"]
+    id_config = {
+        "student": {"enabled": True, "pattern": f"{prefix}" + "{YY}{SEQ:4}", "next_seq": 1},
+        "teacher": {"enabled": True, "pattern": f"{prefix}T" + "{YY}{SEQ:4}", "next_seq": 1},
+        "staff": {"enabled": True, "pattern": f"{prefix}S" + "{YY}{SEQ:4}", "next_seq": 1},
+    }
+    id_setting = Settings(
+        school_id=school.id,
+        category="id_generation",
+        key="config",
+        value=id_config,
+    )
+    db.add(id_setting)
+
     await db.commit()
     await db.refresh(school)
     return school

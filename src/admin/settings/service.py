@@ -1434,6 +1434,18 @@ DEFAULT_ID_CONFIG = {
 }
 
 
+def _build_default_id_config(prefix: str | None) -> dict:
+    """Build default ID config using the school's prefix."""
+    if not prefix:
+        return dict(DEFAULT_ID_CONFIG)
+    p = prefix.upper()
+    return {
+        "student": {"enabled": True, "pattern": f"{p}" + "{YY}{SEQ:4}", "next_seq": 1},
+        "teacher": {"enabled": True, "pattern": f"{p}T" + "{YY}{SEQ:4}", "next_seq": 1},
+        "staff": {"enabled": True, "pattern": f"{p}S" + "{YY}{SEQ:4}", "next_seq": 1},
+    }
+
+
 async def check_prefix_availability(db: AsyncSession, prefix: str, current_school_id: uuid.UUID) -> dict:
     """Check if a prefix is available (not used by another school)."""
     result = await db.execute(
@@ -1461,6 +1473,11 @@ async def get_id_generation_config(db: AsyncSession, school_id: uuid.UUID) -> di
     """Get ID auto-generation config."""
     import re
 
+    # Get school prefix first
+    school_result = await db.execute(select(School).where(School.id == school_id))
+    school = school_result.scalar_one_or_none()
+    school_prefix = school.id_prefix if school else None
+
     result = await db.execute(
         select(Settings).where(
             Settings.school_id == school_id,
@@ -1470,7 +1487,7 @@ async def get_id_generation_config(db: AsyncSession, school_id: uuid.UUID) -> di
         )
     )
     setting = result.scalar_one_or_none()
-    config = setting.value if setting else DEFAULT_ID_CONFIG
+    config = setting.value if setting else _build_default_id_config(school_prefix)
 
     # Add preview for each entity type
     from datetime import datetime
@@ -1486,10 +1503,7 @@ async def get_id_generation_config(db: AsyncSession, school_id: uuid.UUID) -> di
             preview = preview[: seq_match.start()] + str(cfg.get("next_seq", 1)).zfill(pad) + preview[seq_match.end() :]
         cfg["preview"] = preview
 
-    # Include the school's current id_prefix
-    school_result = await db.execute(select(School).where(School.id == school_id))
-    school = school_result.scalar_one_or_none()
-    return {"prefix": school.id_prefix if school else None, **config}
+    return {"prefix": school_prefix, **config}
 
 
 async def update_id_generation_config(
@@ -1535,7 +1549,11 @@ async def update_id_generation_config(
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(existing, "value")
     else:
-        merged = dict(DEFAULT_ID_CONFIG)
+        # Get school prefix for building defaults
+        school_result = await db.execute(select(School).where(School.id == school_id))
+        school_obj = school_result.scalar_one_or_none()
+        school_prefix = prefix or (school_obj.id_prefix if school_obj else None)
+        merged = _build_default_id_config(school_prefix)
         for entity_type, cfg in data.items():
             if entity_type in merged:
                 merged[entity_type].update(cfg)
@@ -1566,6 +1584,11 @@ async def generate_next_id(
     from datetime import datetime
     from sqlalchemy import func
 
+    # Get school prefix for building defaults
+    school_result = await db.execute(select(School).where(School.id == school_id))
+    school_obj = school_result.scalar_one_or_none()
+    school_prefix = school_obj.id_prefix if school_obj else None
+
     result = await db.execute(
         select(Settings).where(
             Settings.school_id == school_id,
@@ -1575,7 +1598,7 @@ async def generate_next_id(
         )
     )
     setting = result.scalar_one_or_none()
-    config = setting.value if setting else DEFAULT_ID_CONFIG
+    config = setting.value if setting else _build_default_id_config(school_prefix)
 
     cfg = config.get(entity_type)
     if not cfg or not cfg.get("enabled"):
