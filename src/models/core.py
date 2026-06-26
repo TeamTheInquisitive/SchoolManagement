@@ -26,6 +26,7 @@ class School(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    id_prefix: Mapped[str | None] = mapped_column(String(6), default=None, unique=True)
     logo_url: Mapped[str | None] = mapped_column(Text, default=None)
     address_line1: Mapped[str | None] = mapped_column(String(255), default=None)
     address_line2: Mapped[str | None] = mapped_column(String(255), default=None)
@@ -61,6 +62,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("school_id", "email", name="uq_users_school_email"),
+        UniqueConstraint("username", name="uq_users_username"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -72,6 +74,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     password_changed: Mapped[bool] = mapped_column(default=False)
+    username: Mapped[str | None] = mapped_column(String(50), default=None)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)  # admin, teacher, student, parent
     phone: Mapped[str | None] = mapped_column(String(20), default=None)

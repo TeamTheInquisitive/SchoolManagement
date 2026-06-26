@@ -134,10 +134,27 @@ async def get_subscription_banner(
             days_left = (school_obj.trial_end_date - today).days
         else:
             days_left = None
+
+        if days_left is None:
+            message = "You are on a free trial"
+            banner_type = "trial"
+        elif days_left < 0:
+            message = "Your free trial has expired. Please renew your subscription."
+            banner_type = "expired"
+        elif days_left == 0:
+            message = "Your free trial ends today"
+            banner_type = "expiring"
+        elif days_left == 1:
+            message = "Your free trial ends tomorrow"
+            banner_type = "expiring"
+        else:
+            message = f"Your free trial ends in {days_left} days"
+            banner_type = "trial" if days_left > 3 else "expiring"
+
         return {
             "show_banner": True,
-            "type": "trial",
-            "message": f"Your free trial ends in {days_left} day{'s' if days_left != 1 else ''}" if days_left is not None else "You are on a free trial",
+            "type": banner_type,
+            "message": message,
             "days_left": days_left,
         }
 

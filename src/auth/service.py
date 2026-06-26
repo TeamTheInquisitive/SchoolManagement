@@ -29,17 +29,26 @@ from src.models.core import User
 
 
 async def authenticate_user(
-    db: AsyncSession, identifier: str, password: str, school_id: uuid.UUID | None = None
+    db: AsyncSession, identifier: str, password: str, school_id: uuid.UUID | None = None, username: str | None = None
 ) -> User:
-    """Authenticate a user by email or employee_id and password."""
+    """Authenticate a user by username, email, or employee_id and password."""
     from src.models.staff import Staff
 
-    # Try email lookup first
-    query = select(User).where(User.email == identifier, User.is_active.is_(True))
-    if school_id:
-        query = query.where(User.school_id == school_id)
-    result = await db.execute(query.limit(1))
-    user = result.scalar_one_or_none()
+    user = None
+
+    # Try username lookup first (globally unique, no school_id needed)
+    if username:
+        query = select(User).where(User.username == username, User.is_active.is_(True))
+        result = await db.execute(query.limit(1))
+        user = result.scalar_one_or_none()
+
+    # Try email lookup
+    if not user:
+        query = select(User).where(User.email == identifier, User.is_active.is_(True))
+        if school_id:
+            query = query.where(User.school_id == school_id)
+        result = await db.execute(query.limit(1))
+        user = result.scalar_one_or_none()
 
     # If not found by email, try employee_id via Staff
     if not user:

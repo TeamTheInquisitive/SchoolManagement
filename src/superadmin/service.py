@@ -150,6 +150,24 @@ async def create_school(db: AsyncSession, data: dict) -> School:
     if "code" not in data or not data["code"]:
         last_count = (await db.execute(select(func.count(School.id)))).scalar() or 0
         data["code"] = f"SCH{last_count + 1:03d}"
+
+    # Auto-derive id_prefix from school name if not provided
+    if "id_prefix" not in data or not data.get("id_prefix"):
+        name = data.get("name", "")
+        prefix = ''.join(name.split()).upper()[:3]
+        # Check uniqueness, append number if collision
+        base_prefix = prefix
+        suffix = 1
+        while True:
+            existing = await db.execute(
+                select(School).where(School.id_prefix == prefix)
+            )
+            if not existing.scalar_one_or_none():
+                break
+            prefix = f"{base_prefix}{suffix}"[:6]
+            suffix += 1
+        data["id_prefix"] = prefix
+
     school = School(**data)
     db.add(school)
     await db.commit()

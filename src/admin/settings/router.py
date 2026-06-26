@@ -4,7 +4,7 @@ import os
 import time
 import uuid
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from sqlalchemy import select
 
 from src.admin.settings import service
@@ -499,6 +499,17 @@ async def delete_fee_structure(
 # ---------------------------------------------------------------------------
 # ID Auto-Generation
 # ---------------------------------------------------------------------------
+
+
+@router.get("/check-prefix")
+async def check_prefix_availability(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+    prefix: str = Query(..., min_length=2, max_length=6),
+) -> dict:
+    """Check if an ID prefix is available (not used by another school)."""
+    return await service.check_prefix_availability(db, prefix.upper(), school.id)
 
 
 @router.get("/id-generation")

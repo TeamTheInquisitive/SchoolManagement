@@ -362,6 +362,7 @@ async def create_student(
             role="student",
             student_id=student.id,
             created_by=created_by,
+            username=roll_number,
         )
         db.add(user)
 

@@ -8,6 +8,7 @@ from pydantic import BaseModel, EmailStr
 class LoginRequest(BaseModel):
     email: str | None = None
     identifier: str | None = None
+    username: str | None = None
     password: str
     portal: str | None = None
 

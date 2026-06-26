@@ -1434,6 +1434,29 @@ DEFAULT_ID_CONFIG = {
 }
 
 
+async def check_prefix_availability(db: AsyncSession, prefix: str, current_school_id: uuid.UUID) -> dict:
+    """Check if a prefix is available (not used by another school)."""
+    result = await db.execute(
+        select(School).where(
+            School.id_prefix == prefix,
+            School.id != current_school_id,
+            School.is_active.is_(True),
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        return {"available": False, "used_by": existing.name}
+    return {"available": True}
+
+
+async def update_school_prefix(db: AsyncSession, school_id: uuid.UUID, prefix: str) -> None:
+    """Update the school's id_prefix field."""
+    result = await db.execute(select(School).where(School.id == school_id))
+    school = result.scalar_one()
+    school.id_prefix = prefix.upper()
+    await db.commit()
+
+
 async def get_id_generation_config(db: AsyncSession, school_id: uuid.UUID) -> dict:
     """Get ID auto-generation config."""
     import re
@@ -1463,13 +1486,32 @@ async def get_id_generation_config(db: AsyncSession, school_id: uuid.UUID) -> di
             preview = preview[: seq_match.start()] + str(cfg.get("next_seq", 1)).zfill(pad) + preview[seq_match.end() :]
         cfg["preview"] = preview
 
-    return config
+    # Include the school's current id_prefix
+    school_result = await db.execute(select(School).where(School.id == school_id))
+    school = school_result.scalar_one_or_none()
+    return {"prefix": school.id_prefix if school else None, **config}
 
 
 async def update_id_generation_config(
     db: AsyncSession, school_id: uuid.UUID, data: dict, updated_by: uuid.UUID
 ) -> dict:
     """Update ID auto-generation config."""
+    # Handle prefix update if provided
+    prefix = data.pop("prefix", None)
+    if prefix:
+        prefix = prefix.upper()
+        await update_school_prefix(db, school_id, prefix)
+        # Auto-generate patterns from prefix
+        if "student" not in data:
+            data["student"] = {}
+        if "teacher" not in data:
+            data["teacher"] = {}
+        if "staff" not in data:
+            data["staff"] = {}
+        data["student"]["pattern"] = f"{prefix}" + "{YY}{SEQ:4}"
+        data["teacher"]["pattern"] = f"{prefix}T" + "{YY}{SEQ:4}"
+        data["staff"]["pattern"] = f"{prefix}S" + "{YY}{SEQ:4}"
+
     result = await db.execute(
         select(Settings).where(
             Settings.school_id == school_id,
