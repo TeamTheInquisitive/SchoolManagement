@@ -165,6 +165,33 @@ async def get_results_overview(
             obtained, possible = subject_totals.get(subj_name, (0.0, 0.0))
             subject_totals[subj_name] = (obtained + float(r.marks_obtained), possible + float(r.exam.total_marks))
 
+    # Compute class averages per subject
+    exam_ids = list(exam_groups.keys())
+    class_avg_by_subject: dict[str, float] = {}
+    if exam_ids:
+        all_class_results = await db.execute(
+            select(ExamResult)
+            .join(Exam, ExamResult.exam_id == Exam.id)
+            .options(selectinload(ExamResult.exam))
+            .where(
+                ExamResult.exam_id.in_(exam_ids),
+                ExamResult.school_id == school_id,
+                ExamResult.is_active.is_(True),
+                ExamResult.marks_obtained.isnot(None),
+            )
+        )
+        all_results = list(all_class_results.scalars().all())
+        class_subject_totals: dict[str, list[float]] = {}
+        for r in all_results:
+            if r.exam.subject:
+                subj_name = r.exam.subject.name
+                pct = float(r.marks_obtained) / float(r.exam.total_marks) * 100 if float(r.exam.total_marks) > 0 else 0
+                if subj_name not in class_subject_totals:
+                    class_subject_totals[subj_name] = []
+                class_subject_totals[subj_name].append(pct)
+        for subj_name, pcts in class_subject_totals.items():
+            class_avg_by_subject[subj_name] = round(sum(pcts) / len(pcts), 1) if pcts else 0
+
     subject_wise_performance = []
     radar_subjects = []
     radar_scores = []
@@ -173,6 +200,7 @@ async def get_results_overview(
         subject_wise_performance.append({
             "subject": subj_name,
             "student_percentage": round(pct, 1),
+            "class_average": class_avg_by_subject.get(subj_name),
             "max_marks": 100,
         })
         radar_subjects.append(subj_name)

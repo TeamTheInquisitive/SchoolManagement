@@ -25,6 +25,10 @@ ALLOWED_FILE_TYPES = {
     "image/png",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/zip",
+    "application/x-zip-compressed",
 }
 MAX_FILES = 5
 MAX_FILE_SIZE_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024
@@ -405,7 +409,7 @@ async def submit_assignment(
             # Check file type
             if file.content_type not in ALLOWED_FILE_TYPES:
                 raise ValidationError(
-                    "File type not allowed. Accepted: PDF, JPEG, PNG, DOC, DOCX",
+                    "File type not allowed. Accepted: PDF, JPEG, PNG, DOC, DOCX, PPT, PPTX, ZIP",
                     details={
                         "filename": file.filename,
                         "type": file.content_type,
