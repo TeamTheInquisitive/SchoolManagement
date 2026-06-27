@@ -107,7 +107,7 @@ class AssignmentSubmission(BaseModel):
 
     # Relationships
     assignment: Mapped[Assignment] = relationship(
-        "Assignment", back_populates="submissions"
+        "Assignment", back_populates="submissions", lazy="selectin"
     )
     student: Mapped["Student"] = relationship("Student", lazy="selectin")
     grader: Mapped["Staff | None"] = relationship(

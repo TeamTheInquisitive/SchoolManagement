@@ -414,6 +414,8 @@ async def get_exams_with_results(
             "exam_name": exam.name,
             "exam_type": exam.exam_type,
             "date": exam.date,
+            "start_time": str(exam.start_time)[:5] if exam.start_time else None,
+            "end_time": str(exam.end_time)[:5] if exam.end_time else None,
             "total_marks_obtained": total_obtained,
             "total_max_marks": total_possible,
             "percentage": round(pct, 1),

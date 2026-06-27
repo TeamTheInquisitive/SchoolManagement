@@ -7,6 +7,7 @@ from datetime import date, datetime, timezone
 import aiofiles
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.core.config import settings
 from src.core.exceptions import ConflictError, NotFound, ValidationError
@@ -157,6 +158,12 @@ async def list_assignments(
         select(AssignmentSubmission)
         .join(Assignment, AssignmentSubmission.assignment_id == Assignment.id)
         .where(base_filter)
+        .options(
+            selectinload(AssignmentSubmission.assignment)
+            .selectinload(Assignment.subject),
+            selectinload(AssignmentSubmission.assignment)
+            .selectinload(Assignment.staff),
+        )
     )
     all_submissions = list(all_result.scalars().all())
 
@@ -253,6 +260,10 @@ async def get_assignment_detail(
             Assignment.id == assignment_id,
             Assignment.school_id == school_id,
             Assignment.is_active.is_(True),
+        ).options(
+            selectinload(Assignment.subject),
+            selectinload(Assignment.staff),
+            selectinload(Assignment.class_section),
         )
     )
     assignment = a_result.scalar_one_or_none()
@@ -456,6 +467,9 @@ async def get_submission_detail(
             Assignment.id == assignment_id,
             Assignment.school_id == school_id,
             Assignment.is_active.is_(True),
+        ).options(
+            selectinload(Assignment.subject),
+            selectinload(Assignment.staff),
         )
     )
     assignment = a_result.scalar_one_or_none()
@@ -468,6 +482,8 @@ async def get_submission_detail(
             AssignmentSubmission.assignment_id == assignment_id,
             AssignmentSubmission.student_id == student.id,
             AssignmentSubmission.is_active.is_(True),
+        ).options(
+            selectinload(AssignmentSubmission.grader),
         )
     )
     submission = sub_result.scalar_one_or_none()
