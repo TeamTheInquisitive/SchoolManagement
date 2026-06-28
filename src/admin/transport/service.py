@@ -1414,21 +1414,24 @@ async def assign_students_to_route(
     count = 0
 
     for sid in student_ids:
-        # Check if already assigned
+        # Check if already assigned (including soft-deleted)
         existing = await db.execute(
             select(StudentTransport).where(
                 StudentTransport.school_id == school_id,
                 StudentTransport.student_id == uuid.UUID(sid),
                 StudentTransport.academic_year_id == ay_id,
-                StudentTransport.is_active.is_(True),
             )
         )
         ex = existing.scalar_one_or_none()
         if ex:
-            # Update route
+            # Reactivate if soft-deleted, update route
             ex.route_id = route_id
             ex.pickup_point = pickup
             ex.drop_point = drop
+            ex.is_active = True
+            ex.deleted_at = None
+            ex.deleted_by = None
+            ex.updated_by = user_id
         else:
             db.add(StudentTransport(
                 school_id=school_id,
@@ -1470,7 +1473,7 @@ async def remove_student_from_route(
     )
     record = result.scalar_one_or_none()
     if record:
-        record.is_active = False
+        await db.delete(record)
 
     if ay_id:
         await _update_route_capacity(db, school_id, route_id, ay_id)

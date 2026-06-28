@@ -162,3 +162,15 @@ async def get_holidays(
     )
     row = result.scalar_one_or_none()
     return {"holidays": row.value if row and row.value else [], "academic_year": ay.name if ay else None}
+
+
+@router.get("/grade-system")
+async def get_grade_system(
+    db: SessionDep,
+    school: SchoolDep,
+    user: StudentUser,
+) -> dict:
+    """Get the school's grade system for GPA calculation."""
+    from src.core.grades import get_grade_scales
+    scales = await get_grade_scales(db, school.id)
+    return {"grades": scales}
