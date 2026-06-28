@@ -130,3 +130,35 @@ async def get_parent_meetings(
     """Get parent meetings."""
     result = await service.get_parent_meetings(db, school.id, user)
     return ParentMeetingsResponse(**result)
+
+
+@router.get("/holidays")
+async def get_holidays(
+    db: SessionDep,
+    school: SchoolDep,
+    user: StudentUser,
+) -> dict:
+    """Get holidays for the current academic year."""
+    from sqlalchemy import select
+    from src.models.core import AcademicYear, Setting
+
+    ay_result = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school.id,
+            AcademicYear.is_current.is_(True),
+            AcademicYear.is_active.is_(True),
+        )
+    )
+    ay = ay_result.scalar_one_or_none()
+    ay_key = f"holidays_{ay.id}" if ay else "holidays"
+
+    result = await db.execute(
+        select(Setting).where(
+            Setting.school_id == school.id,
+            Setting.category == "holidays",
+            Setting.key == ay_key,
+            Setting.is_active.is_(True),
+        )
+    )
+    row = result.scalar_one_or_none()
+    return {"holidays": row.value if row and row.value else [], "academic_year": ay.name if ay else None}

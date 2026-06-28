@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Query
-from sqlalchemy import select
+from sqlalchemy import select, extract, and_
 
 from src.auth.dependencies import AdminUser, SchoolDep
 from src.core.dependencies import SessionDep
@@ -367,3 +367,77 @@ async def get_fee_collection_rate(
 ):
     """Get monthly percentage of expected fees actually collected."""
     return await service.get_fee_collection_rate(db, school.id)
+
+
+@router.get("/birthdays", response_model=None)
+async def get_birthdays(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+):
+    """Get today's and upcoming birthdays for students and staff."""
+    from src.models.student import Student
+    from src.models.staff import Staff
+
+    today = date.today()
+    week_end = today + timedelta(days=7)
+
+    # Students with birthdays today
+    student_today_result = await db.execute(
+        select(Student).where(
+            Student.school_id == school.id,
+            Student.is_active.is_(True),
+            Student.date_of_birth.isnot(None),
+            extract('month', Student.date_of_birth) == today.month,
+            extract('day', Student.date_of_birth) == today.day,
+        )
+    )
+    students_today = student_today_result.scalars().all()
+
+    # Staff with birthdays today
+    staff_today_result = await db.execute(
+        select(Staff).where(
+            Staff.school_id == school.id,
+            Staff.is_active.is_(True),
+            Staff.date_of_birth.isnot(None),
+            extract('month', Staff.date_of_birth) == today.month,
+            extract('day', Staff.date_of_birth) == today.day,
+        )
+    )
+    staff_today = staff_today_result.scalars().all()
+
+    # Upcoming (next 7 days, excluding today)
+    upcoming = []
+    for days_ahead in range(1, 8):
+        check_date = today + timedelta(days=days_ahead)
+        s_result = await db.execute(
+            select(Student).where(
+                Student.school_id == school.id,
+                Student.is_active.is_(True),
+                Student.date_of_birth.isnot(None),
+                extract('month', Student.date_of_birth) == check_date.month,
+                extract('day', Student.date_of_birth) == check_date.day,
+            )
+        )
+        for s in s_result.scalars().all():
+            upcoming.append({"name": s.full_name, "date": str(check_date), "role": "student", "class_name": None})
+
+        st_result = await db.execute(
+            select(Staff).where(
+                Staff.school_id == school.id,
+                Staff.is_active.is_(True),
+                Staff.date_of_birth.isnot(None),
+                extract('month', Staff.date_of_birth) == check_date.month,
+                extract('day', Staff.date_of_birth) == check_date.day,
+            )
+        )
+        for s in st_result.scalars().all():
+            upcoming.append({"name": s.full_name, "date": str(check_date), "role": "staff"})
+
+    today_list = []
+    for s in students_today:
+        today_list.append({"name": s.full_name, "date": str(today), "role": "student", "class_name": None})
+    for s in staff_today:
+        today_list.append({"name": s.full_name, "date": str(today), "role": "staff"})
+
+    return {"today": today_list, "upcoming": upcoming}
