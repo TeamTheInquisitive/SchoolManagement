@@ -122,11 +122,16 @@ async def get_attendance(
 
 
 async def submit_attendance(db: AsyncSession, school_id: uuid.UUID, user: User, data: SubmitAttendanceRequest) -> dict:
+    from datetime import date as date_type
     from fastapi import HTTPException
 
     # Validate records is not empty
     if not data.records:
         raise HTTPException(status_code=400, detail="Attendance records must not be empty")
+
+    # Block future dates
+    if data.date > date_type.today():
+        raise HTTPException(status_code=400, detail="Cannot submit attendance for future dates")
 
     ay = await _get_current_academic_year(db, school_id, data.academic_year)
     cs = await _get_class_section(db, school_id, data.class_id)
@@ -183,11 +188,16 @@ async def submit_attendance(db: AsyncSession, school_id: uuid.UUID, user: User, 
 
 
 async def update_attendance(db: AsyncSession, school_id: uuid.UUID, user: User, data: UpdateAttendanceRequest) -> dict:
+    from datetime import date as date_type
     from fastapi import HTTPException
 
     # Validate records is not empty
     if not data.records:
         raise HTTPException(status_code=400, detail="Attendance records must not be empty")
+
+    # Block future dates
+    if data.date > date_type.today():
+        raise HTTPException(status_code=400, detail="Cannot update attendance for future dates")
 
     ay = await _get_current_academic_year(db, school_id)
     cs = await _get_class_section(db, school_id, data.class_id)

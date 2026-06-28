@@ -243,6 +243,11 @@ async def submit_attendance(
     data: SubmitAttendanceRequest,
 ) -> dict:
     """Submit attendance for a class on a specific date."""
+    from datetime import date as date_type
+    if data.date > date_type.today():
+        from src.core.exceptions import ValidationError
+        raise ValidationError("Cannot submit attendance for future dates")
+
     staff = await _get_staff_for_user(db, school_id, user)
     ay = await _get_current_academic_year(db, school_id, data.academic_year)
     await _verify_class_assignment(db, school_id, staff.id, data.class_id, ay.id)
@@ -324,6 +329,11 @@ async def update_attendance(
     data: UpdateAttendanceRequest,
 ) -> dict:
     """Update attendance for a class on a specific date (corrections)."""
+    from datetime import date as date_type
+    if data.date > date_type.today():
+        from src.core.exceptions import ValidationError
+        raise ValidationError("Cannot update attendance for future dates")
+
     staff = await _get_staff_for_user(db, school_id, user)
     ay = await _get_current_academic_year(db, school_id)
     await _verify_class_assignment(db, school_id, staff.id, data.class_id, ay.id)

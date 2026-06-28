@@ -182,7 +182,7 @@ class SubmissionListItem(BaseModel):
     max_marks: float | None = None
     graded_at: datetime | None = None
     comments: str | None = None
-    file_urls: list[str] = Field(default_factory=list)
+    file_urls: list[str | dict] = Field(default_factory=list)
     feedback: str | None = None
 
 
