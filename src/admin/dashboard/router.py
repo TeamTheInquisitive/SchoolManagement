@@ -406,6 +406,31 @@ async def get_birthdays(
     )
     staff_today = staff_today_result.scalars().all()
 
+    # Helper to get student's current class
+    from src.models.student import StudentEnrollment
+    from src.models.academic import ClassSection, Class, Section
+
+    async def get_student_class(student_id):
+        enr_result = await db.execute(
+            select(StudentEnrollment).where(
+                StudentEnrollment.student_id == student_id,
+                StudentEnrollment.school_id == school.id,
+                StudentEnrollment.is_active.is_(True),
+            ).order_by(StudentEnrollment.created_at.desc())
+        )
+        enr = enr_result.scalars().first()
+        if not enr:
+            return None
+        cs_result = await db.execute(select(ClassSection).where(ClassSection.id == enr.class_section_id))
+        cs = cs_result.scalar_one_or_none()
+        if not cs:
+            return None
+        cls_result = await db.execute(select(Class).where(Class.id == cs.class_id))
+        sec_result = await db.execute(select(Section).where(Section.id == cs.section_id))
+        cls = cls_result.scalar_one_or_none()
+        sec = sec_result.scalar_one_or_none()
+        return f"{cls.name}-{sec.name}" if cls and sec else None
+
     # Upcoming (next 7 days, excluding today)
     upcoming = []
     for days_ahead in range(1, 8):
@@ -420,7 +445,8 @@ async def get_birthdays(
             )
         )
         for s in s_result.scalars().all():
-            upcoming.append({"name": s.full_name, "date": str(check_date), "role": "student", "class_name": None})
+            class_name = await get_student_class(s.id)
+            upcoming.append({"name": s.full_name, "date": str(check_date), "role": "student", "class_name": class_name})
 
         st_result = await db.execute(
             select(Staff).where(
@@ -436,7 +462,8 @@ async def get_birthdays(
 
     today_list = []
     for s in students_today:
-        today_list.append({"name": s.full_name, "date": str(today), "role": "student", "class_name": None})
+        class_name = await get_student_class(s.id)
+        today_list.append({"name": s.full_name, "date": str(today), "role": "student", "class_name": class_name})
     for s in staff_today:
         today_list.append({"name": s.full_name, "date": str(today), "role": "staff"})
 
