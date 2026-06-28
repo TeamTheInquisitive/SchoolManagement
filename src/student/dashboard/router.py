@@ -140,7 +140,7 @@ async def get_holidays(
 ) -> dict:
     """Get holidays for the current academic year."""
     from sqlalchemy import select
-    from src.models.core import AcademicYear, Setting
+    from src.models.core import AcademicYear, Settings
 
     ay_result = await db.execute(
         select(AcademicYear).where(
@@ -153,11 +153,11 @@ async def get_holidays(
     ay_key = f"holidays_{ay.id}" if ay else "holidays"
 
     result = await db.execute(
-        select(Setting).where(
-            Setting.school_id == school.id,
-            Setting.category == "holidays",
-            Setting.key == ay_key,
-            Setting.is_active.is_(True),
+        select(Settings).where(
+            Settings.school_id == school.id,
+            Settings.category == "holidays",
+            Settings.key == ay_key,
+            Settings.is_active.is_(True),
         )
     )
     row = result.scalar_one_or_none()

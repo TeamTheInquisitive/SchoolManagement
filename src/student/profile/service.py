@@ -11,6 +11,7 @@ from src.models.academic import Class, ClassSection, Section
 from src.models.core import AcademicYear, User
 from src.models.staff import Staff
 from src.models.student import Parent, Student, StudentEnrollment, StudentMentor, StudentParent
+from src.models.transport import StudentTransport, Route, RouteAssignment, Driver, Helper, Vehicle
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +145,75 @@ async def get_profile(db: AsyncSession, school_id: UUID, user: User) -> dict:
                     "phone": mentor_staff.phone,
                 }
 
+    # Get transport info
+    transport_section = {
+        "enrolled": False,
+        "route_name": None,
+        "route_code": None,
+        "bus_number": None,
+        "pickup_point": None,
+        "drop_point": None,
+        "pickup_time": None,
+        "drop_time": None,
+        "driver_name": None,
+        "driver_phone": None,
+        "helper_name": None,
+        "helper_phone": None,
+    }
+    if current_ay:
+        st_result = await db.execute(
+            select(StudentTransport).where(
+                StudentTransport.student_id == student.id,
+                StudentTransport.academic_year_id == current_ay.id,
+                StudentTransport.school_id == school_id,
+                StudentTransport.is_active.is_(True),
+            )
+        )
+        st_record = st_result.scalar_one_or_none()
+        if st_record:
+            transport_section["enrolled"] = True
+            transport_section["pickup_point"] = st_record.pickup_point
+            transport_section["drop_point"] = st_record.drop_point
+
+            route_result = await db.execute(
+                select(Route).where(Route.id == st_record.route_id, Route.is_active.is_(True))
+            )
+            route = route_result.scalar_one_or_none()
+            if route:
+                transport_section["route_name"] = route.name
+                transport_section["route_code"] = route.route_code
+                transport_section["pickup_time"] = str(route.start_time)[:5] if route.start_time else None
+                transport_section["drop_time"] = str(route.end_time)[:5] if route.end_time else None
+
+                ra_result = await db.execute(
+                    select(RouteAssignment).where(
+                        RouteAssignment.route_id == route.id,
+                        RouteAssignment.is_active.is_(True),
+                        RouteAssignment.school_id == school_id,
+                    )
+                )
+                route_assignment = ra_result.scalar_one_or_none()
+                if route_assignment:
+                    if route_assignment.vehicle_id:
+                        v_result = await db.execute(select(Vehicle).where(Vehicle.id == route_assignment.vehicle_id))
+                        vehicle = v_result.scalar_one_or_none()
+                        if vehicle:
+                            transport_section["bus_number"] = vehicle.vehicle_number
+
+                    if route_assignment.driver_id:
+                        d_result = await db.execute(select(Driver).where(Driver.id == route_assignment.driver_id))
+                        driver = d_result.scalar_one_or_none()
+                        if driver:
+                            transport_section["driver_name"] = driver.full_name
+                            transport_section["driver_phone"] = driver.phone
+
+                    if route_assignment.helper_id:
+                        h_result = await db.execute(select(Helper).where(Helper.id == route_assignment.helper_id))
+                        helper = h_result.scalar_one_or_none()
+                        if helper:
+                            transport_section["helper_name"] = helper.full_name
+                            transport_section["helper_phone"] = helper.phone
+
     return {
         "id": student.id,
         "roll_number": student.admission_number,
@@ -193,16 +263,7 @@ async def get_profile(db: AsyncSession, school_id: UUID, user: User) -> dict:
             "doctor_phone": None,
             "insurance_id": None,
         },
-        "transport": {
-            "enrolled": False,
-            "route_name": None,
-            "bus_number": None,
-            "pickup_point": None,
-            "pickup_time": None,
-            "drop_time": None,
-            "driver_name": None,
-            "driver_phone": None,
-        },
+        "transport": transport_section,
         "mentor": mentor_section,
         "recent_attendance": [],
         "created_at": student.created_at,

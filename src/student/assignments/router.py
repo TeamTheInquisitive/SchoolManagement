@@ -48,7 +48,7 @@ async def get_assignment_detail(
 
 
 @router.post(
-    "/{assignment_id}/submit/",
+    "/{assignment_id}/submit",
     response_model=SubmitAssignmentResponse,
     status_code=201,
 )
@@ -68,7 +68,7 @@ async def submit_assignment(
 
 
 @router.get(
-    "/{assignment_id}/submission/",
+    "/{assignment_id}/submission",
     response_model=StudentSubmissionDetailResponse,
 )
 async def get_submission_detail(
