@@ -18,89 +18,27 @@ from src.models.core import School, User
 
 
 async def seed_initial_data() -> None:
-    """Create default school and admin user if they don't exist."""
+    """Create the platform super admin user (no school required)."""
     async with async_session_factory() as db:
-        # Check if default school exists
-        result = await db.execute(select(School).where(School.code == "SCH001"))
-        school = result.scalar_one_or_none()
+        result = await db.execute(
+            select(User).where(User.role == "super_admin")
+        )
+        superadmin = result.scalar_one_or_none()
 
-        if not school:
-            school = School(
+        if not superadmin:
+            superadmin = User(
                 id=uuid.uuid4(),
-                name="Default School",
-                code="SCH001",
-                address_line1="123 School Street",
-                city="Bangalore",
-                state="Karnataka",
-                country="India",
-                pincode="560001",
-                phone="+91-9876543210",
-                email="admin@defaultschool.com",
-                board_affiliation="CBSE",
-                established_year=2000,
-                principal_name="Dr. Principal",
+                school_id=None,
+                email="superadmin@erp.com",
+                password_hash=hash_password("admin@123"),
+                full_name="Super Admin",
+                role="super_admin",
             )
-            db.add(school)
-            await db.flush()
-            print(f"Created school: {school.name} (code: {school.code})")
+            db.add(superadmin)
+            await db.commit()
+            print("Created super_admin: superadmin@erp.com / admin@123")
         else:
-            print(f"School already exists: {school.name} (code: {school.code})")
-
-        # Create demo users
-        demo_users = [
-            {
-                "email": "admin@school.com",
-                "password": "password123",
-                "full_name": "System Admin",
-                "role": "admin",
-                "phone": "+91-9876543210",
-            },
-            {
-                "email": "jane@teacher.com",
-                "password": "password123",
-                "full_name": "Jane Smith",
-                "role": "teacher",
-                "phone": "+91-9876543211",
-            },
-            {
-                "email": "john@student.com",
-                "password": "password123",
-                "full_name": "John Doe",
-                "role": "student",
-                "phone": "+91-9876543212",
-            },
-        ]
-
-        for user_data in demo_users:
-            result = await db.execute(
-                select(User).where(
-                    User.school_id == school.id,
-                    User.email == user_data["email"],
-                )
-            )
-            existing = result.scalar_one_or_none()
-
-            if not existing:
-                user = User(
-                    id=uuid.uuid4(),
-                    school_id=school.id,
-                    email=user_data["email"],
-                    password_hash=hash_password(user_data["password"]),
-                    full_name=user_data["full_name"],
-                    role=user_data["role"],
-                    phone=user_data["phone"],
-                )
-                db.add(user)
-                print(f"  Created {user_data['role']}: {user_data['email']} / {user_data['password']}")
-            else:
-                print(f"  Already exists: {user_data['email']}")
-
-        await db.commit()
-        print("\nSeed completed successfully!")
-        print("\nDemo Credentials:")
-        print("  Admin:   admin@school.com / password123")
-        print("  Teacher: jane@teacher.com / password123")
-        print("  Student: john@student.com / password123")
+            print(f"Super admin already exists: {superadmin.email}")
 
 
 async def main() -> None:
