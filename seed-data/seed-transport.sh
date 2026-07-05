@@ -1,6 +1,6 @@
 #!/bin/bash
 # Seed transport data: 20 vehicles, 20 drivers, 15 helpers, 15 routes
-BASE_URL="${BASE_URL:-https://schoolmanagement-prod.up.railway.app/api/v1}"
+BASE_URL="${BASE_URL:-https://schoolmanagement-production-ff2e.up.railway.app/api/v1}"
 COOKIE_FILE="${COOKIE_FILE:-/tmp/school_seed_cookies.txt}"
 
 # === VEHICLES (20) ===

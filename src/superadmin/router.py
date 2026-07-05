@@ -14,6 +14,7 @@ from src.models.core import School
 from src.superadmin import service
 from src.superadmin.schemas import (
     AdminCreate,
+    AdminUpdate,
     DashboardStatsResponse,
     HardDeleteResponse,
     PaymentCreate,
@@ -198,7 +199,15 @@ async def create_payment(db: SessionDep, user: SuperAdminUser, school_id: uuid.U
 @router.post("/schools/{school_id}/admin", status_code=201)
 async def create_school_admin(db: SessionDep, user: SuperAdminUser, school_id: uuid.UUID, data: AdminCreate):
     admin = await service.create_admin_for_school(db, school_id, data.model_dump())
-    return {"id": admin.id, "email": admin.email, "full_name": admin.full_name, "role": admin.role}
+    return {"id": admin.id, "email": admin.email, "full_name": admin.full_name, "role": admin.role, "allowed_modules": admin.allowed_modules}
+
+
+@router.put("/schools/{school_id}/admin/{admin_id}")
+async def update_school_admin(db: SessionDep, user: SuperAdminUser, school_id: uuid.UUID, admin_id: uuid.UUID, data: AdminUpdate):
+    admin = await service.update_admin_for_school(db, school_id, admin_id, data.model_dump(exclude_none=True))
+    if not admin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    return {"id": admin.id, "email": admin.email, "full_name": admin.full_name, "role": admin.role, "allowed_modules": admin.allowed_modules}
 
 
 # --- Platform Settings ---

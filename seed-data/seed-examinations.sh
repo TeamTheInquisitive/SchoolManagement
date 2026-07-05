@@ -5,7 +5,7 @@
 # NOTE: Uses classes 8, 9, 10 with sections A, B and subjects:
 # Mathematics, English, Science, Social Studies, Hindi, Computer Science
 
-BASE_URL="https://schoolmanagement-prod.up.railway.app/api/v1"
+BASE_URL="https://schoolmanagement-production-ff2e.up.railway.app/api/v1"
 COOKIE_FILE="/tmp/exam_cookies.txt"
 
 # Login first

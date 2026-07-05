@@ -7,7 +7,7 @@
 
 set -uo pipefail
 
-BASE_URL="${1:-https://schoolmanagement-prod.up.railway.app/api/v1}"
+BASE_URL="${1:-https://schoolmanagement-production-ff2e.up.railway.app/api/v1}"
 COOKIE_FILE="/tmp/tt_cookies.txt"
 HEADERS='-H "Content-Type: application/json" -H "X-School-Code: SCH001"'
 

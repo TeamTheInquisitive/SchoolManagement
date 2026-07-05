@@ -7,7 +7,7 @@
 # Usage: ./seed-fees.sh [base_url]
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BASE_URL="${1:-https://schoolmanagement-prod.up.railway.app/api/v1}"
+BASE_URL="${1:-https://schoolmanagement-production-ff2e.up.railway.app/api/v1}"
 COOKIE_FILE="${COOKIE_FILE:-/tmp/school_seed_cookies.txt}"
 
 echo "=== Fee Data Seeder ==="

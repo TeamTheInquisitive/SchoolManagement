@@ -16,7 +16,7 @@ from src.admin.teachers.router import router as admin_teachers_router
 from src.auth.router import router as auth_router
 from src.core.config import settings
 from src.core.exceptions import AppException, app_exception_handler
-from src.core.middleware import AuditContextMiddleware, SchoolContextMiddleware
+from src.core.middleware import AuditContextMiddleware, ModuleAccessMiddleware, SchoolContextMiddleware
 from src.core.redis import close_redis, init_redis
 from src.admin.timetable.router import router as admin_timetable_router
 from src.student.profile.router import router as student_profile_router
@@ -122,6 +122,9 @@ else:
 
 # School context middleware
 app.add_middleware(SchoolContextMiddleware)
+
+# Module access middleware (enforces admin page access restrictions)
+app.add_middleware(ModuleAccessMiddleware)
 
 # Audit context middleware (extracts user ID from JWT for DB triggers)
 app.add_middleware(AuditContextMiddleware)

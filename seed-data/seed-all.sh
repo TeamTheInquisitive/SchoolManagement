@@ -4,7 +4,7 @@
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-export BASE_URL="${1:-https://schoolmanagement-prod.up.railway.app/api/v1}"
+export BASE_URL="${1:-https://schoolmanagement-production-ff2e.up.railway.app/api/v1}"
 export COOKIE_FILE="/tmp/school_seed_cookies.txt"
 
 echo "=== School ERP Data Seeder ==="

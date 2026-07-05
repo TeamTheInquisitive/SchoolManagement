@@ -1,6 +1,6 @@
 #!/bin/bash
 # Login and save cookies for subsequent API calls
-BASE_URL="${BASE_URL:-https://schoolmanagement-prod.up.railway.app/api/v1}"
+BASE_URL="${BASE_URL:-https://schoolmanagement-production-ff2e.up.railway.app/api/v1}"
 COOKIE_FILE="${COOKIE_FILE:-/tmp/school_seed_cookies.txt}"
 
 curl -s "$BASE_URL/auth/login" \

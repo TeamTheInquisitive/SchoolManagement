@@ -21,6 +21,7 @@ class UserResponse(BaseModel):
     school_code: str | None = None
     avatar_url: str | None = None
     phone: str | None = None
+    allowed_modules: list[str] | None = None
 
     model_config = {"from_attributes": True}
 

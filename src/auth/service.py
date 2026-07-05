@@ -91,6 +91,9 @@ def create_tokens(user: User) -> tuple[str, str]:
     """Create access and refresh tokens for the user."""
     token_data = {"sub": str(user.id), "school_id": str(user.school_id), "role": user.role}
 
+    if user.role == "admin" and user.allowed_modules is not None:
+        token_data["allowed_modules"] = user.allowed_modules
+
     access_token = create_access_token(token_data)
     refresh_token = create_refresh_token(token_data)
 

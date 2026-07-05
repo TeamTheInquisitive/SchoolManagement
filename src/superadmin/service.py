@@ -110,7 +110,8 @@ async def get_school_detail(db: AsyncSession, school_id: uuid.UUID) -> dict | No
     )
     admin_users = [
         {"id": u.id, "email": u.email, "full_name": u.full_name, "role": u.role,
-         "phone": u.phone, "is_active": u.is_active, "last_login_at": u.last_login_at}
+         "phone": u.phone, "is_active": u.is_active, "last_login_at": u.last_login_at,
+         "allowed_modules": u.allowed_modules}
         for u in admins_result.scalars().all()
     ]
 
@@ -327,8 +328,24 @@ async def create_admin_for_school(db: AsyncSession, school_id: uuid.UUID, data: 
         password_hash=hash_password(data["password"]),
         role="admin",
         phone=data.get("phone"),
+        allowed_modules=data.get("allowed_modules"),
     )
     db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def update_admin_for_school(db: AsyncSession, school_id: uuid.UUID, admin_id: uuid.UUID, data: dict) -> User | None:
+    result = await db.execute(
+        select(User).where(User.id == admin_id, User.school_id == school_id, User.role == "admin")
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        return None
+    for k, v in data.items():
+        if v is not None:
+            setattr(user, k, v)
     await db.commit()
     await db.refresh(user)
     return user

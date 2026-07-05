@@ -178,6 +178,14 @@ class AdminCreate(BaseModel):
     full_name: str
     password: str
     phone: str | None = None
+    allowed_modules: list[str] | None = None
+
+
+class AdminUpdate(BaseModel):
+    full_name: str | None = None
+    phone: str | None = None
+    allowed_modules: list[str] | None = None
+    is_active: bool | None = None
 
 
 class UserItem(BaseModel):
@@ -189,6 +197,7 @@ class UserItem(BaseModel):
     is_active: bool
     school_name: str | None = None
     last_login_at: datetime | None = None
+    allowed_modules: list[str] | None = None
 
 
 class UserListResponse(BaseModel):

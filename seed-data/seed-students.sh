@@ -1,6 +1,6 @@
 #!/bin/bash
 # Seed 200 students from students_200.json
-BASE_URL="${BASE_URL:-https://schoolmanagement-prod.up.railway.app/api/v1}"
+BASE_URL="${BASE_URL:-https://schoolmanagement-production-ff2e.up.railway.app/api/v1}"
 COOKIE_FILE="${COOKIE_FILE:-/tmp/school_seed_cookies.txt}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_FILE="$SCRIPT_DIR/students_200.json"

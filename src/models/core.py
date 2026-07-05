@@ -98,6 +98,8 @@ class User(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
         UUIDType, ForeignKey("parents.id", use_alter=True), default=None
     )
 
+    allowed_modules: Mapped[list | None] = mapped_column(JSON, default=None)
+
     metadata_: Mapped[dict] = mapped_column(
         "metadata", JSON, default=dict
     )
