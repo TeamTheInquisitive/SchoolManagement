@@ -128,7 +128,7 @@ async def login(
         email=user.email,
         full_name=user.full_name,
         role=user.role,
-        school_code=user.school.code,
+        school_code=user.school.code if user.school else None,
         avatar_url=user.avatar_url,
     )
     return LoginResponse(user=user_response)
@@ -175,7 +175,7 @@ async def get_me(current_user: CurrentUser) -> UserResponse:
         email=current_user.email,
         full_name=current_user.full_name,
         role=current_user.role,
-        school_code=current_user.school.code,
+        school_code=current_user.school.code if current_user.school else None,
         avatar_url=current_user.avatar_url,
         phone=current_user.phone,
     )

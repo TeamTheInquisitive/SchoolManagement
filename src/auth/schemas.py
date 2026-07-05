@@ -18,7 +18,7 @@ class UserResponse(BaseModel):
     email: str
     full_name: str
     role: str
-    school_code: str
+    school_code: str | None = None
     avatar_url: str | None = None
     phone: str | None = None
 
