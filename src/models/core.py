@@ -46,6 +46,8 @@ class School(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
     subscription_status: Mapped[str] = mapped_column(String(20), default="trial", server_default="trial")  # trial, active, expired
     trial_start_date: Mapped[date | None] = mapped_column(default=None)
     trial_end_date: Mapped[date | None] = mapped_column(default=None)
+    trial_duration_days: Mapped[int] = mapped_column(default=14, server_default="14")
+    grace_period_days: Mapped[int] = mapped_column(default=2, server_default="2")
 
     metadata_: Mapped[dict] = mapped_column(
         "metadata", JSON, default=dict
@@ -61,15 +63,15 @@ class User(Base, TimestampMixin, SoftDeleteMixin, AuditMixin):
 
     __tablename__ = "users"
     __table_args__ = (
-        UniqueConstraint("school_id", "email", name="uq_users_school_email"),
+        UniqueConstraint("email", name="uq_users_email"),
         UniqueConstraint("username", name="uq_users_username"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUIDType, primary_key=True, default=uuid.uuid4
     )
-    school_id: Mapped[uuid.UUID] = mapped_column(
-        UUIDType, ForeignKey("schools.id"), index=True
+    school_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType, ForeignKey("schools.id"), index=True, nullable=True
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)

@@ -168,7 +168,7 @@ async def submit_attendance(db: AsyncSession, school_id: uuid.UUID, user: User, 
         school_id=school_id, academic_year_id=ay.id, class_section_id=data.class_id,
         date=data.date, subject_id=data.subject_id, period_number=data.period_number,
         submitted_by=None, submitted_at=now, status="Submitted",
-        total_present=present, total_absent=absent, total_late=late, created_by=user.id,
+        total_present=present, total_absent=absent, total_late=late,
     )
     db.add(session)
     await db.flush()
@@ -176,7 +176,7 @@ async def submit_attendance(db: AsyncSession, school_id: uuid.UUID, user: User, 
     for record in data.records:
         db.add(AttendanceRecord(
             school_id=school_id, attendance_session_id=session.id,
-            student_id=record.student_id, status=record.status.value, created_by=user.id,
+            student_id=record.student_id, status=record.status.value,
         ))
     await db.commit()
 
@@ -238,7 +238,7 @@ async def update_attendance(db: AsyncSession, school_id: uuid.UUID, user: User, 
         else:
             db.add(AttendanceRecord(
                 school_id=school_id, attendance_session_id=session.id,
-                student_id=record.student_id, status=record.status.value, created_by=user.id,
+                student_id=record.student_id, status=record.status.value,
             ))
 
     # Recalculate

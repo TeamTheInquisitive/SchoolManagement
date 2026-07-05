@@ -210,7 +210,7 @@ async def list_vehicles(
 
 
 async def create_vehicle(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict
 ) -> dict:
     """Create a new vehicle."""
     from fastapi import HTTPException
@@ -234,7 +234,6 @@ async def create_vehicle(
 
     vehicle = Vehicle(
         school_id=school_id,
-        created_by=created_by,
         **data,
     )
     db.add(vehicle)
@@ -259,7 +258,7 @@ async def get_vehicle(db: AsyncSession, school_id: uuid.UUID, vehicle_id: uuid.U
 
 
 async def update_vehicle(
-    db: AsyncSession, school_id: uuid.UUID, vehicle_id: uuid.UUID, data: dict, updated_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, vehicle_id: uuid.UUID, data: dict
 ) -> dict:
     """Update vehicle details."""
     from fastapi import HTTPException
@@ -297,7 +296,6 @@ async def update_vehicle(
     for key, value in data.items():
         if value is not None:
             setattr(vehicle, key, value)
-    vehicle.updated_by = updated_by
 
     await db.commit()
     await db.refresh(vehicle)
@@ -465,7 +463,7 @@ async def list_drivers(
 
 
 async def create_driver(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict
 ) -> dict:
     """Create a new driver."""
     from fastapi import HTTPException
@@ -483,7 +481,6 @@ async def create_driver(
     driver = Driver(
         school_id=school_id,
         driver_id=driver_id,
-        created_by=created_by,
         status="Available",
         **data,
     )
@@ -494,7 +491,7 @@ async def create_driver(
 
 
 async def update_driver(
-    db: AsyncSession, school_id: uuid.UUID, driver_uuid: uuid.UUID, data: dict, updated_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, driver_uuid: uuid.UUID, data: dict
 ) -> dict:
     """Update driver details."""
     from fastapi import HTTPException
@@ -521,7 +518,6 @@ async def update_driver(
     for key, value in data.items():
         if value is not None:
             setattr(driver, key, value)
-    driver.updated_by = updated_by
 
     await db.commit()
     await db.refresh(driver)
@@ -680,7 +676,7 @@ async def list_helpers(
 
 
 async def create_helper(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict
 ) -> dict:
     """Create a new helper."""
     helper_id = await _generate_helper_id(db, school_id)
@@ -688,7 +684,6 @@ async def create_helper(
     helper = Helper(
         school_id=school_id,
         helper_id=helper_id,
-        created_by=created_by,
         status="Available",
         **data,
     )
@@ -699,7 +694,7 @@ async def create_helper(
 
 
 async def update_helper(
-    db: AsyncSession, school_id: uuid.UUID, helper_uuid: uuid.UUID, data: dict, updated_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, helper_uuid: uuid.UUID, data: dict
 ) -> dict:
     """Update helper details."""
     result = await db.execute(
@@ -716,7 +711,6 @@ async def update_helper(
     for key, value in data.items():
         if value is not None:
             setattr(helper, key, value)
-    helper.updated_by = updated_by
 
     await db.commit()
     await db.refresh(helper)
@@ -874,7 +868,7 @@ async def list_routes(
 
 
 async def create_route(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict
 ) -> dict:
     """Create a new route."""
     from fastapi import HTTPException
@@ -897,7 +891,6 @@ async def create_route(
     route = Route(
         school_id=school_id,
         route_code=route_code,
-        created_by=created_by,
         stops=stops_db,
         **data,
     )
@@ -908,7 +901,7 @@ async def create_route(
 
 
 async def update_route(
-    db: AsyncSession, school_id: uuid.UUID, route_id: uuid.UUID, data: dict, updated_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, route_id: uuid.UUID, data: dict
 ) -> dict:
     """Update route details."""
     from fastapi import HTTPException
@@ -941,7 +934,6 @@ async def update_route(
     for key, value in data.items():
         if value is not None:
             setattr(route, key, value)
-    route.updated_by = updated_by
 
     await db.commit()
     await db.refresh(route)
@@ -1081,7 +1073,7 @@ async def list_assignments(
 
 
 async def create_assignment(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict
 ) -> dict:
     """Create a route assignment. Validates vehicle is not already assigned."""
     from fastapi import HTTPException
@@ -1168,6 +1160,17 @@ async def create_assignment(
         if not helper:
             raise NotFound("Helper", str(helper_id))
 
+    # Get current academic year
+    ay_result = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school_id,
+            AcademicYear.is_current.is_(True),
+        )
+    )
+    current_ay = ay_result.scalar_one_or_none()
+    if not current_ay:
+        raise HTTPException(status_code=400, detail="No current academic year configured")
+
     # Create assignment
     assignment = RouteAssignment(
         school_id=school_id,
@@ -1175,8 +1178,8 @@ async def create_assignment(
         vehicle_id=vehicle_id,
         driver_id=driver_id,
         helper_id=helper_id,
+        academic_year_id=current_ay.id,
         status="Active",
-        created_by=created_by,
     )
     db.add(assignment)
 
@@ -1197,7 +1200,6 @@ async def update_assignment(
     school_id: uuid.UUID,
     assignment_id: uuid.UUID,
     data: dict,
-    updated_by: uuid.UUID,
 ) -> dict:
     """Update a route assignment."""
     result = await db.execute(
@@ -1238,7 +1240,6 @@ async def update_assignment(
     for key, value in data.items():
         if value is not None:
             setattr(assignment, key, value)
-    assignment.updated_by = updated_by
 
     # Update driver statuses
     new_driver_id = data.get("driver_id")
@@ -1394,7 +1395,7 @@ async def list_route_students(
 
 
 async def assign_students_to_route(
-    db: AsyncSession, school_id: uuid.UUID, route_id: uuid.UUID, data: dict, user_id: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, route_id: uuid.UUID, data: dict
 ) -> dict:
     """Assign students to a route."""
     ay_result = await db.execute(
@@ -1431,7 +1432,6 @@ async def assign_students_to_route(
             ex.is_active = True
             ex.deleted_at = None
             ex.deleted_by = None
-            ex.updated_by = user_id
         else:
             db.add(StudentTransport(
                 school_id=school_id,
@@ -1440,7 +1440,6 @@ async def assign_students_to_route(
                 academic_year_id=ay_id,
                 pickup_point=pickup,
                 drop_point=drop,
-                created_by=user_id,
             ))
         count += 1
 
@@ -1515,7 +1514,7 @@ async def _update_route_capacity(
 
 
 async def shuffle_assign_students(
-    db: AsyncSession, school_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID
 ) -> dict:
     """Shuffle day-scholar students and assign to routes based on vehicle capacity."""
     import random
@@ -1593,7 +1592,6 @@ async def shuffle_assign_students(
                 student_id=day_scholars[student_idx],
                 route_id=route_info["route_id"],
                 academic_year_id=ay_id,
-                created_by=user_id,
             ))
             student_idx += 1
             count += 1

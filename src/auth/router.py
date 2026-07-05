@@ -69,7 +69,6 @@ async def login(
     from src.core.exceptions import AccessDenied
     from src.models.core import School
     from src.models.subscription import Subscription
-    from src.models.platform_settings import PlatformSettings
 
     school_id = None
     if x_school_code:
@@ -101,36 +100,24 @@ async def login(
     if user.role != "super_admin":
         school_obj = user.school
         if school_obj and school_obj.subscription_status == "expired":
-            # Check grace period from platform settings
-            grace_result = await db.execute(
-                select(PlatformSettings).where(PlatformSettings.key == "grace_period_days")
+            grace_days = school_obj.grace_period_days or 2
+            today = date.today()
+
+            # Find when subscription expired
+            sub_result = await db.execute(
+                select(Subscription).where(Subscription.school_id == school_obj.id)
+                .order_by(Subscription.end_date.desc())
             )
-            grace_setting = grace_result.scalar_one_or_none()
-            grace_days = int(grace_setting.value) if grace_setting else 2
+            last_sub = sub_result.scalars().first()
 
-            block_result = await db.execute(
-                select(PlatformSettings).where(PlatformSettings.key == "block_on_expiry")
-            )
-            block_setting = block_result.scalar_one_or_none()
-            block_enabled = (block_setting.value if block_setting else "true") == "true"
-
-            if block_enabled:
-                # Find when subscription expired
-                sub_result = await db.execute(
-                    select(Subscription).where(Subscription.school_id == school_obj.id)
-                    .order_by(Subscription.end_date.desc())
-                )
-                last_sub = sub_result.scalars().first()
-                today = date.today()
-
-                if last_sub:
-                    days_since_expiry = (today - last_sub.end_date).days
-                    if days_since_expiry > grace_days:
-                        raise AccessDenied("Your subscription has expired. Please contact the administrator to renew.")
-                elif school_obj.trial_end_date:
-                    days_since_trial_end = (today - school_obj.trial_end_date).days
-                    if days_since_trial_end > grace_days:
-                        raise AccessDenied("Your free trial has expired. Please contact the administrator to activate your subscription.")
+            if last_sub:
+                days_since_expiry = (today - last_sub.end_date).days
+                if days_since_expiry > grace_days:
+                    raise AccessDenied("Your subscription has expired. Please contact the administrator to renew.")
+            elif school_obj.trial_end_date:
+                days_since_trial_end = (today - school_obj.trial_end_date).days
+                if days_since_trial_end > grace_days:
+                    raise AccessDenied("Your free trial has expired. Please contact the administrator to activate your subscription.")
 
     access_token, refresh_token = auth_service.create_tokens(user)
 

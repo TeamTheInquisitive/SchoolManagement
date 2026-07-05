@@ -190,7 +190,7 @@ async def list_students(db: AsyncSession, school_id: uuid.UUID, class_section_id
     return {"students": students}
 
 
-async def assign_mentor(db: AsyncSession, school_id: uuid.UUID, staff_id: uuid.UUID, student_ids: list[uuid.UUID], user_id: uuid.UUID) -> dict:
+async def assign_mentor(db: AsyncSession, school_id: uuid.UUID, staff_id: uuid.UUID, student_ids: list[uuid.UUID]) -> dict:
     # Validate required fields
     if not staff_id:
         raise HTTPException(status_code=400, detail="teacher_id must not be empty")
@@ -224,7 +224,6 @@ async def assign_mentor(db: AsyncSession, school_id: uuid.UUID, staff_id: uuid.U
             student_id=sid,
             staff_id=staff_id,
             assigned_date=date.today(),
-            created_by=user_id,
         )
         db.add(mentor)
         created += 1
@@ -245,7 +244,7 @@ async def remove_assignment(db: AsyncSession, school_id: uuid.UUID, assignment_i
     return {"deleted": True}
 
 
-async def shuffle_auto_assign(db: AsyncSession, school_id: uuid.UUID, user_id: uuid.UUID) -> dict:
+async def shuffle_auto_assign(db: AsyncSession, school_id: uuid.UUID) -> dict:
     """Shuffle all active students and distribute evenly across all active teachers."""
     import random
 
@@ -297,7 +296,6 @@ async def shuffle_auto_assign(db: AsyncSession, school_id: uuid.UUID, user_id: u
             student_id=sid,
             academic_year_id=ay.id,
             assigned_date=date.today(),
-            created_by=user_id,
         ))
         count += 1
 

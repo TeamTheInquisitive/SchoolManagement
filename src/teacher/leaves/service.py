@@ -349,7 +349,6 @@ async def apply_leave(
         reason=reason,
         status="Pending",
         applied_on=now,
-        created_by=user.id,
         metadata_=metadata,
     )
     db.add(application)

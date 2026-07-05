@@ -122,7 +122,7 @@ async def delete_staff(
     """Soft-delete a staff member (set Inactive)."""
     reason = data.reason if data else None
     left_date_val = data.left_date if data else None
-    staff = await service.delete_staff(db, school.id, staff_id, user.id, reason, left_date_val)
+    staff = await service.delete_staff(db, school.id, staff_id, reason, left_date_val)
     return StaffDeleteResponse(
         id=staff.id,
         employee_id=staff.employee_id,

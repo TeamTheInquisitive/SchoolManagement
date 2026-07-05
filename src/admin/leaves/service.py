@@ -366,7 +366,6 @@ async def get_leave_policy(
 async def update_leave_policy(
     db: AsyncSession,
     school_id: uuid.UUID,
-    user: User,
     data: dict,
 ) -> dict:
     """Update leave policy for the current academic year."""
@@ -423,7 +422,6 @@ async def update_leave_policy(
             advance_notice_days=lt.get("advance_notice_days"),
             applicable_to=applicable_to,
             members=lt.get("members"),
-            created_by=user.id,
         )
         db.add(policy)
         new_policies.append(policy)
@@ -480,7 +478,6 @@ async def update_leave_policy(
                     carried_forward=0,
                     used=Decimal("0"),
                     pending=Decimal("0"),
-                    created_by=user.id,
                 )
                 db.add(balance)
 
@@ -861,7 +858,6 @@ async def allocate_leaves(
     db: AsyncSession,
     school_id: uuid.UUID,
     data: dict,
-    user_id: uuid.UUID,
 ) -> dict:
     """Allocate leave balances to selected staff members."""
     ay = await _get_current_academic_year(db, school_id)
@@ -922,7 +918,6 @@ async def allocate_leaves(
                     carried_forward=0,
                     used=Decimal("0"),
                     pending=Decimal("0"),
-                    created_by=user_id,
                 )
                 db.add(balance)
             count += 1

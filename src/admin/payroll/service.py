@@ -306,7 +306,6 @@ async def run_payroll(
             status="Unpaid",
             generated_at=now,
             generated_by=user.id,
-            created_by=user.id,
         )
         db.add(payslip)
         generated += 1
@@ -825,16 +824,31 @@ async def create_salary_advance(
 
     now = datetime.now(timezone.utc)
 
+    # Get current academic year
+    ay_result = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school_id,
+            AcademicYear.is_current.is_(True),
+        )
+    )
+    current_ay = ay_result.scalar_one_or_none()
+    if not current_ay:
+        raise AppException(
+            status_code=400,
+            error="No current academic year configured",
+            code="NO_ACADEMIC_YEAR",
+        )
+
     advance = SalaryAdvance(
         school_id=school_id,
         staff_id=staff.id,
+        academic_year_id=current_ay.id,
         amount=amount,
         reason=data.get("reason"),
         recovery_months=recovery_months,
         per_month_deduction=per_month_deduction,
         status="Pending",
         applied_on=now,
-        created_by=user.id,
     )
     db.add(advance)
     await db.commit()
@@ -883,7 +897,6 @@ async def approve_salary_advance(
     advance.status = "Approved"
     advance.approved_by = user.id
     advance.approved_on = now
-    advance.updated_by = user.id
 
     await db.commit()
     await db.refresh(advance)
@@ -929,7 +942,6 @@ async def reject_salary_advance(
     advance.status = "Rejected"
     advance.rejected_by = user.id
     advance.remarks = data.get("remarks")
-    advance.updated_by = user.id
 
     await db.commit()
     await db.refresh(advance)
@@ -969,7 +981,6 @@ async def disburse_salary_advance(
     now = datetime.now(timezone.utc)
     advance.status = "Disbursed"
     advance.disbursed_on = now
-    advance.updated_by = user.id
 
     await db.commit()
     await db.refresh(advance)
@@ -1127,14 +1138,12 @@ async def create_salary_revision(
         approved_by=user.id,
         approved_on=now,
         remarks=data.get("remarks"),
-        created_by=user.id,
     )
     db.add(revision)
 
     # Update salary structure with new basic and recompute net
     structure.basic_salary = new_basic
     structure.net_salary = _compute_net_salary(structure)
-    structure.updated_by = user.id
 
     await db.commit()
     await db.refresh(revision)

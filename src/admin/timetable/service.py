@@ -219,7 +219,6 @@ async def create_period(
     db: AsyncSession,
     school_id: uuid.UUID,
     data: dict,
-    created_by: uuid.UUID,
     academic_year_name: str | None = None,
 ) -> PeriodConfig:
     """Create a new period config."""
@@ -262,7 +261,6 @@ async def create_period(
         duration_minutes=duration,
         is_break=data.get("is_break", False),
         sort_order=sort_order,
-        created_by=created_by,
     )
     db.add(period)
     await db.commit()
@@ -275,7 +273,6 @@ async def update_period(
     school_id: uuid.UUID,
     period_id: uuid.UUID,
     data: dict,
-    updated_by: uuid.UUID,
 ) -> PeriodConfig:
     """Update an existing period config."""
     # Validate fields when provided
@@ -315,7 +312,6 @@ async def update_period(
         period.is_break = data["is_break"]
 
     period.duration_minutes = _compute_duration(period.start_time, period.end_time)
-    period.updated_by = updated_by
 
     await db.commit()
     await db.refresh(period)
@@ -440,7 +436,6 @@ async def create_slot(
     db: AsyncSession,
     school_id: uuid.UUID,
     data: dict,
-    created_by: uuid.UUID,
     academic_year_name: str | None = None,
 ) -> dict:
     """Assign a subject+teacher to a specific slot."""
@@ -497,7 +492,6 @@ async def create_slot(
         existing_slot.subject_id = data.get("subject_id") if is_subject_slot else None
         existing_slot.staff_id = new_teacher_id
         existing_slot.slot_type = slot_type
-        existing_slot.updated_by = created_by
         await db.commit()
         await db.refresh(existing_slot)
         cs_ref = existing_slot.class_section
@@ -543,7 +537,6 @@ async def create_slot(
         subject_id=data.get("subject_id") if is_subject_slot else None,
         staff_id=data["teacher_id"],
         slot_type=slot_type,
-        created_by=created_by,
     )
     db.add(slot)
     await db.commit()
@@ -573,7 +566,6 @@ async def update_slot(
     school_id: uuid.UUID,
     slot_id: uuid.UUID,
     data: dict,
-    updated_by: uuid.UUID,
 ) -> dict:
     """Update an existing timetable slot."""
     # Validate fields when provided
@@ -652,7 +644,6 @@ async def update_slot(
     if "period_config_id" in data:
         slot.period_config_id = data["period_config_id"]
 
-    slot.updated_by = updated_by
     await db.commit()
     await db.refresh(slot)
 

@@ -106,7 +106,7 @@ class Route(BaseModel):
 
 
 class RouteAssignment(BaseModel):
-    """Operational mapping: route + vehicle + driver + helper."""
+    """Operational mapping: route + vehicle + driver + helper per academic year."""
 
     __tablename__ = "route_assignments"
 
@@ -122,6 +122,9 @@ class RouteAssignment(BaseModel):
     helper_id: Mapped[uuid.UUID | None] = mapped_column(
         UUIDType, ForeignKey("helpers.id"), nullable=True
     )
+    academic_year_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
+    )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="Active", server_default="Active"
     )  # Active/Inactive
@@ -130,12 +133,14 @@ class RouteAssignment(BaseModel):
         UniqueConstraint(
             "school_id",
             "vehicle_id",
+            "academic_year_id",
             "is_active",
-            name="uq_route_assignments_school_vehicle_active",
+            name="uq_route_assignments_school_vehicle_year_active",
         ),
         Index("idx_route_assignments_route", "route_id"),
         Index("idx_route_assignments_vehicle", "vehicle_id"),
         Index("idx_route_assignments_driver", "driver_id"),
+        Index("idx_route_assignments_year", "school_id", "academic_year_id"),
     )
 
 

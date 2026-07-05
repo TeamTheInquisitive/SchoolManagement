@@ -39,7 +39,7 @@ async def list_books(
 
 
 async def create_book(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, user_id: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict,
 ) -> dict:
     # Validate title not empty
     if not data.get("title") or not str(data["title"]).strip():
@@ -58,7 +58,6 @@ async def create_book(
         total_copies=data.get("total_copies", 1),
         available_copies=data.get("total_copies", 1),
         shelf_location=data.get("shelf_location"),
-        created_by=user_id,
     )
     db.add(book)
     await db.commit()
@@ -73,7 +72,7 @@ async def create_book(
 
 
 async def issue_book(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, user_id: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict,
 ) -> dict:
     # Validate required fields
     if not data.get("book_id"):
@@ -107,7 +106,6 @@ async def issue_book(
         issue_date=date.today(),
         due_date=data["due_date"],
         status="Issued",
-        created_by=user_id,
     )
     db.add(issue)
     book.available_copies -= 1
@@ -124,7 +122,7 @@ async def issue_book(
 
 
 async def return_book(
-    db: AsyncSession, school_id: uuid.UUID, issue_id: uuid.UUID, user_id: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, issue_id: uuid.UUID,
 ) -> dict:
     result = await db.execute(
         select(BookIssue).where(BookIssue.id == issue_id, BookIssue.school_id == school_id)

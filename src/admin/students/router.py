@@ -71,7 +71,7 @@ async def create_student(
     user: AdminUser,
 ) -> StudentResponse:
     """Create a new student (+ optional user account + enrollment)."""
-    result = await service.create_student(db, school.id, data.model_dump(exclude_none=True), user.id)
+    result = await service.create_student(db, school.id, data.model_dump(exclude_none=True))
     return StudentResponse(**result)
 
 
@@ -103,7 +103,7 @@ async def bulk_import_students(
     """Bulk import students via CSV file."""
     content = await file.read()
     csv_content = content.decode("utf-8")
-    result = await service.bulk_import_students(db, school.id, csv_content, user.id)
+    result = await service.bulk_import_students(db, school.id, csv_content)
     return BulkImportResponse(**result)
 
 
@@ -120,7 +120,7 @@ async def bulk_import_students_json(
     failed = 0
     for idx, student in enumerate(data.students, start=1):
         try:
-            await service.create_student(db, school.id, student.model_dump(exclude_none=True), user.id)
+            await service.create_student(db, school.id, student.model_dump(exclude_none=True))
             await db.commit()
             passed += 1
             results.append({"row": idx, "roll_number": student.roll_number, "success": True})
@@ -153,7 +153,7 @@ async def update_student(
 ) -> StudentResponse:
     """Update student details."""
     result = await service.update_student(
-        db, school.id, student_id, data.model_dump(exclude_none=True), user.id
+        db, school.id, student_id, data.model_dump(exclude_none=True)
     )
     return StudentResponse(**result)
 
@@ -169,7 +169,7 @@ async def delete_student(
     """Soft-delete student (set status to Inactive/Alumni)."""
     status_val = data.status if data else "Inactive"
     reason = data.reason if data else None
-    student = await service.delete_student(db, school.id, student_id, user.id, status_val, reason)
+    student = await service.delete_student(db, school.id, student_id, status_val, reason)
     return StudentDeleteResponse(
         id=student.id,
         roll_number=student.admission_number,

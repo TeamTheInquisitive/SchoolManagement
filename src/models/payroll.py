@@ -127,10 +127,14 @@ class SalaryAdvance(BaseModel):
     __table_args__ = (
         Index("idx_salary_advances_staff", "staff_id"),
         Index("idx_salary_advances_status", "school_id", "status"),
+        Index("idx_salary_advances_year", "school_id", "academic_year_id"),
     )
 
     staff_id: Mapped[uuid.UUID] = mapped_column(
         UUIDType, ForeignKey("staff.id"), nullable=False
+    )
+    academic_year_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, default=None)
@@ -158,6 +162,7 @@ class SalaryAdvance(BaseModel):
 
     # Relationships
     staff: Mapped["Staff"] = relationship("Staff", lazy="selectin")
+    academic_year: Mapped["AcademicYear"] = relationship("AcademicYear", lazy="selectin")
     approver: Mapped["User | None"] = relationship(
         "User", lazy="selectin", foreign_keys=[approved_by]
     )

@@ -361,9 +361,11 @@ Indexes: `idx_staff_is_teacher`, `idx_staff_department`, `idx_staff_name`, `idx_
 |--------|------|-------------|---------|
 | staff_id | UUID | NOT NULL, FK -> staff.id (ondelete=CASCADE) | |
 | subject_id | UUID | NOT NULL, FK -> subjects.id | |
+| academic_year_id | UUID | NOT NULL, FK -> academic_years.id | |
 | is_primary | Boolean | | False |
 
-Unique: `uq_staff_subjects_staff_subject` (school_id, staff_id, subject_id)
+Unique: `uq_staff_subjects_staff_subject_year` (school_id, staff_id, subject_id, academic_year_id)
+Indexes: `idx_staff_subjects_year` (school_id, academic_year_id)
 
 ### class_assignments (BaseModel)
 
@@ -706,6 +708,7 @@ Unique: `uq_payslips_month` (school_id, staff_id, month, year)
 | Column | Type | Constraints | Default |
 |--------|------|-------------|---------|
 | staff_id | UUID | NOT NULL, FK -> staff.id | |
+| academic_year_id | UUID | NOT NULL, FK -> academic_years.id | |
 | amount | Numeric(10,2) | NOT NULL | |
 | reason | Text | NULLABLE | None |
 | recovery_months | Integer | NULLABLE | None |
@@ -717,6 +720,8 @@ Unique: `uq_payslips_month` (school_id, staff_id, month, year)
 | rejected_by | UUID | NULLABLE, FK -> users.id | None |
 | remarks | Text | NULLABLE | None |
 | disbursed_on | DateTime(tz) | NULLABLE | None |
+
+Indexes: `idx_salary_advances_year` (school_id, academic_year_id)
 
 ### salary_revisions (BaseModel)
 
@@ -849,9 +854,11 @@ Unique: `uq_routes_school_route_code` (school_id, route_code)
 | vehicle_id | UUID | NOT NULL, FK -> vehicles.id | |
 | driver_id | UUID | NOT NULL, FK -> drivers.id | |
 | helper_id | UUID | NULLABLE, FK -> helpers.id | None |
+| academic_year_id | UUID | NOT NULL, FK -> academic_years.id | |
 | status | String(20) | NOT NULL | "Active" |
 
-Unique: `uq_route_assignments_school_vehicle_active` (school_id, vehicle_id, is_active)
+Unique: `uq_route_assignments_school_vehicle_year_active` (school_id, vehicle_id, academic_year_id, is_active)
+Indexes: `idx_route_assignments_year` (school_id, academic_year_id)
 
 ### student_transport (BaseModel)
 

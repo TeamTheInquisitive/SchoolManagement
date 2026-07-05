@@ -320,7 +320,6 @@ async def update_profile(db: AsyncSession, school_id: UUID, user: User, data: di
                 parent.alternate_phone = data["emergency_contact"]
         updated_fields.append("emergency_contact")
 
-    student.updated_by = user.id
     await db.commit()
 
     return {

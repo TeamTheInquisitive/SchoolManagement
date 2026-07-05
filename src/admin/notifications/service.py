@@ -342,7 +342,6 @@ async def create_notification(
         sent_at=sent_at,
         recipients_count=0,
         read_count=0,
-        created_by=user_id,
         created_by_user_id=user_id,
     )
     db.add(notification)
@@ -364,7 +363,6 @@ async def create_notification(
                 notification_id=notification.id,
                 user_id=uid,
                 is_read=False,
-                created_by=user_id,
             )
             db.add(recipient)
 
@@ -464,7 +462,6 @@ async def update_notification(
     school_id: uuid.UUID,
     notification_id: uuid.UUID,
     data: dict,
-    user_id: uuid.UUID,
 ) -> dict:
     """Update a notification's title, message, and other editable fields."""
     from fastapi import HTTPException
@@ -491,7 +488,6 @@ async def update_notification(
         if value is not None and hasattr(notification, key):
             setattr(notification, key, value)
 
-    notification.updated_by = user_id
     await db.commit()
     await db.refresh(notification)
 
@@ -529,7 +525,6 @@ async def archive_notification(
     db: AsyncSession,
     school_id: uuid.UUID,
     notification_id: uuid.UUID,
-    user_id: uuid.UUID,
 ) -> dict:
     """Archive a notification (soft-delete). Sets status to Archived."""
     result = await db.execute(
@@ -546,7 +541,6 @@ async def archive_notification(
     now = datetime.now(timezone.utc)
     notification.status = "Archived"
     notification.archived_at = now
-    notification.updated_by = user_id
 
     await db.commit()
     await db.refresh(notification)

@@ -59,7 +59,7 @@ async def update_settings(
 ) -> SettingsUpdateResponse:
     """Update settings (partial update)."""
     update_data = data.model_dump(exclude_none=True)
-    updated_fields = await service.update_settings(db, school.id, update_data, user.id)
+    updated_fields = await service.update_settings(db, school.id, update_data)
     return SettingsUpdateResponse(
         message="Settings updated successfully",
         updated_fields=updated_fields,
@@ -93,7 +93,7 @@ async def update_school_profile(
     """Update school profile."""
     update_data = data.model_dump(exclude_none=True)
     school_name, updated_fields = await service.update_school_profile(
-        db, school.id, update_data, user.id
+        db, school.id, update_data
     )
     return SchoolProfileUpdateResponse(
         message="School profile updated successfully",
@@ -137,7 +137,7 @@ async def create_academic_year(
     user: AdminUser,
 ) -> dict:
     """Create a new academic year."""
-    return await service.create_academic_year(db, school.id, data, user.id)
+    return await service.create_academic_year(db, school.id, data)
 
 
 @router.put("/academic-years/{year_id}")
@@ -149,7 +149,7 @@ async def update_academic_year_by_id(
     user: AdminUser,
 ) -> dict:
     """Update an academic year."""
-    return await service.update_academic_year_by_id(db, school.id, year_id, data, user.id)
+    return await service.update_academic_year_by_id(db, school.id, year_id, data)
 
 
 @router.delete("/academic-years/{year_id}")
@@ -174,6 +174,40 @@ async def set_current_academic_year(
     return await service.set_current_academic_year(db, school.id, year_id)
 
 
+@router.get("/academic-years/{source_year_id}/clone-preview")
+async def get_clone_preview(
+    source_year_id: str,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+) -> dict:
+    """Get record counts per module for clone preview."""
+    from src.admin.settings import clone_service
+    return await clone_service.get_clone_preview(db, school.id, uuid.UUID(source_year_id))
+
+
+@router.post("/academic-years/{target_year_id}/initialize-from/{source_year_id}", status_code=201)
+async def initialize_from_year(
+    target_year_id: str,
+    source_year_id: str,
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+    data: dict | None = None,
+) -> dict:
+    """Clone data from source academic year to target."""
+    from src.admin.settings import clone_service
+    from src.admin.settings.clone_schemas import CloneModules
+    modules = CloneModules(**(data.get("modules", {}) if data else {}))
+    return await clone_service.execute_clone(
+        db=db,
+        school_id=school.id,
+        target_year_id=uuid.UUID(target_year_id),
+        source_year_id=uuid.UUID(source_year_id),
+        modules=modules,
+    )
+
+
 @router.put("/academic-year", response_model=AcademicYearUpdateResponse)
 async def update_academic_year(
     data: AcademicYearUpdateRequest,
@@ -183,7 +217,7 @@ async def update_academic_year(
 ) -> AcademicYearUpdateResponse:
     """Update academic year config."""
     update_data = data.model_dump(exclude_none=True, mode="json")
-    result = await service.update_academic_year(db, school.id, update_data, user.id)
+    result = await service.update_academic_year(db, school.id, update_data)
     return AcademicYearUpdateResponse(**result)
 
 
@@ -214,7 +248,7 @@ async def update_enum_values(
 ) -> EnumCategoryUpdateResponse:
     """Add or update enum values for a category."""
     values = [v.model_dump() for v in data.values]
-    result = await service.update_enum_values(db, school.id, category, values, user.id)
+    result = await service.update_enum_values(db, school.id, category, values)
     return EnumCategoryUpdateResponse(**result)
 
 
@@ -231,7 +265,7 @@ async def bulk_create_classes(
     user: AdminUser,
 ) -> ClassesBulkResponse:
     """Bulk create classes."""
-    created = await service.bulk_create_classes(db, school.id, data.classes, user.id)
+    created = await service.bulk_create_classes(db, school.id, data.classes)
     return ClassesBulkResponse(
         created=created,
         message=f"{created} classes created",
@@ -284,7 +318,7 @@ async def bulk_create_sections(
     user: AdminUser,
 ) -> SectionsBulkResponse:
     """Bulk create sections and optionally link to a class."""
-    created = await service.bulk_create_sections(db, school.id, data.sections, user.id, data.class_id)
+    created = await service.bulk_create_sections(db, school.id, data.sections, data.class_id)
     return SectionsBulkResponse(
         created=created,
         message=f"{created} sections created",
@@ -306,7 +340,7 @@ async def bulk_create_subjects(
 ) -> SubjectsBulkResponse:
     """Bulk create subjects."""
     subjects = [s.model_dump() for s in data.subjects]
-    created = await service.bulk_create_subjects(db, school.id, subjects, user.id)
+    created = await service.bulk_create_subjects(db, school.id, subjects)
     return SubjectsBulkResponse(
         created=created,
         message=f"{created} subjects created",
@@ -348,7 +382,7 @@ async def update_subject(
     user: AdminUser,
 ) -> dict:
     """Update a subject's name and/or code."""
-    return await service.update_subject(db, school.id, subject_id, data, user.id)
+    return await service.update_subject(db, school.id, subject_id, data)
 
 
 @router.delete("/subjects/{subject_id}")
@@ -443,7 +477,7 @@ async def update_class_subjects(
 ) -> dict:
     """Replace all subject assignments for a class in the current academic year."""
     return await service.update_class_subjects(
-        db, school.id, class_id, data.get("subject_ids", []), user.id
+        db, school.id, class_id, data.get("subject_ids", [])
     )
 
 
@@ -470,7 +504,7 @@ async def create_fee_structure(
     user: AdminUser,
 ) -> dict:
     """Create a fee structure."""
-    return await service.create_fee_structure(db, school.id, data, user.id)
+    return await service.create_fee_structure(db, school.id, data)
 
 
 @router.put("/fee-structures/{structure_id}")
@@ -482,7 +516,7 @@ async def update_fee_structure(
     user: AdminUser,
 ) -> dict:
     """Update a fee structure."""
-    return await service.update_fee_structure(db, school.id, structure_id, data, user.id)
+    return await service.update_fee_structure(db, school.id, structure_id, data)
 
 
 @router.delete("/fee-structures/{structure_id}")
@@ -530,7 +564,7 @@ async def update_id_generation_config(
     user: AdminUser,
 ) -> dict:
     """Update ID auto-generation config."""
-    return await service.update_id_generation_config(db, school.id, data, user.id)
+    return await service.update_id_generation_config(db, school.id, data)
 
 
 # ---------------------------------------------------------------------------
@@ -697,7 +731,7 @@ async def update_attendance_config(
         row.value = config
         row.is_active = True
     else:
-        db.add(Settings(school_id=school.id, category="attendance", key="config", value=config, created_by=user.id))
+        db.add(Settings(school_id=school.id, category="attendance", key="config", value=config))
     await db.commit()
     return {**config, "message": "Attendance config updated"}
 

@@ -120,7 +120,6 @@ async def update_custom_templates(
             category="notifications",
             key="custom_templates",
             value=templates,
-            created_by=user.id,
         )
         db.add(row)
     await db.commit()

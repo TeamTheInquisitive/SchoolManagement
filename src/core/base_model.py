@@ -3,9 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CHAR, ForeignKey, JSON, MetaData, func
+from sqlalchemy import CHAR, ForeignKey, JSON, MetaData, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy.types import TypeDecorator
+from sqlalchemy.types import DateTime, TypeDecorator
 
 
 class UUIDType(TypeDecorator):
@@ -40,11 +40,15 @@ class Base(DeclarativeBase):
 
 
 class TimestampMixin:
+    """Timestamps handled entirely by the database (MySQL defaults)."""
+
     created_at: Mapped[datetime] = mapped_column(
-        default=func.now(), server_default=func.now()
+        DateTime, server_default=func.now(), nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        default=func.now(), server_default=func.now(), onupdate=func.now()
+        DateTime,
+        server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
+        nullable=False,
     )
 
 
@@ -55,8 +59,10 @@ class SoftDeleteMixin:
 
 
 class AuditMixin:
-    created_by: Mapped[uuid.UUID | None] = mapped_column(UUIDType, default=None)
-    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUIDType, default=None)
+    """Audit fields handled by MySQL triggers via @current_user_id session variable."""
+
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUIDType, nullable=True)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(UUIDType, nullable=True)
 
 
 class SchoolMixin:

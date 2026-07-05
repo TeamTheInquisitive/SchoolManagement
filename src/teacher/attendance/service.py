@@ -289,7 +289,6 @@ async def submit_attendance(
         total_present=present,
         total_absent=absent,
         total_late=late,
-        created_by=user.id,
     )
     db.add(session)
     await db.flush()
@@ -301,7 +300,6 @@ async def submit_attendance(
             attendance_session_id=session.id,
             student_id=record.student_id,
             status=record.status.value,
-            created_by=user.id,
         )
         db.add(attendance_record)
 
@@ -370,7 +368,6 @@ async def update_attendance(
         record = record_result.scalar_one_or_none()
         if record:
             record.status = record_input.status.value
-            record.updated_by = user.id
         else:
             # Create new record if not exists
             new_record = AttendanceRecord(
@@ -378,7 +375,6 @@ async def update_attendance(
                 attendance_session_id=session.id,
                 student_id=record_input.student_id,
                 status=record_input.status.value,
-                created_by=user.id,
             )
             db.add(new_record)
 
@@ -400,7 +396,6 @@ async def update_attendance(
     session.total_present = present
     session.total_absent = absent
     session.total_late = late
-    session.updated_by = user.id
 
     await db.commit()
 
@@ -522,7 +517,6 @@ async def cancel_attendance(
     session.status = "Cancelled"
     session.cancelled_at = now
     session.cancelled_by = staff.id
-    session.updated_by = user.id
 
     await db.commit()
 

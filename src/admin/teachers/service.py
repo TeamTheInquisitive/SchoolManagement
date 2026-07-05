@@ -316,7 +316,6 @@ async def create_teacher(
     db: AsyncSession,
     school_id: uuid.UUID,
     data: dict,
-    created_by: uuid.UUID,
 ) -> dict:
     """Create a teacher (staff + is_teacher=True + user account + subjects)."""
     employee_id = data["employee_id"]
@@ -389,22 +388,30 @@ async def create_teacher(
         emergency_contact_phone=data.get("emergency_contact_phone"),
         emergency_contact_relationship=data.get("emergency_contact_relationship"),
         status="Active",
-        created_by=created_by,
     )
     db.add(staff)
     await db.flush()
 
+    # Get current academic year for subject linkage
+    ay_result = await db.execute(
+        select(AcademicYear).where(
+            AcademicYear.school_id == school_id,
+            AcademicYear.is_current.is_(True),
+        )
+    )
+    current_ay = ay_result.scalar_one_or_none()
+
     # Link subjects
     for subj_name in subject_names:
         subj = await _resolve_subject(db, school_id, subj_name)
-        if subj:
+        if subj and current_ay:
             is_primary = subj_name == primary_subject_name
             staff_subject = StaffSubject(
                 school_id=school_id,
                 staff_id=staff.id,
                 subject_id=subj.id,
+                academic_year_id=current_ay.id,
                 is_primary=is_primary,
-                created_by=created_by,
             )
             db.add(staff_subject)
 
@@ -416,7 +423,6 @@ async def create_teacher(
         full_name=full_name,
         role="teacher",
         phone=data.get("phone"),
-        created_by=created_by,
     )
     db.add(user)
     await db.flush()
@@ -424,15 +430,6 @@ async def create_teacher(
     # Link user to staff (both directions)
     staff.user_id = user.id
     user.staff_id = staff.id
-
-    # Create salary structure from submitted salary fields
-    ay_result = await db.execute(
-        select(AcademicYear).where(
-            AcademicYear.school_id == school_id,
-            AcademicYear.is_current.is_(True),
-        )
-    )
-    current_ay = ay_result.scalar_one_or_none()
     if current_ay:
         from decimal import Decimal
         basic = Decimal(str(data.get("basic_salary") or 0))
@@ -460,7 +457,6 @@ async def create_teacher(
             net_salary=net,
             effective_from=data.get("joining_date") or date.today(),
             is_active=has_salary,
-            created_by=created_by,
         )
         db.add(salary_structure)
 
@@ -551,7 +547,6 @@ async def update_teacher(
     school_id: uuid.UUID,
     teacher_id: uuid.UUID,
     data: dict,
-    updated_by: uuid.UUID,
 ) -> dict:
     """Update a teacher's details."""
     result = await db.execute(
@@ -607,21 +602,31 @@ async def update_teacher(
 
     # Update subjects if provided
     if subject_names is not None:
-        # Remove existing
+        # Get current academic year
+        ay_result = await db.execute(
+            select(AcademicYear).where(
+                AcademicYear.school_id == school_id,
+                AcademicYear.is_current.is_(True),
+            )
+        )
+        current_ay = ay_result.scalar_one_or_none()
+
+        # Remove existing for current academic year
         for ss in list(staff.subjects):
-            await db.delete(ss)
+            if current_ay and ss.academic_year_id == current_ay.id:
+                await db.delete(ss)
 
         # Add new
         for subj_name in subject_names:
             subj = await _resolve_subject(db, school_id, subj_name)
-            if subj:
+            if subj and current_ay:
                 is_primary = subj_name == primary_subject_name
                 staff_subject = StaffSubject(
                     school_id=school_id,
                     staff_id=staff.id,
                     subject_id=subj.id,
+                    academic_year_id=current_ay.id,
                     is_primary=is_primary,
-                    created_by=updated_by,
                 )
                 db.add(staff_subject)
 
@@ -633,8 +638,6 @@ async def update_teacher(
             # Update is_primary flags on existing staff_subjects
             for ss in (staff.subjects or []):
                 ss.is_primary = (ss.subject_id == subj.id)
-
-    staff.updated_by = updated_by
 
     # Handle salary fields
     salary_fields = {"basic_salary", "hra", "da", "ta", "other_allowances", "pf_deduction", "tax_deduction", "other_deductions"}
@@ -687,7 +690,6 @@ async def update_teacher(
                 transport_allowance=ta_v, pf_deduction=pf,
                 professional_tax=pt, net_salary=net,
                 effective_from=date.today(),
-                created_by=updated_by,
             )
             db.add(new_ss)
         if "basic_salary" in salary_data:
@@ -729,7 +731,6 @@ async def delete_teacher(
     staff.status = "Inactive"
     staff.left_date = left_date_val or date.today()
     staff.left_reason = reason
-    staff.updated_by = deleted_by
     await db.commit()
     await db.refresh(staff)
     return staff
@@ -745,7 +746,6 @@ async def assign_class(
     school_id: uuid.UUID,
     teacher_id: uuid.UUID,
     data: dict,
-    created_by: uuid.UUID,
 ) -> ClassAssignment:
     """Assign a class-section-subject to a teacher."""
     # Get teacher
@@ -832,7 +832,6 @@ async def assign_class(
         is_class_teacher=is_class_teacher,
         periods_per_week=periods_per_week,
         status="Active",
-        created_by=created_by,
     )
     db.add(assignment)
     await db.commit()
@@ -845,7 +844,6 @@ async def bulk_assign(
     school_id: uuid.UUID,
     teacher_id: uuid.UUID,
     assignments_data: list[dict],
-    created_by: uuid.UUID,
 ) -> dict:
     """Assign multiple class-section-subject combos at once."""
     assigned = 0
@@ -854,7 +852,7 @@ async def bulk_assign(
 
     for item in assignments_data:
         try:
-            assignment = await assign_class(db, school_id, teacher_id, item, created_by)
+            assignment = await assign_class(db, school_id, teacher_id, item)
             assigned += 1
 
             class_name = ""
@@ -986,7 +984,6 @@ async def remove_assignment(
     school_id: uuid.UUID,
     teacher_id: uuid.UUID,
     assignment_id: uuid.UUID,
-    updated_by: uuid.UUID,
     reason: str | None = None,
     end_date_val: date | None = None,
 ) -> dict:
@@ -1011,7 +1008,6 @@ async def remove_assignment(
     assignment.status = "Inactive"
     assignment.end_date = end_date_val or date.today()
     assignment.end_reason = reason
-    assignment.updated_by = updated_by
     await db.commit()
     await db.refresh(assignment)
 

@@ -371,7 +371,6 @@ async def create_fee_record(
         due_date=data["due_date"],
         status="Pending",
         description=data.get("description"),
-        created_by=user.id,
     )
     db.add(record)
     await db.commit()
@@ -543,7 +542,6 @@ async def generate_due_fees(
                 due_date=due_date,
                 status="Pending",
                 description=data.get("term"),
-                created_by=user.id,
             )
             db.add(record)
             created_records.append(record)
@@ -647,7 +645,6 @@ async def generate_due_fees(
             due_date=due_date,
             status="Pending",
             description=data.get("term"),
-            created_by=user.id,
         )
         db.add(record)
         created_records.append(record)
@@ -727,7 +724,6 @@ async def record_payment(
         payment_method=data["payment_method"],
         reference=data.get("reference"),
         recorded_by=user.id,
-        created_by=user.id,
     )
     # Add payment via the relationship to ensure ORM consistency
     record.payments.append(payment)
@@ -857,7 +853,6 @@ async def bulk_record_payment(
             payment_method=payment_method,
             reference=reference,
             recorded_by=user.id,
-            created_by=user.id,
         )
         record.payments.append(payment)
 
@@ -948,7 +943,6 @@ async def apply_late_fee(
         percentage=percentage,
         applied_on=now,
         applied_by=user.id,
-        created_by=user.id,
     )
     db.add(penalty)
 
@@ -1064,7 +1058,6 @@ async def bulk_apply_late_fees(
             percentage=percentage,
             applied_on=now,
             applied_by=user.id,
-            created_by=user.id,
         )
         db.add(penalty)
 
@@ -1155,7 +1148,6 @@ async def send_reminder(
         sent_to_count=sent_count,
         sent_by=user.id,
         sent_at=now,
-        created_by=user.id,
     )
     db.add(reminder)
     await db.commit()

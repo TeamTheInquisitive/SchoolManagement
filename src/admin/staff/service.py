@@ -47,7 +47,7 @@ async def _get_current_academic_year(db: AsyncSession, school_id: uuid.UUID):
 
 async def _upsert_salary_structure(
     db: AsyncSession, school_id: uuid.UUID, staff_id: uuid.UUID,
-    salary_data: dict, created_by: uuid.UUID, joining_date=None,
+    salary_data: dict, joining_date=None,
 ):
     """Create or update salary structure for a staff member."""
     if not any(v for v in salary_data.values()):
@@ -86,7 +86,6 @@ async def _upsert_salary_structure(
         ss.net_salary = net
         ss.is_active = True
         ss.academic_year_id = ay.id
-        ss.updated_by = created_by
     else:
         ss = SalaryStructure(
             school_id=school_id,
@@ -103,7 +102,6 @@ async def _upsert_salary_structure(
             net_salary=net,
             effective_from=joining_date or date.today(),
             is_active=True,
-            created_by=created_by,
         )
         db.add(ss)
 
@@ -250,7 +248,6 @@ async def create_staff(
     db: AsyncSession,
     school_id: uuid.UUID,
     data: dict,
-    created_by: uuid.UUID,
 ) -> dict:
     """Create a new staff member."""
     # Validate required fields
@@ -294,7 +291,6 @@ async def create_staff(
 
     staff = Staff(
         school_id=school_id,
-        created_by=created_by,
         **staff_data,
     )
     db.add(staff)
@@ -317,7 +313,6 @@ async def create_staff(
             role="teacher" if staff_data.get("is_teacher") else "staff",
             phone=staff_data.get("phone"),
             staff_id=staff.id,
-            created_by=created_by,
         )
         db.add(user)
         await db.flush()
@@ -326,7 +321,7 @@ async def create_staff(
     # Create salary structure if salary fields provided
     if salary_data:
         await _upsert_salary_structure(
-            db, school_id, staff.id, salary_data, created_by,
+            db, school_id, staff.id, salary_data,
             joining_date=staff_data.get("joining_date"),
         )
 
@@ -342,7 +337,6 @@ async def update_staff(
     school_id: uuid.UUID,
     staff_id: uuid.UUID,
     data: dict,
-    updated_by: uuid.UUID,
 ) -> dict:
     """Update a staff member."""
     # Validate email format if provided
@@ -384,12 +378,10 @@ async def update_staff(
     for key, value in staff_data.items():
         setattr(staff, key, value)
 
-    staff.updated_by = updated_by
-
     # Update salary structure if salary fields provided
     if salary_data:
         await _upsert_salary_structure(
-            db, school_id, staff.id, salary_data, updated_by,
+            db, school_id, staff.id, salary_data,
             joining_date=staff.joining_date,
         )
 
@@ -404,7 +396,6 @@ async def delete_staff(
     db: AsyncSession,
     school_id: uuid.UUID,
     staff_id: uuid.UUID,
-    deleted_by: uuid.UUID,
     reason: str | None = None,
     left_date_val: date | None = None,
 ) -> Staff:
@@ -423,7 +414,6 @@ async def delete_staff(
     staff.status = "Inactive"
     staff.left_date = left_date_val or date.today()
     staff.left_reason = reason
-    staff.updated_by = deleted_by
     await db.commit()
     await db.refresh(staff)
     return staff

@@ -101,9 +101,13 @@ async def get_all_settings(db: AsyncSession, school_id: uuid.UUID) -> dict:
 
 
 async def update_settings(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, updated_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict
 ) -> list[str]:
-    """Update settings by category/key. Returns list of updated fields."""
+    """Update settings by category/key. Returns list of updated fields.
+
+    NOTE: `updated_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     updated_fields: list[str] = []
 
     category_key_map = {
@@ -133,7 +137,6 @@ async def update_settings(
 
         if existing:
             existing.value = value
-            existing.updated_by = updated_by
             from sqlalchemy.orm.attributes import flag_modified
             flag_modified(existing, "value")
         else:
@@ -142,7 +145,6 @@ async def update_settings(
                 category=category,
                 key=key,
                 value=value,
-                created_by=updated_by,
             )
             db.add(new_setting)
 
@@ -189,9 +191,13 @@ async def get_school_profile(db: AsyncSession, school_id: uuid.UUID) -> dict:
 
 
 async def update_school_profile(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, updated_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict
 ) -> tuple[str, list[str]]:
-    """Update school profile. Returns (school_name, updated_fields)."""
+    """Update school profile. Returns (school_name, updated_fields).
+
+    NOTE: `updated_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     result = await db.execute(select(School).where(School.id == school_id))
     school = result.scalar_one_or_none()
 
@@ -232,7 +238,6 @@ async def update_school_profile(
         flag_modified(school, "metadata_")
 
     if updated_fields:
-        school.updated_by = updated_by
         await db.commit()
         await db.refresh(school)
 
@@ -291,9 +296,13 @@ async def get_academic_year(db: AsyncSession, school_id: uuid.UUID) -> dict:
 
 
 async def update_academic_year(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, updated_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict
 ) -> dict:
-    """Update academic year configuration."""
+    """Update academic year configuration.
+
+    NOTE: `updated_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     current_name = data.get("current")
     start_date = data.get("start_date")
     end_date = data.get("end_date")
@@ -321,7 +330,6 @@ async def update_academic_year(
             if end_date:
                 ay.end_date = end_date
             ay.is_current = True
-            ay.updated_by = updated_by
         else:
             # Create new academic year
             if start_date and end_date:
@@ -341,7 +349,6 @@ async def update_academic_year(
                     start_date=start_date,
                     end_date=end_date,
                     is_current=True,
-                    created_by=updated_by,
                 )
                 db.add(new_ay)
 
@@ -363,14 +370,12 @@ async def update_academic_year(
 
         if terms_setting:
             terms_setting.value = terms_data
-            terms_setting.updated_by = updated_by
         else:
             new_setting = Settings(
                 school_id=school_id,
                 category="academic",
                 key="terms",
                 value=terms_data,
-                created_by=updated_by,
             )
             db.add(new_setting)
 
@@ -407,9 +412,13 @@ async def list_academic_years(db: AsyncSession, school_id: uuid.UUID) -> dict:
 
 
 async def create_academic_year(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict
 ) -> dict:
-    """Create a new academic year."""
+    """Create a new academic year.
+
+    NOTE: `created_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     from datetime import date as date_type
 
     name = data.get("name")
@@ -449,7 +458,6 @@ async def create_academic_year(
         start_date=start_date,
         end_date=end_date,
         is_current=set_current,
-        created_by=created_by,
     )
     db.add(new_ay)
     await db.commit()
@@ -458,9 +466,13 @@ async def create_academic_year(
 
 
 async def update_academic_year_by_id(
-    db: AsyncSession, school_id: uuid.UUID, year_id: str, data: dict, updated_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, year_id: str, data: dict
 ) -> dict:
-    """Update an academic year by ID."""
+    """Update an academic year by ID.
+
+    NOTE: `updated_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     # Validate name is not empty if provided
     if "name" in data and (not data["name"] or not str(data["name"]).strip()):
         from fastapi import HTTPException
@@ -487,7 +499,6 @@ async def update_academic_year_by_id(
         ay.start_date = data["start_date"]
     if "end_date" in data:
         ay.end_date = data["end_date"]
-    ay.updated_by = updated_by
     await db.commit()
     return {"id": str(ay.id), "name": ay.name, "start_date": str(ay.start_date), "end_date": str(ay.end_date), "is_current": ay.is_current}
 
@@ -573,9 +584,12 @@ async def update_enum_values(
     school_id: uuid.UUID,
     category: str,
     values: list[dict],
-    updated_by: uuid.UUID,
 ) -> dict:
-    """Add or update enum values for a category."""
+    """Add or update enum values for a category.
+
+    NOTE: `updated_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     added = 0
     updated = 0
     added_codes: list[str] = []
@@ -598,7 +612,6 @@ async def update_enum_values(
         if existing:
             existing.label = label
             existing.is_active = is_active
-            existing.updated_by = updated_by
             updated += 1
             updated_codes.append(code)
         else:
@@ -609,7 +622,6 @@ async def update_enum_values(
                 label=label,
                 is_active=is_active,
                 sort_order=0,
-                created_by=updated_by,
             )
             db.add(new_enum)
             added += 1
@@ -643,9 +655,12 @@ async def bulk_create_classes(
     db: AsyncSession,
     school_id: uuid.UUID,
     class_names: list[str],
-    created_by: uuid.UUID,
 ) -> int:
-    """Bulk create classes. Reactivates soft-deleted ones. Skips active duplicates."""
+    """Bulk create classes. Reactivates soft-deleted ones. Skips active duplicates.
+
+    NOTE: `created_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     created = 0
     for idx, name in enumerate(class_names):
         result = await db.execute(
@@ -660,7 +675,6 @@ async def bulk_create_classes(
                 existing.is_active = True
                 existing.deleted_at = None
                 existing.deleted_by = None
-                existing.updated_by = created_by
                 created += 1
             continue
 
@@ -669,7 +683,6 @@ async def bulk_create_classes(
             name=name,
             display_name=f"Class {name}",
             sort_order=idx + 1,
-            created_by=created_by,
         )
         db.add(new_class)
         created += 1
@@ -782,10 +795,13 @@ async def bulk_create_sections(
     db: AsyncSession,
     school_id: uuid.UUID,
     section_names: list[str],
-    created_by: uuid.UUID,
     class_id: str | None = None,
 ) -> int:
-    """Bulk create sections and optionally link to a class. Skips already existing ones."""
+    """Bulk create sections and optionally link to a class. Skips already existing ones.
+
+    NOTE: `created_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     from src.models.academic import ClassSection
     from src.models.core import AcademicYear
 
@@ -805,7 +821,6 @@ async def bulk_create_sections(
                 existing.is_active = True
                 existing.deleted_at = None
                 existing.deleted_by = None
-                existing.updated_by = created_by
                 created += 1
             section_ids.append(existing.id)
             continue
@@ -814,7 +829,6 @@ async def bulk_create_sections(
             school_id=school_id,
             name=name,
             sort_order=idx + 1,
-            created_by=created_by,
         )
         db.add(new_section)
         await db.flush()
@@ -846,14 +860,12 @@ async def bulk_create_sections(
                     existing_cs.is_active = True
                     existing_cs.deleted_at = None
                     existing_cs.deleted_by = None
-                    existing_cs.updated_by = created_by
                 continue
             cs = ClassSection(
                 school_id=school_id,
                 class_id=class_id,
                 section_id=section_id,
                 academic_year_id=ay_id,
-                created_by=created_by,
             )
             db.add(cs)
 
@@ -870,9 +882,12 @@ async def bulk_create_subjects(
     db: AsyncSession,
     school_id: uuid.UUID,
     subjects: list[dict],
-    created_by: uuid.UUID,
 ) -> int:
-    """Bulk create subjects. Reactivates soft-deleted ones. Skips active duplicates."""
+    """Bulk create subjects. Reactivates soft-deleted ones. Skips active duplicates.
+
+    NOTE: `created_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     # Validate subject names are not empty
     for item in subjects:
         if not item.get("name") or not str(item["name"]).strip():
@@ -896,7 +911,6 @@ async def bulk_create_subjects(
                 existing.is_active = True
                 existing.deleted_at = None
                 existing.deleted_by = None
-                existing.updated_by = created_by
                 if code:
                     existing.code = code
                 created += 1
@@ -906,7 +920,6 @@ async def bulk_create_subjects(
             school_id=school_id,
             name=name,
             code=code,
-            created_by=created_by,
         )
         db.add(new_subject)
         created += 1
@@ -976,9 +989,13 @@ async def list_subjects(db: AsyncSession, school_id: uuid.UUID) -> list[dict]:
 
 
 async def update_subject(
-    db: AsyncSession, school_id: uuid.UUID, subject_id: str, data: dict, user_id: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, subject_id: str, data: dict
 ) -> dict:
-    """Update a subject's name and/or code."""
+    """Update a subject's name and/or code.
+
+    NOTE: `user_id` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     from src.models.academic import Subject
 
     # Validate name is not empty if provided
@@ -1000,7 +1017,6 @@ async def update_subject(
         subject.name = data["name"]
     if "code" in data:
         subject.code = data["code"]
-    subject.updated_by = user_id
     await db.commit()
     await db.refresh(subject)
     return {"id": str(subject.id), "name": subject.name, "code": subject.code}
@@ -1120,9 +1136,12 @@ async def update_class_subjects(
     school_id: uuid.UUID,
     class_id: str,
     subject_ids: list[str],
-    updated_by: uuid.UUID,
 ) -> dict:
-    """Replace all subject assignments for a class in the current academic year."""
+    """Replace all subject assignments for a class in the current academic year.
+
+    NOTE: `updated_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     from src.models.academic import ClassSubject
     from src.models.core import AcademicYear
 
@@ -1162,7 +1181,6 @@ async def update_class_subjects(
             class_id=class_id,
             subject_id=sid,
             academic_year_id=current_ay.id,
-            created_by=updated_by,
         ))
 
     await db.commit()
@@ -1232,9 +1250,13 @@ async def list_fee_structures(db: AsyncSession, school_id: uuid.UUID) -> dict:
 
 
 async def create_fee_structure(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, created_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict
 ) -> dict:
-    """Create a fee structure."""
+    """Create a fee structure.
+
+    NOTE: `created_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     from src.models.fee import FeeStructure, FeeRecord
     from src.models.student import StudentEnrollment
     from src.models.academic import ClassSection
@@ -1262,7 +1284,6 @@ async def create_fee_structure(
         fee_category=data.get("fee_category", "tuition"),
         amount=data["amount"],
         frequency=data.get("frequency", "monthly"),
-        created_by=created_by,
     )
     db.add(fs)
     await db.flush()
@@ -1359,7 +1380,6 @@ async def create_fee_structure(
             status="Pending",
             description=f"Auto-generated from fee structure ({fs.frequency})",
             is_active=True,
-            created_by=created_by,
         )
         db.add(record)
 
@@ -1377,9 +1397,13 @@ async def create_fee_structure(
 
 
 async def update_fee_structure(
-    db: AsyncSession, school_id: uuid.UUID, structure_id: str, data: dict, updated_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, structure_id: str, data: dict
 ) -> dict:
-    """Update a fee structure."""
+    """Update a fee structure.
+
+    NOTE: `updated_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     from src.models.fee import FeeStructure
 
     result = await db.execute(
@@ -1402,7 +1426,6 @@ async def update_fee_structure(
         fs.class_id = data["class_id"] or None
     if "class_section_id" in data:
         fs.class_section_id = data["class_section_id"] or None
-    fs.updated_by = updated_by
     await db.commit()
     return {"id": str(fs.id), "fee_type": fs.fee_type, "amount": float(fs.amount), "frequency": fs.frequency}
 
@@ -1507,9 +1530,13 @@ async def get_id_generation_config(db: AsyncSession, school_id: uuid.UUID) -> di
 
 
 async def update_id_generation_config(
-    db: AsyncSession, school_id: uuid.UUID, data: dict, updated_by: uuid.UUID
+    db: AsyncSession, school_id: uuid.UUID, data: dict
 ) -> dict:
-    """Update ID auto-generation config."""
+    """Update ID auto-generation config.
+
+    NOTE: `updated_by` parameter was removed — callers must be updated.
+    Audit fields (created_by/updated_by) are now set by MySQL triggers via session variable.
+    """
     # Handle prefix update if provided
     prefix = data.pop("prefix", None)
     if prefix:
@@ -1545,7 +1572,6 @@ async def update_id_generation_config(
             else:
                 current[entity_type] = cfg
         existing.value = current
-        existing.updated_by = updated_by
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(existing, "value")
     else:
@@ -1564,7 +1590,6 @@ async def update_id_generation_config(
             category="id_generation",
             key="config",
             value=merged,
-            created_by=updated_by,
         )
         db.add(new_setting)
 

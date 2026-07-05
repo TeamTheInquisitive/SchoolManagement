@@ -439,7 +439,6 @@ async def submit_assignment(
     submission.comments = comments
     submission.file_urls = file_urls if file_urls else submission.file_urls
     submission.is_late = is_late
-    submission.updated_by = user.id
 
     await db.commit()
     await db.refresh(submission)

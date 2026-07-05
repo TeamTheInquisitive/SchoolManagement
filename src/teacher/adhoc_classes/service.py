@@ -197,7 +197,6 @@ async def create_adhoc_class(
         description=data.get("description"),
         student_count=data.get("student_count", 0),
         status="Scheduled",
-        created_by=user.id,
     )
     db.add(adhoc)
     await db.commit()
@@ -231,7 +230,6 @@ async def update_adhoc_class(
     for key, value in update_data.items():
         setattr(adhoc, key, value)
 
-    adhoc.updated_by = user.id
     await db.commit()
     await db.refresh(adhoc)
     return await _build_response(adhoc, db)
@@ -260,7 +258,6 @@ async def delete_adhoc_class(
 
     adhoc.status = "Cancelled"
     adhoc.is_active = False
-    adhoc.updated_by = user.id
     await db.commit()
 
     return {

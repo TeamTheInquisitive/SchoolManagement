@@ -392,7 +392,6 @@ async def create_assignment(
         max_marks=data.max_marks,
         status="Active",
         assigned_date=date.today(),
-        created_by=user.id,
         metadata_={"allow_file_upload": data.allow_file_upload},
     )
     db.add(assignment)
@@ -406,7 +405,6 @@ async def create_assignment(
             assignment_id=assignment.id,
             student_id=enrollment.student_id,
             status="Pending",
-            created_by=user.id,
         )
         db.add(submission)
 
@@ -560,7 +558,6 @@ async def update_assignment(
     if data.max_marks is not None:
         assignment.max_marks = data.max_marks
 
-    assignment.updated_by = user.id
     await db.commit()
     await db.refresh(assignment)
 
@@ -806,7 +803,6 @@ async def grade_submission(
     submission.graded_at = now
     submission.graded_by = staff.id
     submission.status = "Graded"
-    submission.updated_by = user.id
 
     await db.commit()
     await db.refresh(submission)

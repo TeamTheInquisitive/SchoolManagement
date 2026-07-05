@@ -54,6 +54,8 @@ class SchoolCreate(BaseModel):
     enrollment_date: date | None = None
     trial_start_date: date | None = None
     trial_end_date: date | None = None
+    trial_duration_days: int | None = 14
+    grace_period_days: int | None = 2
 
 
 class SchoolUpdate(BaseModel):
@@ -66,6 +68,8 @@ class SchoolUpdate(BaseModel):
     board_affiliation: str | None = None
     principal_name: str | None = None
     is_active: bool | None = None
+    trial_duration_days: int | None = None
+    grace_period_days: int | None = None
 
 
 class SchoolDetailResponse(BaseModel):
@@ -86,6 +90,8 @@ class SchoolDetailResponse(BaseModel):
     subscription_status: str
     trial_start_date: date | None
     trial_end_date: date | None
+    trial_duration_days: int | None = 14
+    grace_period_days: int | None = 2
     student_count: int
     staff_count: int
     admin_users: list[UserItem]
@@ -99,6 +105,8 @@ class SubscriptionStatusUpdate(BaseModel):
     trial_start_date: date | None = None
     trial_end_date: date | None = None
     enrollment_date: date | None = None
+    trial_duration_days: int | None = None
+    grace_period_days: int | None = None
 
 
 # --- Subscriptions ---

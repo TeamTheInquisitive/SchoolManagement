@@ -65,7 +65,7 @@ async def create_teacher(
 ) -> TeacherResponse:
     """Create a new teacher (staff + user account + subjects)."""
     result = await service.create_teacher(
-        db, school.id, data.model_dump(exclude_none=True), user.id
+        db, school.id, data.model_dump(exclude_none=True)
     )
     return TeacherResponse(**result)
 
@@ -99,7 +99,7 @@ async def bulk_import_teachers(
     for idx, teacher in enumerate(data.teachers, start=1):
         try:
             teacher_data = teacher.model_dump(exclude_none=True)
-            await service.create_teacher(db, school.id, teacher_data, user.id)
+            await service.create_teacher(db, school.id, teacher_data)
             await db.commit()
             passed += 1
             results.append({"row": idx, "employee_id": teacher.employee_id, "success": True})
@@ -145,7 +145,7 @@ async def update_teacher(
 ) -> TeacherResponse:
     """Update teacher details."""
     result = await service.update_teacher(
-        db, school.id, teacher_id, data.model_dump(exclude_none=True), user.id
+        db, school.id, teacher_id, data.model_dump(exclude_none=True)
     )
     return TeacherResponse(**result)
 
@@ -234,7 +234,7 @@ async def assign_class(
 ) -> AssignmentCreatedResponse:
     """Assign a class-section-subject combination to a teacher."""
     assignment = await service.assign_class(
-        db, school.id, teacher_id, data.model_dump(), user.id
+        db, school.id, teacher_id, data.model_dump()
     )
     class_name = ""
     section = ""
@@ -264,7 +264,7 @@ async def bulk_assign(
 ) -> BulkAssignResponse:
     """Assign multiple class-section-subject combinations at once."""
     assignments_data = [a.model_dump() for a in data.assignments]
-    result = await service.bulk_assign(db, school.id, teacher_id, assignments_data, user.id)
+    result = await service.bulk_assign(db, school.id, teacher_id, assignments_data)
     return BulkAssignResponse(**result)
 
 
@@ -298,7 +298,7 @@ async def remove_assignment(
     reason = data.reason if data else None
     end_date_val = data.end_date if data else None
     result = await service.remove_assignment(
-        db, school.id, teacher_id, assignment_id, user.id, reason, end_date_val
+        db, school.id, teacher_id, assignment_id, reason, end_date_val
     )
     return AssignmentDeleteResponse(**result)
 

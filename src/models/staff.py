@@ -16,7 +16,7 @@ class Staff(BaseModel):
     __tablename__ = "staff"
     __table_args__ = (
         UniqueConstraint("school_id", "employee_id", name="uq_staff_school_employee_id"),
-        UniqueConstraint("school_id", "email", name="uq_staff_school_email"),
+        UniqueConstraint("email", name="uq_staff_email"),
         Index("idx_staff_is_teacher", "school_id", "is_teacher"),
         Index("idx_staff_department", "school_id", "department"),
         Index("idx_staff_name", "school_id", "full_name"),
@@ -97,14 +97,16 @@ class Staff(BaseModel):
 
 
 class StaffSubject(BaseModel):
-    """Many-to-many: staff qualified to teach subjects."""
+    """Many-to-many: staff qualified to teach subjects per academic year."""
 
     __tablename__ = "staff_subjects"
     __table_args__ = (
         UniqueConstraint(
-            "school_id", "staff_id", "subject_id", name="uq_staff_subjects_staff_subject"
+            "school_id", "staff_id", "subject_id", "academic_year_id",
+            name="uq_staff_subjects_staff_subject_year"
         ),
         Index("idx_staff_subjects_staff", "staff_id"),
+        Index("idx_staff_subjects_year", "school_id", "academic_year_id"),
     )
 
     staff_id: Mapped[uuid.UUID] = mapped_column(
@@ -113,11 +115,15 @@ class StaffSubject(BaseModel):
     subject_id: Mapped[uuid.UUID] = mapped_column(
         UUIDType, ForeignKey("subjects.id"), nullable=False
     )
+    academic_year_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType, ForeignKey("academic_years.id"), nullable=False
+    )
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Relationships
     staff: Mapped[Staff] = relationship("Staff", back_populates="subjects")
     subject: Mapped["Subject"] = relationship("Subject", lazy="selectin")
+    academic_year: Mapped["AcademicYear"] = relationship("AcademicYear", lazy="selectin")
 
 
 class ClassAssignment(BaseModel):

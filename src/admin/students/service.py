@@ -290,7 +290,6 @@ async def create_student(
     db: AsyncSession,
     school_id: UUID,
     data: dict,
-    created_by: UUID,
 ) -> dict:
     """Create a new student with optional user account and enrollment."""
     roll_number = data["roll_number"]
@@ -339,7 +338,6 @@ async def create_student(
             "parent_occupation": data.get("parent_occupation"),
         }.items() if v} or {},
         status=data.get("status", "Active"),
-        created_by=created_by,
     )
     db.add(student)
     await db.flush()
@@ -361,7 +359,6 @@ async def create_student(
             full_name=data["full_name"],
             role="student",
             student_id=student.id,
-            created_by=created_by,
             username=roll_number,
         )
         db.add(user)
@@ -414,7 +411,6 @@ async def create_student(
                         roll_number=roll_number,
                         enrollment_date=data.get("admission_date") or date.today(),
                         status="Active",
-                        created_by=created_by,
                     )
                     db.add(enrollment)
 
@@ -430,7 +426,6 @@ async def create_student(
             phone=data.get("parent_phone"),
             email=data.get("parent_email"),
             is_primary_contact=True,
-            created_by=created_by,
         )
         db.add(parent)
         await db.flush()
@@ -440,7 +435,6 @@ async def create_student(
             school_id=school_id,
             student_id=student.id,
             parent_id=parent.id,
-            created_by=created_by,
         )
         db.add(student_parent)
 
@@ -509,7 +503,6 @@ async def create_student(
                     status="Pending",
                     is_active=True,
                     description=f"Auto-generated ({fs.frequency}){f' | Concession: ₹{concession_amount:.0f}' if concession_amount > 0 else ''}",
-                    created_by=created_by,
                 )
                 db.add(fee_record)
 
@@ -533,7 +526,6 @@ async def create_student(
                     status="Pending",
                     is_active=True,
                     description="Custom fee component (student-specific)",
-                    created_by=created_by,
                 )
                 db.add(fee_record)
 
@@ -836,7 +828,6 @@ async def update_student(
     school_id: UUID,
     student_id: UUID,
     data: dict,
-    updated_by: UUID,
 ) -> dict:
     """Update a student's details."""
     result = await db.execute(
@@ -929,7 +920,6 @@ async def update_student(
                 phone=data.get("parent_phone"),
                 email=data.get("parent_email"),
                 is_primary_contact=True,
-                created_by=updated_by,
             )
             db.add(parent)
             await db.flush()
@@ -937,7 +927,6 @@ async def update_student(
                 school_id=school_id,
                 student_id=student.id,
                 parent_id=parent.id,
-                created_by=updated_by,
             )
             db.add(student_parent)
 
@@ -991,11 +980,9 @@ async def update_student(
                     total_late_fee=Decimal("0"),
                     due_date=date.today() + timedelta(days=30),
                     status="Pending",
-                    created_by=updated_by,
                 )
                 db.add(record)
 
-    student.updated_by = updated_by
     await db.commit()
     await db.refresh(student)
 
@@ -1011,7 +998,6 @@ async def delete_student(
     db: AsyncSession,
     school_id: UUID,
     student_id: UUID,
-    updated_by: UUID,
     status: str = "Inactive",
     reason: str | None = None,
 ) -> Student:
@@ -1030,7 +1016,6 @@ async def delete_student(
     student.status = status
     student.left_date = date.today()
     student.left_reason = reason
-    student.updated_by = updated_by
 
     # Free transport capacity
     from src.models.transport import StudentTransport, RouteAssignment, Vehicle
@@ -1209,7 +1194,6 @@ async def create_parent_meeting(
         next_meeting_date=data.get("next_meeting_date"),
         status=data.get("status", "Scheduled"),
         conducted_by=staff_id,
-        created_by=user_id,
     )
     db.add(meeting)
     await db.commit()
@@ -1375,7 +1359,6 @@ async def create_award(
         level=data.get("level"),
         certificate_url=data.get("certificate_url"),
         recorded_by=await _resolve_staff_id(db, user_id, school_id),
-        created_by=user_id,
     )
     db.add(award)
     await db.commit()
@@ -1480,7 +1463,6 @@ async def create_activity(
         achievement=data.get("achievement"),
         recorded_by=staff_id,
         status="Active",
-        created_by=user_id,
     )
     db.add(activity)
     await db.commit()
@@ -1680,7 +1662,6 @@ async def create_disciplinary_record(
         reported_by=staff_id,
         parent_notified=data.get("parent_notified", False),
         status=data.get("status", "Open"),
-        created_by=user_id,
     )
     db.add(record)
     await db.commit()
@@ -1817,7 +1798,6 @@ async def bulk_import_students(
     db: AsyncSession,
     school_id: UUID,
     csv_content: str,
-    created_by: UUID,
 ) -> dict:
     """Bulk import students from CSV content."""
     reader = csv.DictReader(io.StringIO(csv_content))
@@ -1857,7 +1837,6 @@ async def bulk_import_students(
             phone=row.get("phone", "").strip() or None,
             gender=row.get("gender", "").strip() or None,
             status="Active",
-            created_by=created_by,
         )
         db.add(student)
         imported += 1

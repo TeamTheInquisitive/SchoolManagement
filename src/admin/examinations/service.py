@@ -315,7 +315,6 @@ async def create_exam(
         term=data.term,
         examiner_id=data.examiner_id,
         metadata_=data.metadata,
-        created_by=user.id,
     )
     db.add(exam)
     await db.commit()
@@ -494,7 +493,6 @@ async def update_exam(
         else:
             setattr(exam, field, value)
 
-    exam.updated_by = user.id
     await db.commit()
     await db.refresh(exam)
 
@@ -527,7 +525,6 @@ async def cancel_exam(
     now = datetime.now(timezone.utc)
     exam.status = "Cancelled"
     exam.cancelled_at = now
-    exam.updated_by = user.id
     await db.commit()
 
     return {
@@ -693,7 +690,6 @@ async def enter_results(
             exam_result.remarks = entry.remarks
             exam_result.grade = grade
             exam_result.is_pass = is_pass
-            exam_result.updated_by = user.id
         else:
             exam_result = ExamResult(
                 school_id=school_id,
@@ -704,7 +700,6 @@ async def enter_results(
                 remarks=entry.remarks,
                 grade=grade,
                 is_pass=is_pass,
-                created_by=user.id,
             )
             db.add(exam_result)
 
@@ -836,7 +831,6 @@ async def bulk_upload_results(
             exam_result.remarks = remarks or None
             exam_result.grade = grade
             exam_result.is_pass = is_pass
-            exam_result.updated_by = user.id
         else:
             exam_result = ExamResult(
                 school_id=school_id,
@@ -847,7 +841,6 @@ async def bulk_upload_results(
                 remarks=remarks or None,
                 grade=grade,
                 is_pass=is_pass,
-                created_by=user.id,
             )
             db.add(exam_result)
         imported += 1
@@ -932,8 +925,6 @@ async def update_result(
         exam_result.grade = None
         exam_result.is_pass = None
 
-    exam_result.updated_by = user.id
-
     # Recompute ranks
     all_results_query = await db.execute(
         select(ExamResult).where(
@@ -999,7 +990,6 @@ async def publish_results(
     now = datetime.now(timezone.utc)
     exam.status = "Published"
     exam.published_at = now
-    exam.updated_by = user.id
 
     await db.commit()
 
@@ -1072,14 +1062,12 @@ async def update_grade_system(
             academic_year_id=ay.id,
             name=data.name or "Default Grade System",
             is_default=True,
-            created_by=user.id,
         )
         db.add(grade_system)
         await db.flush()
     else:
         if data.name:
             grade_system.name = data.name
-        grade_system.updated_by = user.id
         # Remove old scales
         old_scales_result = await db.execute(
             select(GradeScale).where(GradeScale.grade_system_id == grade_system.id)
@@ -1111,7 +1099,6 @@ async def update_grade_system(
             grade_point=Decimal(str(g.grade_point)) if g.grade_point is not None else None,
             description=g.description,
             sort_order=idx,
-            created_by=user.id,
         )
         db.add(scale)
 

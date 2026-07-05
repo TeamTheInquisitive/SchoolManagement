@@ -116,7 +116,7 @@ async def create_vehicle(
     user: AdminUser,
 ) -> VehicleResponse:
     """Add a new vehicle."""
-    result = await service.create_vehicle(db, school.id, data.model_dump(), user.id)
+    result = await service.create_vehicle(db, school.id, data.model_dump())
     return VehicleResponse(**result)
 
 
@@ -142,7 +142,7 @@ async def update_vehicle(
 ) -> VehicleResponse:
     """Update vehicle details."""
     result = await service.update_vehicle(
-        db, school.id, vehicle_id, data.model_dump(exclude_unset=True), user.id
+        db, school.id, vehicle_id, data.model_dump(exclude_unset=True)
     )
     return VehicleResponse(**result)
 
@@ -217,7 +217,7 @@ async def create_driver(
     user: AdminUser,
 ) -> DriverResponse:
     """Add a new driver."""
-    result = await service.create_driver(db, school.id, data.model_dump(), user.id)
+    result = await service.create_driver(db, school.id, data.model_dump())
     return DriverResponse(**result)
 
 
@@ -231,7 +231,7 @@ async def update_driver(
 ) -> DriverResponse:
     """Update driver details."""
     result = await service.update_driver(
-        db, school.id, driver_id, data.model_dump(exclude_unset=True), user.id
+        db, school.id, driver_id, data.model_dump(exclude_unset=True)
     )
     return DriverResponse(**result)
 
@@ -275,7 +275,7 @@ async def create_helper(
     user: AdminUser,
 ) -> HelperResponse:
     """Add a new helper."""
-    result = await service.create_helper(db, school.id, data.model_dump(), user.id)
+    result = await service.create_helper(db, school.id, data.model_dump())
     return HelperResponse(**result)
 
 
@@ -289,7 +289,7 @@ async def update_helper(
 ) -> HelperResponse:
     """Update helper details."""
     result = await service.update_helper(
-        db, school.id, helper_id, data.model_dump(exclude_unset=True), user.id
+        db, school.id, helper_id, data.model_dump(exclude_unset=True)
     )
     return HelperResponse(**result)
 
@@ -333,7 +333,7 @@ async def create_route(
     user: AdminUser,
 ) -> RouteResponse:
     """Create a new route."""
-    result = await service.create_route(db, school.id, data.model_dump(), user.id)
+    result = await service.create_route(db, school.id, data.model_dump())
     return RouteResponse(**result)
 
 
@@ -347,7 +347,7 @@ async def update_route(
 ) -> RouteResponse:
     """Update route details."""
     result = await service.update_route(
-        db, school.id, route_id, data.model_dump(exclude_unset=True), user.id
+        db, school.id, route_id, data.model_dump(exclude_unset=True)
     )
     return RouteResponse(**result)
 
@@ -391,7 +391,7 @@ async def create_assignment(
     user: AdminUser,
 ) -> AssignmentResponse:
     """Create a route assignment. 409 if vehicle already assigned."""
-    result = await service.create_assignment(db, school.id, data.model_dump(), user.id)
+    result = await service.create_assignment(db, school.id, data.model_dump())
     return AssignmentResponse(**result)
 
 
@@ -405,7 +405,7 @@ async def update_assignment(
 ) -> AssignmentResponse:
     """Update a route assignment."""
     result = await service.update_assignment(
-        db, school.id, assignment_id, data.model_dump(exclude_unset=True), user.id
+        db, school.id, assignment_id, data.model_dump(exclude_unset=True)
     )
     return AssignmentResponse(**result)
 
@@ -449,7 +449,7 @@ async def assign_students_to_route(
     user: AdminUser,
 ):
     """Assign students to a route. Body: { student_ids: [], pickup_point?, drop_point? }"""
-    return await service.assign_students_to_route(db, school.id, route_id, data, user.id)
+    return await service.assign_students_to_route(db, school.id, route_id, data)
 
 
 @router.delete("/routes/{route_id}/students/{student_id}")

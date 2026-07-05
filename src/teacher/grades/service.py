@@ -464,7 +464,6 @@ async def submit_grades(
             exam_res.grade = grade
             exam_res.is_pass = is_pass
             exam_res.attendance = entry.attendance
-            exam_res.updated_by = user.id
         else:
             exam_res = ExamResult(
                 school_id=school_id,
@@ -474,7 +473,6 @@ async def submit_grades(
                 grade=grade,
                 is_pass=is_pass,
                 attendance=entry.attendance,
-                created_by=user.id,
             )
             db.add(exam_res)
 
@@ -577,7 +575,6 @@ async def update_grades(
         exam_res.marks_obtained = Decimal(str(entry.marks))
         exam_res.grade = _compute_grade(pct, scales)
         exam_res.is_pass = entry.marks >= passing_marks if passing_marks is not None else None
-        exam_res.updated_by = user.id
         updated_count += 1
 
     await db.flush()
@@ -1182,7 +1179,6 @@ async def import_grades(
             exam_res.grade = grade
             exam_res.is_pass = is_pass
             exam_res.attendance = "Present"
-            exam_res.updated_by = user.id
         else:
             exam_res = ExamResult(
                 school_id=school_id,
@@ -1192,7 +1188,6 @@ async def import_grades(
                 grade=grade,
                 is_pass=is_pass,
                 attendance="Present",
-                created_by=user.id,
             )
             db.add(exam_res)
         imported += 1

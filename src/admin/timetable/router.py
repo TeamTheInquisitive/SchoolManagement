@@ -53,7 +53,7 @@ async def create_period(
 ) -> PeriodResponse:
     """Add a new period to the configuration."""
     period = await service.create_period(
-        db, school.id, data.model_dump(exclude_none=True), user.id, academic_year
+        db, school.id, data.model_dump(exclude_none=True), academic_year
     )
     return PeriodResponse.model_validate(period)
 
@@ -68,7 +68,7 @@ async def update_period(
 ) -> PeriodResponse:
     """Update an existing period's timing."""
     period = await service.update_period(
-        db, school.id, period_id, data.model_dump(exclude_none=True), user.id
+        db, school.id, period_id, data.model_dump(exclude_none=True)
     )
     return PeriodResponse.model_validate(period)
 
@@ -123,7 +123,7 @@ async def create_slot(
 ) -> SlotResponse:
     """Assign a subject + teacher to a specific slot."""
     result = await service.create_slot(
-        db, school.id, data.model_dump(), user.id, academic_year
+        db, school.id, data.model_dump(), academic_year
     )
     return SlotResponse(**result)
 
@@ -138,7 +138,7 @@ async def update_slot(
 ) -> SlotResponse:
     """Update an existing timetable slot."""
     result = await service.update_slot(
-        db, school.id, slot_id, data.model_dump(exclude_none=True), user.id
+        db, school.id, slot_id, data.model_dump(exclude_none=True)
     )
     return SlotResponse(**result)
 

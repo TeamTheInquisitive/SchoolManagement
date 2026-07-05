@@ -714,7 +714,6 @@ async def update_student_by_mentor(
                 email=data.get("parent_email"),
                 relation=data.get("parent_relationship", "Parent/Guardian"),
                 alternate_phone=data.get("parent_emergency"),
-                created_by=user.id,
             )
             db.add(parent)
             await db.flush()
@@ -725,7 +724,6 @@ async def update_student_by_mentor(
                     student_id=student_id,
                     parent_id=parent.id,
                     relationship=data.get("parent_relationship", "Parent/Guardian"),
-                    created_by=user.id,
                 )
                 db.add(sp)
         else:
@@ -808,7 +806,6 @@ async def update_mentor_notes(
         raise AccessDenied("You are not the mentor of this student")
 
     mentor_record.notes = notes
-    mentor_record.updated_by = user.id
     await db.commit()
     await db.refresh(mentor_record)
 

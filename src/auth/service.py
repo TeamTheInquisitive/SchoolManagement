@@ -42,11 +42,9 @@ async def authenticate_user(
         result = await db.execute(query.limit(1))
         user = result.scalar_one_or_none()
 
-    # Try email lookup
+    # Try email lookup (email is globally unique)
     if not user:
         query = select(User).where(User.email == identifier, User.is_active.is_(True))
-        if school_id:
-            query = query.where(User.school_id == school_id)
         result = await db.execute(query.limit(1))
         user = result.scalar_one_or_none()
 
