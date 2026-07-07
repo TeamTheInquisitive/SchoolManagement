@@ -22,6 +22,33 @@ def _clean_phone(v: str | None) -> str | None:
     return cleaned
 
 
+class ParentInput(BaseModel):
+    """A single parent/guardian entry for create/update."""
+
+    name: str
+    relationship: str
+    phone: str | None = None
+    email: str | None = None
+    occupation: str | None = None
+    is_primary_contact: bool | None = None
+
+    @field_validator('phone', mode='before')
+    @classmethod
+    def _clean_parent_phone(cls, v):
+        return _clean_phone(v)
+
+
+class ParentOut(BaseModel):
+    """A single parent/guardian entry in responses."""
+
+    name: str | None = None
+    relationship: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    occupation: str | None = None
+    is_primary_contact: bool = False
+
+
 class CreateStudentRequest(BaseModel):
     """Request to create a student."""
 
@@ -48,6 +75,7 @@ class CreateStudentRequest(BaseModel):
     parent_phone: str | None = None
     parent_email: str | None = None
     parent_relationship: str | None = "Parent/Guardian"
+    parents: list[ParentInput] | None = None
     concessions: dict[str, float] | None = None
     custom_fees: list[dict] | None = None
     excluded_fee_ids: list[str] | None = None
@@ -104,6 +132,7 @@ class UpdateStudentRequest(BaseModel):
     parent_relationship: str | None = None
     parent_occupation: str | None = None
     admission_date: date | None = None
+    parents: list[ParentInput] | None = None
 
     @field_validator('phone', 'parent_phone', mode='before')
     @classmethod
@@ -157,6 +186,7 @@ class StudentListItem(BaseModel):
     parent_phone: str | None = None
     parent_email: str | None = None
     parent_relationship: str | None = None
+    parents: list[ParentOut] = []
 
 
 class StudentListSummary(BaseModel):
@@ -267,6 +297,7 @@ class StudentResponse(BaseModel):
     state: str | None = None
     pincode: str | None = None
     parent: ParentInfo | None = None
+    parents: list[ParentOut] = []
     parent_name: str | None = None
     parent_phone: str | None = None
     parent_email: str | None = None

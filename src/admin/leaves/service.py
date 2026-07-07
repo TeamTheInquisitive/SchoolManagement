@@ -505,6 +505,7 @@ async def update_leave_policy(
         "leave_types": [
             {
                 "type": p.leave_type,
+                "display_name": p.display_name,
                 "code": p.code,
                 "total_per_year": p.total_per_year,
                 "carry_forward": p.carry_forward,

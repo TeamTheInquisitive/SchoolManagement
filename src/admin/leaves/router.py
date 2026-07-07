@@ -95,7 +95,7 @@ async def update_leave_policy(
     user: AdminUser,
 ) -> UpdateLeavePolicyResponse:
     """Update leave policy for the current academic year."""
-    result = await service.update_leave_policy(db, school.id, user, data.model_dump())
+    result = await service.update_leave_policy(db, school.id, data.model_dump())
     return UpdateLeavePolicyResponse(**result)
 
 
@@ -176,5 +176,5 @@ async def allocate_leaves(
     user: AdminUser,
 ) -> AllocateLeaveResponse:
     """Allocate leave balances to selected teachers."""
-    result = await service.allocate_leaves(db, school.id, data.model_dump(), user.id)
+    result = await service.allocate_leaves(db, school.id, data.model_dump())
     return AllocateLeaveResponse(**result)

@@ -71,7 +71,7 @@ async def bulk_import_staff(
     for idx, staff_item in enumerate(data.staff, start=1):
         try:
             staff_data = staff_item.model_dump(exclude_none=True)
-            await service.create_staff(db, school.id, staff_data, user.id)
+            await service.create_staff(db, school.id, staff_data)
             await db.commit()
             passed += 1
             results.append({"row": idx, "employee_id": staff_item.employee_id, "success": True})
@@ -91,7 +91,7 @@ async def create_staff(
 ) -> StaffResponse:
     """Create a new staff member."""
     result = await service.create_staff(
-        db, school.id, data.model_dump(exclude_none=True), user.id
+        db, school.id, data.model_dump(exclude_none=True)
     )
     return StaffResponse.model_validate(result)
 
@@ -106,7 +106,7 @@ async def update_staff(
 ) -> StaffResponse:
     """Update a staff member."""
     result = await service.update_staff(
-        db, school.id, staff_id, data.model_dump(exclude_none=True), user.id
+        db, school.id, staff_id, data.model_dump(exclude_none=True)
     )
     return StaffResponse.model_validate(result)
 

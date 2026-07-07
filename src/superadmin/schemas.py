@@ -188,6 +188,10 @@ class AdminUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class AdminPasswordReset(BaseModel):
+    password: str
+
+
 class UserItem(BaseModel):
     id: uuid.UUID
     email: str

@@ -14,6 +14,7 @@ from src.models.core import School
 from src.superadmin import service
 from src.superadmin.schemas import (
     AdminCreate,
+    AdminPasswordReset,
     AdminUpdate,
     DashboardStatsResponse,
     HardDeleteResponse,
@@ -208,6 +209,24 @@ async def update_school_admin(db: SessionDep, user: SuperAdminUser, school_id: u
     if not admin:
         raise HTTPException(status_code=404, detail="Admin not found")
     return {"id": admin.id, "email": admin.email, "full_name": admin.full_name, "role": admin.role, "allowed_modules": admin.allowed_modules}
+
+
+@router.post("/schools/{school_id}/admin/{admin_id}/reset-password")
+async def reset_school_admin_password(db: SessionDep, user: SuperAdminUser, school_id: uuid.UUID, admin_id: uuid.UUID, data: AdminPasswordReset):
+    """Reset a school admin's password (Super Admin)."""
+    admin = await service.reset_admin_password(db, school_id, admin_id, data.password)
+    if not admin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    return {"status": "password_reset", "id": admin.id, "email": admin.email}
+
+
+@router.delete("/schools/{school_id}/admin/{admin_id}")
+async def delete_school_admin(db: SessionDep, user: SuperAdminUser, school_id: uuid.UUID, admin_id: uuid.UUID):
+    """Delete a school admin (Super Admin)."""
+    ok = await service.delete_admin_for_school(db, school_id, admin_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    return {"status": "deleted", "id": str(admin_id)}
 
 
 # --- Platform Settings ---

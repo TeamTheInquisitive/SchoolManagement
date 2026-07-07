@@ -27,6 +27,41 @@ from src.models.fee import FeeRecord, FeeStructure
 # ---------------------------------------------------------------------------
 
 
+def _validate_parents(parents: list[dict]) -> None:
+    """Validate parent/guardian dicts: name required, relationship required & unique."""
+    seen: set[str] = set()
+    for p in parents or []:
+        if not (p.get("name") or "").strip():
+            raise HTTPException(status_code=400, detail="Each parent/guardian must have a name")
+        rel = (p.get("relationship") or "").strip()
+        if not rel:
+            raise HTTPException(status_code=400, detail="Each parent/guardian must have a relationship")
+        key = rel.lower()
+        if key in seen:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Duplicate relationship '{rel}' — each parent/guardian must have a unique relationship",
+            )
+        seen.add(key)
+
+
+def _build_parent(school_id, name: str, relationship, phone, email, occupation, is_primary: bool) -> Parent:
+    """Construct a Parent model from raw fields."""
+    name = (name or "").strip()
+    parts = name.split(" ", 1)
+    return Parent(
+        school_id=school_id,
+        first_name=parts[0],
+        last_name=parts[1] if len(parts) > 1 else None,
+        full_name=name,
+        relation=relationship or "Parent/Guardian",
+        phone=phone,
+        email=email,
+        occupation=occupation,
+        is_primary_contact=is_primary,
+    )
+
+
 async def _resolve_staff_id(db: AsyncSession, user_id: UUID, school_id: UUID) -> UUID | None:
     """Resolve staff.id from a user_id. Tries user_id link first, then email fallback. Returns None if not found."""
     staff_result = await db.execute(select(Staff).where(Staff.user_id == user_id, Staff.school_id == school_id))
@@ -222,11 +257,24 @@ async def list_students(
         pw_changed_map = {row.student_id: row.password_changed for row in user_result}
 
         sp_result = await db.execute(
-            select(StudentParent.student_id, Parent.full_name, Parent.phone, Parent.email, Parent.relation)
+            select(
+                StudentParent.student_id, Parent.full_name, Parent.phone, Parent.email,
+                Parent.relation, Parent.occupation, Parent.is_primary_contact,
+            )
             .join(Parent, Parent.id == StudentParent.parent_id)
             .where(StudentParent.student_id.in_(student_ids), StudentParent.is_active.is_(True))
         )
-        parent_map = {row.student_id: {"parent_name": row.full_name, "parent_phone": row.phone, "parent_email": row.email, "parent_relationship": row.relation} for row in sp_result}
+        parent_map = {}
+        parents_map: dict = {}
+        for row in sp_result:
+            parents_map.setdefault(row.student_id, []).append({
+                "name": row.full_name, "relationship": row.relation,
+                "phone": row.phone, "email": row.email,
+                "occupation": row.occupation, "is_primary_contact": bool(row.is_primary_contact),
+            })
+            # Legacy single-parent fields: prefer primary contact, else first seen
+            if row.student_id not in parent_map or row.is_primary_contact:
+                parent_map[row.student_id] = {"parent_name": row.full_name, "parent_phone": row.phone, "parent_email": row.email, "parent_relationship": row.relation}
 
         # Transport enrollment lookup
         from src.models.transport import StudentTransport
@@ -243,6 +291,7 @@ async def list_students(
             item["password_changed"] = pw_changed_map.get(item["id"], False)
             item["transport_enrolled"] = item["id"] in transport_enrolled_ids
             item.update(parent_map.get(item["id"], {}))
+            item["parents"] = parents_map.get(item["id"], [])
 
     # Compute summary scoped to current academic year
     total_all_result = await db.execute(
@@ -414,18 +463,26 @@ async def create_student(
                     )
                     db.add(enrollment)
 
-    # Create parent if provided
-    if data.get("parent_name"):
-        parent_name_parts = data["parent_name"].split(" ", 1)
-        parent = Parent(
-            school_id=school_id,
-            first_name=parent_name_parts[0],
-            last_name=parent_name_parts[1] if len(parent_name_parts) > 1 else None,
-            full_name=data["parent_name"],
-            relation=data.get("parent_relationship", "Parent/Guardian"),
-            phone=data.get("parent_phone"),
-            email=data.get("parent_email"),
-            is_primary_contact=True,
+    # Create parents/guardians
+    parents_list = data.get("parents")
+    if parents_list:
+        _validate_parents(parents_list)
+        for idx, p in enumerate(parents_list):
+            is_primary = p.get("is_primary_contact")
+            if is_primary is None:
+                is_primary = idx == 0
+            parent = _build_parent(
+                school_id, p.get("name"), p.get("relationship"),
+                p.get("phone"), p.get("email"), p.get("occupation"), bool(is_primary),
+            )
+            db.add(parent)
+            await db.flush()
+            db.add(StudentParent(school_id=school_id, student_id=student.id, parent_id=parent.id))
+    elif data.get("parent_name"):
+        # Legacy single-parent path (e.g., bulk import)
+        parent = _build_parent(
+            school_id, data["parent_name"], data.get("parent_relationship", "Parent/Guardian"),
+            data.get("parent_phone"), data.get("parent_email"), data.get("parent_occupation"), True,
         )
         db.add(parent)
         await db.flush()
@@ -481,6 +538,14 @@ async def create_student(
                 # Skip excluded fees
                 excluded_ids = data.get("excluded_fee_ids") or []
                 if str(fs.id) in excluded_ids:
+                    continue
+                # Category applicability by student type:
+                # hostel fee -> hostellers only; transport fee -> day scholars only
+                _cat = (fs.fee_category or "").lower()
+                _is_hosteller = data.get("student_type") == "Hosteller"
+                if _cat == "hostel" and not _is_hosteller:
+                    continue
+                if _cat == "transport" and _is_hosteller:
                     continue
                 due = date.today() + timedelta(days=30)
                 concession_amount = max(0, float(concessions.get(str(fs.id), 0)))
@@ -681,27 +746,31 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
                 if sec:
                     section_val = sec.name
 
-    # Get parent info
+    # Get parent info (all parents/guardians)
     parent_info = None
+    parents_info = []
     sp_result = await db.execute(
-        select(StudentParent).where(
+        select(Parent)
+        .join(StudentParent, StudentParent.parent_id == Parent.id)
+        .where(
             StudentParent.student_id == student.id,
             StudentParent.school_id == school_id,
             StudentParent.is_active.is_(True),
         )
     )
-    sp = sp_result.scalars().first()
-    if sp:
-        p_result = await db.execute(select(Parent).where(Parent.id == sp.parent_id))
-        parent = p_result.scalar_one_or_none()
-        if parent:
-            parent_info = {
-                "name": parent.full_name,
-                "phone": parent.phone,
-                "email": parent.email,
-                "emergency_contact": parent.alternate_phone or parent.phone,
-                "relationship": parent.relation,
-            }
+    for parent in sp_result.scalars().all():
+        entry = {
+            "name": parent.full_name,
+            "phone": parent.phone,
+            "email": parent.email,
+            "emergency_contact": parent.alternate_phone or parent.phone,
+            "relationship": parent.relation,
+            "occupation": parent.occupation,
+            "is_primary_contact": bool(parent.is_primary_contact),
+        }
+        parents_info.append(entry)
+        if parent_info is None or parent.is_primary_contact:
+            parent_info = entry
 
     # Get mentor info
     mentor_info = None
@@ -792,6 +861,7 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
         "state": student.state,
         "pincode": student.pincode,
         "parent": parent_info,
+        "parents": parents_info,
         "parent_name": parent_info.get("name") if parent_info else None,
         "parent_phone": parent_info.get("phone") if parent_info else None,
         "parent_email": parent_info.get("email") if parent_info else None,
@@ -882,53 +952,84 @@ async def update_student(
         student.first_name = name_parts[0]
         student.last_name = name_parts[1] if len(name_parts) > 1 else None
 
-    # Update parent details if provided
-    parent_fields = ["parent_name", "parent_phone", "parent_email", "parent_relationship"]
-    if any(f in data for f in parent_fields):
-        sp_result = await db.execute(
+    # Update parents/guardians
+    parents_list = data.get("parents")
+    if parents_list is not None:
+        _validate_parents(parents_list)
+        # Replace the existing parent set for this student
+        existing_sp = await db.execute(
             select(StudentParent).where(
                 StudentParent.student_id == student.id,
                 StudentParent.school_id == school_id,
-                StudentParent.is_active.is_(True),
             )
         )
-        sp = sp_result.scalars().first()
-        if sp:
-            p_result = await db.execute(select(Parent).where(Parent.id == sp.parent_id))
-            parent = p_result.scalar_one_or_none()
-            if parent:
-                if "parent_name" in data and data["parent_name"]:
-                    parent.full_name = data["parent_name"]
-                    parts = data["parent_name"].split(" ", 1)
-                    parent.first_name = parts[0]
-                    parent.last_name = parts[1] if len(parts) > 1 else None
-                if "parent_phone" in data:
-                    parent.phone = data["parent_phone"]
-                if "parent_email" in data:
-                    parent.email = data["parent_email"]
-                if "parent_relationship" in data:
-                    parent.relation = data["parent_relationship"]
-        elif data.get("parent_name"):
-            # No existing parent - create one
-            parent_name_parts = data["parent_name"].split(" ", 1)
-            parent = Parent(
-                school_id=school_id,
-                first_name=parent_name_parts[0],
-                last_name=parent_name_parts[1] if len(parent_name_parts) > 1 else None,
-                full_name=data["parent_name"],
-                relation=data.get("parent_relationship", "Parent/Guardian"),
-                phone=data.get("parent_phone"),
-                email=data.get("parent_email"),
-                is_primary_contact=True,
+        for sp in existing_sp.scalars().all():
+            parent_row = (
+                await db.execute(select(Parent).where(Parent.id == sp.parent_id))
+            ).scalar_one_or_none()
+            await db.delete(sp)
+            if parent_row is not None:
+                await db.delete(parent_row)
+        await db.flush()
+        for idx, p in enumerate(parents_list):
+            is_primary = p.get("is_primary_contact")
+            if is_primary is None:
+                is_primary = idx == 0
+            parent = _build_parent(
+                school_id, p.get("name"), p.get("relationship"),
+                p.get("phone"), p.get("email"), p.get("occupation"), bool(is_primary),
             )
             db.add(parent)
             await db.flush()
-            student_parent = StudentParent(
-                school_id=school_id,
-                student_id=student.id,
-                parent_id=parent.id,
+            db.add(StudentParent(school_id=school_id, student_id=student.id, parent_id=parent.id))
+    else:
+        # Legacy single-parent update path
+        parent_fields = ["parent_name", "parent_phone", "parent_email", "parent_relationship"]
+        if any(f in data for f in parent_fields):
+            sp_result = await db.execute(
+                select(StudentParent).where(
+                    StudentParent.student_id == student.id,
+                    StudentParent.school_id == school_id,
+                    StudentParent.is_active.is_(True),
+                )
             )
-            db.add(student_parent)
+            sp = sp_result.scalars().first()
+            if sp:
+                p_result = await db.execute(select(Parent).where(Parent.id == sp.parent_id))
+                parent = p_result.scalar_one_or_none()
+                if parent:
+                    if "parent_name" in data and data["parent_name"]:
+                        parent.full_name = data["parent_name"]
+                        parts = data["parent_name"].split(" ", 1)
+                        parent.first_name = parts[0]
+                        parent.last_name = parts[1] if len(parts) > 1 else None
+                    if "parent_phone" in data:
+                        parent.phone = data["parent_phone"]
+                    if "parent_email" in data:
+                        parent.email = data["parent_email"]
+                    if "parent_relationship" in data:
+                        parent.relation = data["parent_relationship"]
+            elif data.get("parent_name"):
+                # No existing parent - create one
+                parent_name_parts = data["parent_name"].split(" ", 1)
+                parent = Parent(
+                    school_id=school_id,
+                    first_name=parent_name_parts[0],
+                    last_name=parent_name_parts[1] if len(parent_name_parts) > 1 else None,
+                    full_name=data["parent_name"],
+                    relation=data.get("parent_relationship", "Parent/Guardian"),
+                    phone=data.get("parent_phone"),
+                    email=data.get("parent_email"),
+                    is_primary_contact=True,
+                )
+                db.add(parent)
+                await db.flush()
+                student_parent = StudentParent(
+                    school_id=school_id,
+                    student_id=student.id,
+                    parent_id=parent.id,
+                )
+                db.add(student_parent)
 
     # Update fee concessions if provided
     concessions = data.get("concessions")
@@ -1106,7 +1207,7 @@ async def get_exam_results(
         exam_groups[key]["subjects"].append({
             "name": subject.name if subject else exam.subject_id or "Unknown",
             "marks": float(er.marks_obtained or 0),
-            "total": float(er.total_marks or exam.total_marks or 100),
+            "total": float(exam.total_marks or 100),
             "grade": er.grade,
         })
 

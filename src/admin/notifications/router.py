@@ -178,7 +178,7 @@ async def update_notification(
 ) -> NotificationDetailResponse:
     """Update a notification (only if Scheduled or Draft)."""
     result = await service.update_notification(
-        db, school.id, notification_id, data.model_dump(exclude_unset=True), user.id
+        db, school.id, notification_id, data.model_dump(exclude_unset=True)
     )
     return NotificationDetailResponse(**result)
 
@@ -197,7 +197,7 @@ async def delete_notification(
 ) -> NotificationArchiveResponse:
     """Archive a notification (soft-delete)."""
     result = await service.archive_notification(
-        db, school.id, notification_id, user.id
+        db, school.id, notification_id
     )
     return NotificationArchiveResponse(**result)
 

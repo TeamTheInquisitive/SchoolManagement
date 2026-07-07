@@ -7,6 +7,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -19,13 +20,49 @@ from src.core.security import hash_password
 from src.models import *
 
 
+# Which school to seed under. Defaults to SCH001 to preserve original behavior.
+SEED_SCHOOL_CODE = os.environ.get("SEED_SCHOOL_CODE", "SCH001")
+
+
 def uid():
     return uuid.uuid4()
 
 
 async def get_school(db: AsyncSession):
-    result = await db.execute(select(School).where(School.code == "SCH001"))
-    return result.scalar_one()
+    """Return the target seed school, creating it (and an admin user) if missing.
+
+    The school code is controlled by the SEED_SCHOOL_CODE env var (default SCH001).
+    A school-scoped admin user (admin@<code>.com / admin@123) is created so that
+    FK references like fee penalties/reminders (applied_by/sent_by) resolve.
+    """
+    from src.models.core import User
+
+    result = await db.execute(select(School).where(School.code == SEED_SCHOOL_CODE))
+    school = result.scalar_one_or_none()
+    if school is not None:
+        return school
+
+    school = School(
+        id=uid(), name=f"Demo School ({SEED_SCHOOL_CODE})", code=SEED_SCHOOL_CODE,
+        address_line1="123 Demo Street", city="Bangalore", state="Karnataka",
+        country="India", pincode="560001", phone="+91-9000000000",
+        email=f"office@{SEED_SCHOOL_CODE.lower()}.com", board_affiliation="CBSE",
+        established_year=2010, principal_name="Principal",
+    )
+    db.add(school)
+    await db.flush()
+
+    admin_email = f"admin@{SEED_SCHOOL_CODE.lower()}.com"
+    existing = await db.execute(select(User).where(User.email == admin_email))
+    if existing.scalar_one_or_none() is None:
+        db.add(User(
+            id=uid(), school_id=school.id, email=admin_email,
+            password_hash=hash_password("admin@123"), full_name="School Admin",
+            role="admin",
+        ))
+        await db.flush()
+        print(f"Created school {SEED_SCHOOL_CODE} + admin {admin_email} / admin@123")
+    return school
 
 
 async def seed_academic(db: AsyncSession, school_id: uuid.UUID):
@@ -111,7 +148,7 @@ async def seed_staff(db: AsyncSession, school_id, ay_id, subject_ids, cs_ids):
         # StaffSubject
         if subject and subject in subject_ids:
             db.add(StaffSubject(
-                id=uid(), school_id=school_id,
+                id=uid(), school_id=school_id, academic_year_id=ay_id,
                 staff_id=sid, subject_id=subject_ids[subject], is_primary=True,
             ))
 
@@ -754,7 +791,7 @@ async def seed_transport(db: AsyncSession, school_id, ay_id, student_ids):
 
     for i in range(3):
         db.add(RouteAssignment(
-            id=uid(), school_id=school_id,
+            id=uid(), school_id=school_id, academic_year_id=ay_id,
             route_id=r_ids[i], vehicle_id=v_ids[i],
             driver_id=d_ids[i], helper_id=h_ids[i] if i < 2 else None,
             status="Active",
@@ -817,7 +854,8 @@ async def seed_payroll(db: AsyncSession, school_id, ay_id, staff_ids):
 
     # Salary Advance
     db.add(SalaryAdvance(
-        id=uid(), school_id=school_id, staff_id=list(staff_ids.values())[0],
+        id=uid(), school_id=school_id, academic_year_id=ay_id,
+        staff_id=list(staff_ids.values())[0],
         amount=Decimal("20000"), reason="Medical emergency",
         recovery_months=4, per_month_deduction=Decimal("5000"),
         status="Approved", applied_on=datetime(2025, 10, 1, 10, 0),

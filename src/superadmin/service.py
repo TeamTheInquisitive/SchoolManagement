@@ -351,6 +351,34 @@ async def update_admin_for_school(db: AsyncSession, school_id: uuid.UUID, admin_
     return user
 
 
+async def reset_admin_password(db: AsyncSession, school_id: uuid.UUID, admin_id: uuid.UUID, new_password: str) -> User | None:
+    result = await db.execute(
+        select(User).where(User.id == admin_id, User.school_id == school_id, User.role == "admin")
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        return None
+    user.password_hash = hash_password(new_password)
+    user.password_changed = False
+    user.failed_login_attempts = 0
+    user.is_locked = False
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def delete_admin_for_school(db: AsyncSession, school_id: uuid.UUID, admin_id: uuid.UUID) -> bool:
+    result = await db.execute(
+        select(User).where(User.id == admin_id, User.school_id == school_id, User.role == "admin")
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        return False
+    await db.delete(user)
+    await db.commit()
+    return True
+
+
 async def get_users(db: AsyncSession, role: str | None = None, school_id: uuid.UUID | None = None) -> dict:
     query = select(User).where(User.is_active.is_(True))
     if role:

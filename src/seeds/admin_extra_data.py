@@ -8,6 +8,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 import uuid
 from datetime import date, datetime, timedelta
@@ -21,6 +22,9 @@ from src.models import *
 
 random.seed(100)
 
+# Which school to expand. Defaults to SCH001 to preserve original behavior.
+SEED_SCHOOL_CODE = os.environ.get("SEED_SCHOOL_CODE", "SCH001")
+
 
 def uid():
     return uuid.uuid4()
@@ -28,7 +32,7 @@ def uid():
 
 async def main():
     async with async_session_factory() as db:
-        r = await db.execute(text("SELECT id FROM schools WHERE code='SCH001'"))
+        r = await db.execute(text(f"SELECT id FROM schools WHERE code='{SEED_SCHOOL_CODE}'"))
         school_id = r.scalar()
 
         r = await db.execute(text(f"SELECT id FROM academic_years WHERE school_id='{school_id}' AND is_current=1"))
@@ -232,7 +236,7 @@ async def main():
         await db.flush()
         for i in range(6):
             db.add(RouteAssignment(
-                id=uid(), school_id=school_id,
+                id=uid(), school_id=school_id, academic_year_id=ay_id,
                 route_id=r_ids[i], vehicle_id=v_ids[i],
                 driver_id=d_ids[i], helper_id=h_ids[i] if i < len(h_ids) else None,
                 status="Active",
@@ -262,7 +266,8 @@ async def main():
         ]
         for idx, amount, reason, months in advance_data:
             db.add(SalaryAdvance(
-                id=uid(), school_id=school_id, staff_id=staff_list[idx],
+                id=uid(), school_id=school_id, academic_year_id=ay_id,
+                staff_id=staff_list[idx],
                 amount=amount, reason=reason,
                 recovery_months=months, per_month_deduction=amount / months,
                 status="Approved", applied_on=datetime(2025, 10, 1, 10, 0),

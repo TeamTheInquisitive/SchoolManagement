@@ -39,7 +39,7 @@ async def create_book(
     school: SchoolDep,
     user: AdminUser,
 ) -> BookResponse:
-    result = await service.create_book(db, school.id, data.model_dump(), user.id)
+    result = await service.create_book(db, school.id, data.model_dump())
     return BookResponse(**result)
 
 
@@ -50,7 +50,7 @@ async def issue_book(
     school: SchoolDep,
     user: AdminUser,
 ) -> BookIssueResponse:
-    result = await service.issue_book(db, school.id, data.model_dump(), user.id)
+    result = await service.issue_book(db, school.id, data.model_dump())
     return BookIssueResponse(**result)
 
 
@@ -61,7 +61,7 @@ async def return_book(
     school: SchoolDep,
     user: AdminUser,
 ) -> BookIssueResponse:
-    result = await service.return_book(db, school.id, data.issue_id, user.id)
+    result = await service.return_book(db, school.id, data.issue_id)
     return BookIssueResponse(**result)
 
 
