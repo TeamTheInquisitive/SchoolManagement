@@ -4,7 +4,7 @@
 
 ```
 Teacher Portal API:
-├── Runtime: Python (FastAPI)
+├── Runtime: Node.js / Python (Django/FastAPI)
 ├── Database: PostgreSQL (shared with Admin module)
 ├── Auth: JWT (httpOnly cookies) + Refresh Token rotation
 ├── Multi-tenancy: X-School-Code header → DB schema/filter
@@ -22,7 +22,7 @@ Teacher Portal API:
 
 3. **Academic year scoping** — All transactional data (attendance, grades, assignments, leaves, timetable) is scoped by `academic_year`. If the `?academic_year` param is omitted, the current academic year is used.
 
-4. **Read-heavy, limited writes** — Teachers can CREATE/UPDATE attendance, assignments, grades, and adhoc classes for their own classes. They can READ their timetable, student details, and dashboard data. They can APPLY for leaves (admin approves/rejects).
+4. **Read-heavy, limited writes** — Teachers can CREATE/UPDATE attendance, assignments, grades, quizzes, and notifications for their own classes. They can READ their timetable, student details, and dashboard data. They can APPLY for leaves (admin approves/rejects).
 
 5. **Class-bound operations** — Write operations (attendance, grades, assignments) are restricted to classes assigned to the authenticated teacher. Attempting to write to an unassigned class returns 403.
 
@@ -48,7 +48,7 @@ Teacher Portal API:
 | Header | Description | Required |
 |--------|-------------|----------|
 | `Content-Type` | `application/json` | Yes |
-| `X-School-Code` | School tenant identifier | Yes (except /auth/login) |
+| `X-School-Code` | School tenant identifier | Yes (except /auth/login/) |
 | `Cookie` | httpOnly auth cookies (sent automatically) | Yes (after login) |
 
 ### Pagination Convention
@@ -58,58 +58,101 @@ All list endpoints support:
 | Param | Default | Description |
 |-------|---------|-------------|
 | `page` | 1 | Page number |
-| `page_size` | 20 | Items per page |
+| `page_size` | 20 | Items per page (max 100) |
+
+Response shape: `{ count, page, page_size, total_pages, results[] }`
 
 ### HTTP Status Codes
 
 | Code | Meaning |
 |------|---------|
-| 200  | Success |
+| 200  | Success / Soft-delete successful |
 | 201  | Created |
 | 400  | Bad Request (validation error) |
-| 401  | Unauthorized |
-| 403  | Forbidden (wrong role or unassigned class) |
+| 401  | Unauthorized (not logged in / token expired) |
+| 403  | Forbidden (not assigned to this class / insufficient role) |
 | 404  | Not Found |
-| 409  | Conflict (duplicate) |
+| 409  | Conflict (duplicate entry) |
+| 422  | Unprocessable Entity |
 | 500  | Internal Server Error |
 
+### Error Response Format
+
+```json
+{
+  "error": "Human-readable error message",
+  "code": "ERROR_CODE",
+  "details": {
+    "field_name": ["Field-specific error messages"]
+  }
+}
+```
+
 ---
 
-## All Endpoints (77 Teacher-specific + 8 Shared Auth = 85 total)
+## All Endpoints (65 Teacher-specific + 7 Shared Auth = 72 total)
 
 ---
 
-### Auth — Shared (8)
+### Auth — Shared (7)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/auth/login` | Login with email/password |
-| POST | `/api/v1/auth/logout` | Logout and clear cookies |
-| POST | `/api/v1/auth/refresh-token` | Refresh access token |
-| GET | `/api/v1/auth/me` | Get current user profile |
-| GET | `/api/v1/auth/school-profile` | Get school profile |
-| POST | `/api/v1/auth/forgot-password` | Send password reset email |
-| POST | `/api/v1/auth/reset-password` | Reset password via token |
-| POST | `/api/v1/auth/change-password` | Change password (authenticated) |
+| POST | `/api/v1/auth/login/` | Login with email/password |
+| POST | `/api/v1/auth/refresh-token/` | Refresh access token |
+| GET | `/api/v1/auth/me/` | Get current user profile |
+| POST | `/api/v1/auth/logout/` | Logout and clear cookies |
+| POST | `/api/v1/auth/forgot-password/` | Send password reset email |
+| POST | `/api/v1/auth/reset-password/` | Reset password via token |
+| POST | `/api/v1/auth/change-password/` | Change password (authenticated) |
 
 ---
 
-### Dashboard (12)
+### Dashboard (8)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/teacher/dashboard/stats` | KPI cards (students, pending reviews, upcoming exams, classes today) |
-| GET | `/api/v1/teacher/dashboard/today-schedule` | Today's class schedule |
-| GET | `/api/v1/teacher/dashboard/pending-reviews` | Assignments pending review |
-| GET | `/api/v1/teacher/dashboard/upcoming-exams` | Upcoming exams for teacher's classes |
-| GET | `/api/v1/teacher/dashboard/classes-summary` | Summary of assigned classes |
-| GET | `/api/v1/teacher/dashboard/leave-updates` | Recent leave application updates |
-| GET | `/api/v1/teacher/dashboard/mentees-summary` | Mentee students summary |
-| GET | `/api/v1/teacher/dashboard/adhoc-classes` | Adhoc classes summary |
-| GET | `/api/v1/teacher/dashboard/attendance-status` | Attendance status for class teacher's classes (today) |
-| GET | `/api/v1/teacher/dashboard/upcoming-meetings` | Upcoming parent-teacher meetings |
-| GET | `/api/v1/teacher/dashboard/profile` | Get own profile |
-| PUT | `/api/v1/teacher/dashboard/profile` | Update own profile |
+| GET | `/api/v1/teacher/dashboard/stats/` | KPI cards (total students, pending reviews, upcoming exams, classes today) |
+| GET | `/api/v1/teacher/dashboard/today-schedule/` | Today's class schedule (time, class, subject, duration) |
+| GET | `/api/v1/teacher/dashboard/pending-reviews/` | Assignments pending review |
+| GET | `/api/v1/teacher/dashboard/upcoming-exams/` | Upcoming exams for teacher's classes |
+| GET | `/api/v1/teacher/dashboard/classes-summary/` | My Classes with progress (attendance %, assignments %) |
+| GET | `/api/v1/teacher/dashboard/leave-updates/` | Recent leave applications + their status |
+| GET | `/api/v1/teacher/dashboard/mentees-summary/` | My Mentees quick list |
+| GET | `/api/v1/teacher/dashboard/adhoc-classes/` | Adhoc/substitute classes (past + upcoming) |
+
+---
+
+### My Classes (4)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/teacher/classes/` | List teacher's assigned classes with subject & student count |
+| GET | `/api/v1/teacher/classes/:class_id/students/` | List students in a specific class (teacher must be assigned) |
+| GET | `/api/v1/teacher/mentees/` | List teacher's assigned mentees |
+| GET | `/api/v1/teacher/mentees/:student_id/` | Get mentee details with mentoring info |
+
+---
+
+### Student Details (9)
+
+> **Access Control:** Full student profile is ONLY accessible if the teacher is:
+> - The student's **assigned mentor**, OR
+> - The **class teacher** for the student's class
+>
+> Subject teachers (who only teach a class) can access class-level data (attendance, grades, assignments) but NOT individual student profiles. Returns 403 for unauthorized access.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/teacher/students/` | List students (mentor's mentees + class teacher's students only) |
+| GET | `/api/v1/teacher/students/:id/` | Get student full profile (mentor/class teacher only) |
+| GET | `/api/v1/teacher/students/:id/exam-results/` | Exam results + performance analysis charts data |
+| GET | `/api/v1/teacher/students/:id/parent-meetings/` | Parent meeting history |
+| GET | `/api/v1/teacher/students/:id/activities/` | Extra-curricular activities + awards |
+| GET | `/api/v1/teacher/students/:id/fee-summary/` | Fee structure + payments + download receipt |
+| GET | `/api/v1/teacher/students/:id/behavior/` | Behavior, conduct notes, disciplinary records |
+| GET | `/api/v1/teacher/students/:id/recent-attendance/` | Recent attendance records |
+| GET | `/api/v1/teacher/students/:id/assignments/` | Assignment submissions for this student |
 
 ---
 
@@ -117,61 +160,12 @@ All list endpoints support:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/teacher/attendance` | Get attendance for a class/date |
-| POST | `/api/v1/teacher/attendance` | Submit attendance for a class |
-| PUT | `/api/v1/teacher/attendance` | Update previously submitted attendance |
-| GET | `/api/v1/teacher/attendance/history` | Attendance submission history (paginated) |
-| DELETE | `/api/v1/teacher/attendance/{session_id}` | Cancel an attendance session |
-| GET | `/api/v1/teacher/attendance/summary` | Monthly attendance summary with students below threshold |
-
-**Query Parameters:**
-
-| Endpoint | Param | Type | Description |
-|----------|-------|------|-------------|
-| `GET /attendance` | `class_section_id` | uuid | Class section ID |
-| `GET /attendance` | `date` | date? | Target date |
-| `GET /attendance/history` | `page`, `page_size` | int | Pagination |
-| `GET /attendance/history` | `class_section_id` | uuid? | Filter by class |
-| `GET /attendance/history` | `from_date` | date? | Filter from date |
-| `GET /attendance/history` | `to_date` | date? | Filter to date |
-| `GET /attendance/summary` | `class_section_id` | uuid | Class section |
-| `GET /attendance/summary` | `month` | int | Month number (required) |
-| `GET /attendance/summary` | `year` | int | Year (required) |
-| `GET /attendance/summary` | `academic_year` | string? | Academic year |
-
----
-
-### Grades (9)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/teacher/grades` | List grades for a class/exam |
-| POST | `/api/v1/teacher/grades` | Submit grades (bulk) |
-| PUT | `/api/v1/teacher/grades` | Update grades |
-| GET | `/api/v1/teacher/grades/exams` | List exams available for grading |
-| POST | `/api/v1/teacher/grades/exams/{exam_id}/publish` | Publish exam results |
-| GET | `/api/v1/teacher/grades/report` | Grade report with distribution |
-| GET | `/api/v1/teacher/grades/leaderboard` | Leaderboard for a class/exam |
-| POST | `/api/v1/teacher/grades/import` | Import grades from CSV |
-| GET | `/api/v1/teacher/grades/export` | Export grades as CSV/PDF |
-
-**Query Parameters:**
-
-| Endpoint | Param | Type | Description |
-|----------|-------|------|-------------|
-| `GET /grades` | `class_id` | uuid? | Class section ID |
-| `GET /grades` | `exam_id` | uuid? | Exam ID |
-| `GET /grades` | `page`, `page_size` | int | Pagination |
-| `GET /grades/exams` | `class_id` | uuid? | Filter by class |
-| `GET /grades/exams` | `academic_year` | string? | Filter by year |
-| `GET /grades/report` | `class_id` | uuid? | Class section |
-| `GET /grades/report` | `exam_id` | uuid? | Exam ID |
-| `GET /grades/leaderboard` | `class_id` | uuid? | Class section |
-| `GET /grades/leaderboard` | `exam_id` | uuid? | Exam ID |
-| `GET /grades/leaderboard` | `limit` | int? | Limit results (default=20, max=100) |
-| `GET /grades/export` | `class_id` | uuid? | Class section |
-| `GET /grades/export` | `exam_id` | uuid? | Exam ID |
-| `GET /grades/export` | `format` | string? | Export format (default="csv") |
+| GET | `/api/v1/teacher/attendance/` | Get attendance for class + date (form data) |
+| POST | `/api/v1/teacher/attendance/` | Submit attendance (Present/Absent/Late per student) |
+| PUT | `/api/v1/teacher/attendance/` | Update attendance (corrections) |
+| GET | `/api/v1/teacher/attendance/history/` | Past submissions list (with counts) |
+| DELETE | `/api/v1/teacher/attendance/:id/` | Soft-delete attendance record |
+| GET | `/api/v1/teacher/attendance/summary/` | Attendance summary stats for a class |
 
 ---
 
@@ -179,134 +173,56 @@ All list endpoints support:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/teacher/assignments` | List assignments (paginated, filterable) |
-| POST | `/api/v1/teacher/assignments` | Create new assignment |
-| GET | `/api/v1/teacher/assignments/{assignment_id}` | Get assignment detail |
-| PUT | `/api/v1/teacher/assignments/{assignment_id}` | Update assignment |
-| DELETE | `/api/v1/teacher/assignments/{assignment_id}` | Delete (deactivate) assignment |
-| GET | `/api/v1/teacher/assignments/{assignment_id}/submissions` | List student submissions |
-| POST | `/api/v1/teacher/assignments/{assignment_id}/submissions/{submission_id}/grade` | Grade a submission |
-| GET | `/api/v1/teacher/assignments/{assignment_id}/submissions/export` | Export submissions as CSV |
-
-**Query Parameters:**
-
-| Endpoint | Param | Type | Description |
-|----------|-------|------|-------------|
-| `GET /assignments` | `page`, `page_size` | int | Pagination |
-| `GET /assignments` | `class_id` | uuid? | Filter by class |
-| `GET /assignments` | `search` | string? | Search assignments |
-| `GET /assignments` | `subject` | string? | Filter by subject |
-| `GET /assignments` | `status` | string? | Filter by status |
-| `GET /assignments` | `academic_year` | string? | Filter by year |
-| `GET /{id}/submissions` | `page`, `page_size` | int | Pagination |
-| `GET /{id}/submissions` | `status` | string? | Filter by status |
+| GET | `/api/v1/teacher/assignments/` | List assignments + KPI summary |
+| POST | `/api/v1/teacher/assignments/` | Create assignment (class + section + due + marks) |
+| GET | `/api/v1/teacher/assignments/:id/` | Get assignment details + submission stats |
+| PUT | `/api/v1/teacher/assignments/:id/` | Update assignment |
+| DELETE | `/api/v1/teacher/assignments/:id/` | Soft-delete assignment |
+| GET | `/api/v1/teacher/assignments/:id/submissions/` | List submissions (graded/pending review) |
+| POST | `/api/v1/teacher/assignments/:id/submissions/:submission_id/grade/` | Grade a submission |
+| GET | `/api/v1/teacher/assignments/:id/submissions/export/` | Export submissions CSV |
 
 ---
 
-### Adhoc Classes (4)
+### Grades (8)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/teacher/adhoc-classes` | List adhoc classes (paginated) |
-| POST | `/api/v1/teacher/adhoc-classes` | Create adhoc class (extra/substitute) |
-| PUT | `/api/v1/teacher/adhoc-classes/{adhoc_id}` | Update adhoc class |
-| DELETE | `/api/v1/teacher/adhoc-classes/{adhoc_id}` | Cancel adhoc class |
-
-**Query Parameters:**
-
-| Endpoint | Param | Type | Description |
-|----------|-------|------|-------------|
-| `GET /adhoc-classes` | `page`, `page_size` | int | Pagination |
-| `GET /adhoc-classes` | `status` | string? | Filter by status |
-| `GET /adhoc-classes` | `from_date` | date? | Filter from date |
-| `GET /adhoc-classes` | `to_date` | date? | Filter to date |
+| GET | `/api/v1/teacher/grades/` | Get grades for class + exam (with KPI stats) |
+| POST | `/api/v1/teacher/grades/` | Submit grades (bulk) for a class + exam |
+| PUT | `/api/v1/teacher/grades/` | Update grades for a class + exam |
+| GET | `/api/v1/teacher/grades/exams/` | List available exams for grading |
+| GET | `/api/v1/teacher/grades/report/` | Exam report (marks + grade distribution) |
+| GET | `/api/v1/teacher/grades/leaderboard/` | Ranked leaderboard for exam + class |
+| POST | `/api/v1/teacher/grades/import/` | Import grades from CSV |
+| GET | `/api/v1/teacher/grades/export/` | Export grades report (CSV/PDF) |
 
 ---
 
-### Leaves (7)
+### Quizzes (9) — Moved to V2
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/teacher/leaves/balance` | Get leave balance by type |
-| GET | `/api/v1/teacher/leaves/holidays` | Get holidays list for leave calculation |
-| GET | `/api/v1/teacher/leaves/upcoming` | Get upcoming approved leaves |
-| GET | `/api/v1/teacher/leaves` | Leave application history (paginated) |
-| POST | `/api/v1/teacher/leaves` | Apply for leave |
-| GET | `/api/v1/teacher/leaves/{leave_id}` | Get leave application detail |
-| DELETE | `/api/v1/teacher/leaves/{leave_id}` | Cancel a pending/approved leave |
-
-**Query Parameters:**
-
-| Endpoint | Param | Type | Description |
-|----------|-------|------|-------------|
-| `GET /leaves` | `page`, `page_size` | int | Pagination |
-| `GET /leaves` | `status` | string? | Filter by status |
-| `GET /leaves` | `leave_type` | string? | Filter by type |
+| GET | `/api/v1/teacher/quizzes/` | List quizzes + KPIs (total, active, drafts, total attempts) |
+| POST | `/api/v1/teacher/quizzes/` | Create quiz (title, subject, chapter, class, difficulty, duration, questions, passing %, dates, negative marking) |
+| GET | `/api/v1/teacher/quizzes/:id/` | Get quiz details + attempt stats |
+| PUT | `/api/v1/teacher/quizzes/:id/` | Update quiz (title, subject, chapter, class, difficulty, duration, passing %, dates, description) |
+| DELETE | `/api/v1/teacher/quizzes/:id/` | Soft-delete quiz |
+| POST | `/api/v1/teacher/quizzes/:id/publish/` | Publish a draft quiz |
+| POST | `/api/v1/teacher/quizzes/:id/duplicate/` | Duplicate an existing quiz |
+| GET | `/api/v1/teacher/quizzes/:id/leaderboard/` | Leaderboard (total attempts, avg score, highest, pass rate, ranked table with time taken) |
+| GET | `/api/v1/teacher/quizzes/:id/questions/` | Get/manage questions for a quiz |
 
 ---
 
-### Students (25)
+### Notifications & Messaging (4)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/teacher/students` | List students in teacher's classes |
-| GET | `/api/v1/teacher/students/mentees` | List assigned mentee students |
-| GET | `/api/v1/teacher/students/{student_id}` | Get full student detail |
-| GET | `/api/v1/teacher/students/{student_id}/exam-results` | Student exam results & performance |
-| GET | `/api/v1/teacher/students/{student_id}/parent-meetings` | Parent meeting history |
-| POST | `/api/v1/teacher/students/{student_id}/parent-meetings` | Create a parent meeting |
-| PUT | `/api/v1/teacher/students/{student_id}/parent-meetings/{meeting_id}` | Update a parent meeting |
-| DELETE | `/api/v1/teacher/students/{student_id}/parent-meetings/{meeting_id}` | Delete a parent meeting |
-| GET | `/api/v1/teacher/students/{student_id}/activities` | Activities & awards |
-| POST | `/api/v1/teacher/students/{student_id}/activities` | Create an activity |
-| PUT | `/api/v1/teacher/students/{student_id}/activities/{activity_id}` | Update an activity |
-| DELETE | `/api/v1/teacher/students/{student_id}/activities/{activity_id}` | Delete an activity |
-| POST | `/api/v1/teacher/students/{student_id}/awards` | Create an award |
-| PUT | `/api/v1/teacher/students/{student_id}/awards/{award_id}` | Update an award |
-| DELETE | `/api/v1/teacher/students/{student_id}/awards/{award_id}` | Delete an award |
-| POST | `/api/v1/teacher/students/{student_id}/disciplinary-records` | Create a disciplinary record |
-| PUT | `/api/v1/teacher/students/{student_id}/disciplinary-records/{record_id}` | Update a disciplinary record |
-| DELETE | `/api/v1/teacher/students/{student_id}/disciplinary-records/{record_id}` | Delete a disciplinary record |
-| GET | `/api/v1/teacher/students/{student_id}/fee-summary` | Student fee summary |
-| GET | `/api/v1/teacher/students/{student_id}/behavior` | Behavior & conduct |
-| GET | `/api/v1/teacher/students/{student_id}/recent-attendance` | Recent attendance records |
-| GET | `/api/v1/teacher/students/{student_id}/assignments` | Student assignment submissions |
-| PUT | `/api/v1/teacher/students/{student_id}` | Update student info (mentor notes) |
-| GET | `/api/v1/teacher/students/{student_id}/mentor-notes` | Get mentor notes for a student |
-| PUT | `/api/v1/teacher/students/{student_id}/mentor-notes` | Update mentor notes for a student |
-
-**Query Parameters:**
-
-| Endpoint | Param | Type | Description |
-|----------|-------|------|-------------|
-| `GET /students` | `page`, `page_size` | int | Pagination |
-| `GET /students` | `search` | string? | Search by name/roll |
-| `GET /students` | `class_name` | string? | Filter by class |
-| `GET /students` | `section` | string? | Filter by section |
-| `GET /{id}/exam-results` | `academic_year` | string? | Filter by academic year |
-| `GET /{id}/fee-summary` | `academic_year` | string? | Filter by academic year |
-| `GET /{id}/recent-attendance` | `limit` | int? | Number of records (default=10) |
-| `GET /{id}/assignments` | `academic_year` | string? | Filter by academic year |
-
----
-
-### Notifications (4)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/teacher/notifications/sent` | List notifications sent by this teacher |
-| GET | `/api/v1/teacher/notifications` | List notifications (paginated) |
-| GET | `/api/v1/teacher/notifications/{notification_id}` | Get notification detail |
-| PUT | `/api/v1/teacher/notifications/{notification_id}/read` | Mark notification as read |
-
-**Query Parameters:**
-
-| Endpoint | Param | Type | Description |
-|----------|-------|------|-------------|
-| `GET /notifications/sent` | `page`, `page_size` | int | Pagination |
-| `GET /notifications` | `page`, `page_size` | int | Pagination |
-| `GET /notifications` | `type` | string? | Filter by type |
-| `GET /notifications` | `is_read` | bool? | Filter by read status |
+| GET | `/api/v1/teacher/notifications/` | List sent messages + KPI stats |
+| POST | `/api/v1/teacher/notifications/` | Send WhatsApp message (immediate or scheduled) |
+| GET | `/api/v1/teacher/notifications/:id/` | Get message details + delivery stats |
+| GET | `/api/v1/teacher/notifications/recipients/` | Get recipient groups + class filtering |
 
 ---
 
@@ -314,16 +230,32 @@ All list endpoints support:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/teacher/timetable` | Weekly timetable with stats |
-| GET | `/api/v1/teacher/timetable/today` | Today's schedule |
+| GET | `/api/v1/teacher/timetable/` | Weekly timetable + KPIs + day filter (type: Lecture/Practical/Free/Break) |
+| GET | `/api/v1/teacher/timetable/today/` | Today's schedule with stats |
 
-**Query Parameters:**
+---
 
-| Endpoint | Param | Type | Description |
-|----------|-------|------|-------------|
-| `GET /timetable` | `academic_year` | string? | Filter by academic year |
-| `GET /timetable` | `day` | string? | Filter by day of week |
-| `GET /timetable/today` | `date` | date? | Target date (defaults to today) |
+### Adhoc Classes (4)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/teacher/adhoc-classes/` | List adhoc/substitute classes (past + upcoming) |
+| POST | `/api/v1/teacher/adhoc-classes/` | Create/log an adhoc class |
+| PUT | `/api/v1/teacher/adhoc-classes/:id/` | Update adhoc class (mark done, add notes) |
+| DELETE | `/api/v1/teacher/adhoc-classes/:id/` | Soft-delete adhoc class |
+
+---
+
+### Leaves (6)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/teacher/leaves/balance/` | Leave balance per type + overall summary |
+| GET | `/api/v1/teacher/leaves/` | Leave history (filter: status, type) |
+| GET | `/api/v1/teacher/leaves/upcoming/` | Upcoming/planned leaves (future dates) |
+| POST | `/api/v1/teacher/leaves/` | Apply for leave (type, dates, reason) |
+| GET | `/api/v1/teacher/leaves/:id/` | Get leave application details |
+| DELETE | `/api/v1/teacher/leaves/:id/` | Cancel a pending leave |
 
 ---
 
@@ -331,15 +263,18 @@ All list endpoints support:
 
 | Module | Endpoints | Notes |
 |--------|-----------|-------|
-| Auth (shared) | 8 | Same as admin/student |
-| Dashboard | 12 | KPIs, schedule, reviews, exams, classes, leaves, mentees, adhoc, attendance-status, upcoming-meetings, profile |
-| Attendance | 6 | Submit + update + history + cancel + summary |
-| Grades | 9 | Submit + update + exams list + publish + report + leaderboard + import/export |
-| Assignments | 8 | CRUD + submissions + grading + export |
-| Adhoc Classes | 4 | CRUD for extra/substitute classes |
-| Leaves | 7 | Balance + holidays + upcoming + history + apply + detail + cancel |
-| Students | 25 | List + mentees + detail + results + meetings CRUD + activities CRUD + awards CRUD + disciplinary CRUD + fees + behavior + attendance + assignments + update + mentor-notes |
-| Notifications | 4 | Sent + list + detail + mark read |
-| Timetable | 2 | Weekly + today |
-| **Teacher-specific** | **77** | |
-| **Total (incl. shared auth)** | **85** | |
+| Auth (shared) | 7 | Same as admin module |
+| Dashboard | 8 | KPIs, schedule, classes summary, leave updates, mentees, adhoc |
+| My Classes | 4 | Class cards + students + mentees |
+| Student Details | 9 | Read-only profiles + transport, attendance, assignments |
+| Attendance | 6 | Write access (Present/Absent/Late) + history |
+| Assignments | 8 | CRUD + grade submissions + export |
+| Grades | 8 | Grade + report + leaderboard + import/export |
+| Quizzes | 9 | **Moved to V2** |
+| Notifications | 4 | WhatsApp messaging + scheduling |
+| Timetable | 2 | Read-only (own schedule) |
+| Adhoc Classes | 4 | Substitute/extra class tracking |
+| Leaves | 6 | Balance + history + upcoming + apply/cancel |
+| **V1 Teacher-specific** | **59** | |
+| **V2 (Quizzes)** | **9** | |
+| **Total (incl. shared auth)** | **75 (66 V1 + 9 V2)** | |
