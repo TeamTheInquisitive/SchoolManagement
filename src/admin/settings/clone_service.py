@@ -732,11 +732,12 @@ async def _clone_grading_system(
     sys_cloned = sys_skipped = 0
 
     for row in systems:
+        # Unique constraint is (school_id, name) — school-wide, not per year
         existing = await db.execute(
             select(GradeSystem.id).where(
                 GradeSystem.school_id == school_id,
-                GradeSystem.academic_year_id == target_id,
                 GradeSystem.name == row.name,
+                GradeSystem.is_active.is_(True),
             )
         )
         ex = existing.scalar_one_or_none()
