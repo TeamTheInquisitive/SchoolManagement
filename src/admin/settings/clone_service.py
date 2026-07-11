@@ -170,38 +170,41 @@ async def execute_clone(
     warnings: list[str] = []
     results: dict[str, ModuleResult] = {}
 
-    # Phase 1: Independent modules
+    # Phase 1: Independent modules (flush between each to avoid autoflush surprises)
     if modules.academic_structure:
         results["academic_structure"] = await _clone_academic_structure(
             db, school_id, source_year_id, target_year_id, id_map, warnings
         )
+        await db.flush()
 
     if modules.leave_policies:
         results["leave_policies"] = await _clone_leave_policies(
             db, school_id, source_year_id, target_year_id, warnings
         )
+        await db.flush()
 
     if modules.grading_system:
         results["grading_system"] = await _clone_grading_system(
             db, school_id, source_year_id, target_year_id, id_map, warnings
         )
+        await db.flush()
 
     if modules.transport:
         results["transport"] = await _clone_transport(
             db, school_id, source_year_id, target_year_id, warnings
         )
+        await db.flush()
 
     if modules.payroll:
         results["payroll"] = await _clone_payroll(
             db, school_id, source_year_id, target_year_id, target_year.start_date, warnings
         )
+        await db.flush()
 
     if modules.mentoring:
         results["mentoring"] = await _clone_mentoring(
             db, school_id, source_year_id, target_year_id, warnings
         )
-
-    await db.flush()
 
     # Phase 2: Dependent modules (need class_section mapping)
     needs_cs_map = modules.teacher_assignments or modules.timetable or modules.fee_structure
@@ -225,16 +228,19 @@ async def execute_clone(
             results["teacher_assignments"] = await _clone_teacher_assignments(
                 db, school_id, source_year_id, target_year_id, id_map, warnings
             )
+            await db.flush()
 
         if modules.timetable:
             results["timetable"] = await _clone_timetable(
                 db, school_id, source_year_id, target_year_id, id_map, warnings
             )
+            await db.flush()
 
         if modules.fee_structure:
             results["fee_structure"] = await _clone_fee_structure(
                 db, school_id, source_year_id, target_year_id, id_map, warnings
             )
+            await db.flush()
 
     # Mark non-requested
     all_keys = [
@@ -732,12 +738,11 @@ async def _clone_grading_system(
     sys_cloned = sys_skipped = 0
 
     for row in systems:
-        # Unique constraint is (school_id, name) — school-wide, not per year
+        # Unique constraint is (school_id, name) — school-wide, not per year, no is_active
         existing = await db.execute(
             select(GradeSystem.id).where(
                 GradeSystem.school_id == school_id,
                 GradeSystem.name == row.name,
-                GradeSystem.is_active.is_(True),
             )
         )
         ex = existing.scalar_one_or_none()
@@ -817,6 +822,7 @@ async def _clone_transport(
     warnings: list[str],
 ) -> ModuleResult:
     ra_result = await _clone_route_assignments(db, school_id, source_id, target_id, warnings)
+    await db.flush()
     st_result = await _clone_student_transport(db, school_id, source_id, target_id, warnings)
     return ModuleResult(
         cloned=ra_result.cloned + st_result.cloned,
@@ -848,11 +854,11 @@ async def _clone_route_assignments(
     cloned = skipped = 0
 
     for row in rows:
+        # DB constraint is (school_id, vehicle_id, is_active) — one active assignment per vehicle
         existing = await db.execute(
             select(RouteAssignment.id).where(
                 RouteAssignment.school_id == school_id,
                 RouteAssignment.vehicle_id == row.vehicle_id,
-                RouteAssignment.academic_year_id == target_id,
                 RouteAssignment.is_active.is_(True),
             )
         )
