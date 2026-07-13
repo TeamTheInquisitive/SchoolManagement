@@ -1229,6 +1229,7 @@ async def list_fee_structures(db: AsyncSession, school_id: uuid.UUID) -> dict:
             "id": str(fs.id),
             "fee_type": fs.fee_type,
             "fee_category": fs.fee_category,
+            "student_type": fs.student_type or "all",
             "amount": float(fs.amount),
             "frequency": fs.frequency,
             "class_id": str(fs.class_id) if fs.class_id else None,
@@ -1282,6 +1283,7 @@ async def create_fee_structure(
         class_section_id=data.get("class_section_id") or None,
         fee_type=data["fee_type"],
         fee_category=data.get("fee_category", "tuition"),
+        student_type=data.get("student_type", "all"),
         amount=data["amount"],
         frequency=data.get("frequency", "monthly"),
     )
@@ -1289,22 +1291,30 @@ async def create_fee_structure(
     await db.flush()
 
     # Create FeeRecords for existing students in the applicable class/section
+    # Filter by student_type: "all" applies to everyone, otherwise match against student's student_type
+    from src.models.student import Student
+    fee_student_type = fs.student_type or "all"
+    # Map db values: "day_scholar" matches "Day Scholar", "hosteller" matches "Hosteller", "all" matches everyone
+    should_filter_by_type = fee_student_type != "all"
+    student_type_display = "Hosteller" if fee_student_type == "hosteller" else "Day Scholar"
+
     enrollments = []
 
     if fs.class_section_id:
-        # Specific section - query enrollments directly by class_section_id
-        enrollment_result = await db.execute(
-            select(StudentEnrollment).where(
-                StudentEnrollment.school_id == school_id,
-                StudentEnrollment.academic_year_id == academic_year.id,
-                StudentEnrollment.class_section_id == fs.class_section_id,
-                StudentEnrollment.status == "Active",
-                StudentEnrollment.is_active.is_(True),
-            )
+        query = select(StudentEnrollment).where(
+            StudentEnrollment.school_id == school_id,
+            StudentEnrollment.academic_year_id == academic_year.id,
+            StudentEnrollment.class_section_id == fs.class_section_id,
+            StudentEnrollment.status == "Active",
+            StudentEnrollment.is_active.is_(True),
         )
+        if should_filter_by_type:
+            query = query.join(Student, Student.id == StudentEnrollment.student_id).where(
+                Student.student_type == student_type_display,
+            )
+        enrollment_result = await db.execute(query)
         enrollments = enrollment_result.scalars().all()
     elif fs.class_id:
-        # Specific class - find all class_sections for this class in the current academic year
         cs_result = await db.execute(
             select(ClassSection.id).where(
                 ClassSection.school_id == school_id,
@@ -1316,19 +1326,20 @@ async def create_fee_structure(
         cs_ids = [row[0] for row in cs_result.all()]
 
         if cs_ids:
-            enrollment_result = await db.execute(
-                select(StudentEnrollment).where(
-                    StudentEnrollment.school_id == school_id,
-                    StudentEnrollment.academic_year_id == academic_year.id,
-                    StudentEnrollment.class_section_id.in_(cs_ids),
-                    StudentEnrollment.status == "Active",
-                    StudentEnrollment.is_active.is_(True),
-                )
+            query = select(StudentEnrollment).where(
+                StudentEnrollment.school_id == school_id,
+                StudentEnrollment.academic_year_id == academic_year.id,
+                StudentEnrollment.class_section_id.in_(cs_ids),
+                StudentEnrollment.status == "Active",
+                StudentEnrollment.is_active.is_(True),
             )
+            if should_filter_by_type:
+                query = query.join(Student, Student.id == StudentEnrollment.student_id).where(
+                    Student.student_type == student_type_display,
+                )
+            enrollment_result = await db.execute(query)
             enrollments = enrollment_result.scalars().all()
         else:
-            # Fallback: class_sections may not have academic_year_id set or may
-            # use is_active alone. Try without the academic_year filter.
             cs_result_fallback = await db.execute(
                 select(ClassSection.id).where(
                     ClassSection.school_id == school_id,
@@ -1338,26 +1349,31 @@ async def create_fee_structure(
             )
             cs_ids_fallback = [row[0] for row in cs_result_fallback.all()]
             if cs_ids_fallback:
-                enrollment_result = await db.execute(
-                    select(StudentEnrollment).where(
-                        StudentEnrollment.school_id == school_id,
-                        StudentEnrollment.academic_year_id == academic_year.id,
-                        StudentEnrollment.class_section_id.in_(cs_ids_fallback),
-                        StudentEnrollment.status == "Active",
-                        StudentEnrollment.is_active.is_(True),
-                    )
+                query = select(StudentEnrollment).where(
+                    StudentEnrollment.school_id == school_id,
+                    StudentEnrollment.academic_year_id == academic_year.id,
+                    StudentEnrollment.class_section_id.in_(cs_ids_fallback),
+                    StudentEnrollment.status == "Active",
+                    StudentEnrollment.is_active.is_(True),
                 )
+                if should_filter_by_type:
+                    query = query.join(Student, Student.id == StudentEnrollment.student_id).where(
+                        Student.student_type == student_type_display,
+                    )
+                enrollment_result = await db.execute(query)
                 enrollments = enrollment_result.scalars().all()
     else:
-        # All classes - get all enrolled students for the current academic year
-        enrollment_result = await db.execute(
-            select(StudentEnrollment).where(
-                StudentEnrollment.school_id == school_id,
-                StudentEnrollment.academic_year_id == academic_year.id,
-                StudentEnrollment.status == "Active",
-                StudentEnrollment.is_active.is_(True),
-            )
+        query = select(StudentEnrollment).where(
+            StudentEnrollment.school_id == school_id,
+            StudentEnrollment.academic_year_id == academic_year.id,
+            StudentEnrollment.status == "Active",
+            StudentEnrollment.is_active.is_(True),
         )
+        if should_filter_by_type:
+            query = query.join(Student, Student.id == StudentEnrollment.student_id).where(
+                Student.student_type == student_type_display,
+            )
+        enrollment_result = await db.execute(query)
         enrollments = enrollment_result.scalars().all()
 
     due_date = date.today() + timedelta(days=30)
@@ -1390,6 +1406,7 @@ async def create_fee_structure(
         "id": str(fs.id),
         "fee_type": fs.fee_type,
         "fee_category": fs.fee_category,
+        "student_type": fs.student_type,
         "amount": float(fs.amount),
         "frequency": fs.frequency,
         "records_created": records_created,
@@ -1422,12 +1439,14 @@ async def update_fee_structure(
         fs.frequency = data["frequency"]
     if "fee_category" in data:
         fs.fee_category = data["fee_category"]
+    if "student_type" in data:
+        fs.student_type = data["student_type"]
     if "class_id" in data:
         fs.class_id = data["class_id"] or None
     if "class_section_id" in data:
         fs.class_section_id = data["class_section_id"] or None
     await db.commit()
-    return {"id": str(fs.id), "fee_type": fs.fee_type, "amount": float(fs.amount), "frequency": fs.frequency}
+    return {"id": str(fs.id), "fee_type": fs.fee_type, "amount": float(fs.amount), "frequency": fs.frequency, "student_type": fs.student_type}
 
 
 async def delete_fee_structure(db: AsyncSession, school_id: uuid.UUID, structure_id: str) -> dict:

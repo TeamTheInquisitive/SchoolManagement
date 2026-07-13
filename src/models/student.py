@@ -55,6 +55,9 @@ class Student(BaseModel):
     previous_school: Mapped[str | None] = mapped_column(String(255), default=None)
     transfer_certificate_number: Mapped[str | None] = mapped_column(String(100), default=None)
 
+    # Student type (day_scholar or hosteller)
+    student_type: Mapped[str] = mapped_column(String(20), nullable=False, default="Day Scholar")
+
     # Status
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="Active")
 

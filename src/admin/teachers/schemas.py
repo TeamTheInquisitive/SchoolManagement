@@ -329,9 +329,17 @@ class BulkImportTeacherItem(BaseModel):
     joining_date: date | None = None
     max_workload_hours: int | None = None
     address: str | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_phone: str | None = None
+    emergency_contact_relationship: str | None = None
     basic_salary: float | None = None
     hra: float | None = None
     da: float | None = None
+    ta: float | None = None
+    other_allowances: float | None = None
+    pf_deduction: float | None = None
+    tax_deduction: float | None = None
+    other_deductions: float | None = None
     bank_name: str | None = None
     account_number: str | None = None
     ifsc_code: str | None = None
@@ -348,6 +356,25 @@ class BulkImportTeacherItem(BaseModel):
     @classmethod
     def validate_phone(cls, v):
         return _clean_phone(v)
+
+    @field_validator("emergency_contact_phone", mode="before")
+    @classmethod
+    def validate_emergency_phone(cls, v):
+        return _clean_phone(v)
+
+    @field_validator("date_of_birth", "joining_date", mode="before")
+    @classmethod
+    def validate_dates(cls, v):
+        if v is None or v == "":
+            return None
+        return v
+
+    @field_validator("max_workload_hours", "basic_salary", "hra", "da", "ta", "other_allowances", "pf_deduction", "tax_deduction", "other_deductions", mode="before")
+    @classmethod
+    def validate_numerics(cls, v):
+        if v is None or v == "":
+            return None
+        return v
 
 
 class BulkImportTeacherRowResult(BaseModel):

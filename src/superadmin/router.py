@@ -253,6 +253,14 @@ async def update_platform_settings(db: SessionDep, user: SuperAdminUser, data: d
     return {"status": "updated"}
 
 
+# --- Classes (for user filtering) ---
+
+@router.get("/schools/{school_id}/classes")
+async def list_school_classes(db: SessionDep, user: SuperAdminUser, school_id: uuid.UUID):
+    """Get classes and sections for a school (used for student filtering)."""
+    return await service.get_school_classes(db, school_id)
+
+
 # --- Users ---
 
 @router.get("/users", response_model=UserListResponse)
@@ -261,8 +269,17 @@ async def list_users(
     user: SuperAdminUser,
     role: str | None = Query(default=None),
     school_id: uuid.UUID | None = Query(default=None),
+    search: str | None = Query(default=None),
+    class_name: str | None = Query(default=None),
+    section: str | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
 ):
-    return await service.get_users(db, role=role, school_id=school_id)
+    return await service.get_users(
+        db, role=role, school_id=school_id, search=search,
+        class_name=class_name, section=section,
+        page=page, page_size=page_size,
+    )
 
 
 @router.post("/users/{user_id}/unlock")

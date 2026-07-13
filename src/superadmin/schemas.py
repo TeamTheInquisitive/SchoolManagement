@@ -199,14 +199,20 @@ class UserItem(BaseModel):
     role: str
     phone: str | None
     is_active: bool
+    is_locked: bool = False
+    failed_login_attempts: int = 0
     school_name: str | None = None
     last_login_at: datetime | None = None
     allowed_modules: list[str] | None = None
+    roll_number: str | None = None
 
 
 class UserListResponse(BaseModel):
     users: list[UserItem]
     total: int
+    page: int = 1
+    page_size: int = 20
+    total_pages: int = 1
 
 
 # --- Hard Delete ---

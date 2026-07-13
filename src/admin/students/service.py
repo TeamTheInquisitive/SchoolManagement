@@ -146,9 +146,9 @@ async def list_students(
     if gender:
         query = query.where(Student.gender == gender)
 
-    # Apply student type filter (Day Scholar / Hosteller) — stored in metadata_
+    # Apply student type filter (Day Scholar / Hosteller)
     if student_type:
-        query = query.where(Student.metadata_["student_type"].as_string() == student_type)
+        query = query.where(Student.student_type == student_type)
 
     # Apply search filter
     if search:
@@ -239,7 +239,7 @@ async def list_students(
             "blood_group": student.blood_group,
             "religion": student.religion,
             "address": student.address_line1,
-            "student_type": (student.metadata_ or {}).get("student_type"),
+            "student_type": student.student_type or (student.metadata_ or {}).get("student_type") or "Day Scholar",
             "previous_school": (student.metadata_ or {}).get("previous_school"),
             "token_advance": (student.metadata_ or {}).get("token_advance"),
             "token_payment_method": (student.metadata_ or {}).get("token_payment_method"),
@@ -379,6 +379,7 @@ async def create_student(
         pincode=data.get("pincode"),
         medical_conditions=data.get("medical_conditions"),
         allergies=data.get("allergies"),
+        student_type=data.get("student_type", "Day Scholar"),
         metadata_={k: v for k, v in {
             "student_type": data.get("student_type"),
             "previous_school": data.get("previous_school"),
@@ -539,14 +540,14 @@ async def create_student(
                 excluded_ids = data.get("excluded_fee_ids") or []
                 if str(fs.id) in excluded_ids:
                     continue
-                # Category applicability by student type:
-                # hostel fee -> hostellers only; transport fee -> day scholars only
-                _cat = (fs.fee_category or "").lower()
+                # Filter by student_type on fee structure ("all" applies to everyone)
                 _is_hosteller = data.get("student_type") == "Hosteller"
-                if _cat == "hostel" and not _is_hosteller:
-                    continue
-                if _cat == "transport" and _is_hosteller:
-                    continue
+                _fs_student_type = (fs.student_type or "all").lower()
+                if _fs_student_type != "all":
+                    if _fs_student_type == "hosteller" and not _is_hosteller:
+                        continue
+                    if _fs_student_type == "day_scholar" and _is_hosteller:
+                        continue
                 due = date.today() + timedelta(days=30)
                 concession_amount = max(0, float(concessions.get(str(fs.id), 0)))
                 total = float(fs.amount)
@@ -852,7 +853,7 @@ async def get_student(db: AsyncSession, school_id: UUID, student_id: UUID) -> di
         "class_name": class_name_val,
         "section": section_val,
         "status": student.status,
-        "type": (student.metadata_ or {}).get("student_type"),
+        "type": student.student_type or (student.metadata_ or {}).get("student_type") or "Day Scholar",
         "gender": student.gender,
         "date_of_birth": student.date_of_birth,
         "admission_date": student.admission_date,
@@ -935,8 +936,9 @@ async def update_student(
         if req_field in data and data[req_field] is not None:
             setattr(student, model_field, data[req_field])
 
-    # Store student_type in metadata
+    # Store student_type in column and metadata
     if "student_type" in data:
+        student.student_type = data["student_type"]
         meta = student.metadata_ or {}
         meta["student_type"] = data["student_type"]
         student.metadata_ = meta

@@ -807,11 +807,10 @@ async def update_mentor_notes(
 
     mentor_record.notes = notes
     await db.commit()
-    await db.refresh(mentor_record)
 
     return {
-        "student_id": student_id,
-        "notes": mentor_record.notes or "",
+        "student_id": str(student_id),
+        "notes": notes,
         "updated_at": mentor_record.updated_at,
         "message": "Notes updated successfully",
     }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import date, timedelta
 
@@ -379,27 +380,110 @@ async def delete_admin_for_school(db: AsyncSession, school_id: uuid.UUID, admin_
     return True
 
 
-async def get_users(db: AsyncSession, role: str | None = None, school_id: uuid.UUID | None = None) -> dict:
+async def get_school_classes(db: AsyncSession, school_id: uuid.UUID) -> dict:
+    from src.models.academic import Class, ClassSection, Section
+
+    result = await db.execute(
+        select(Class).where(Class.school_id == school_id).order_by(Class.sort_order, Class.name)
+    )
+    classes = result.scalars().all()
+
+    items = []
+    for cls in classes:
+        cs_result = await db.execute(
+            select(ClassSection).where(
+                ClassSection.school_id == school_id,
+                ClassSection.class_id == cls.id,
+            )
+        )
+        sections = []
+        for cs in cs_result.scalars().all():
+            if cs.section:
+                sections.append({"id": cs.section.id, "section_name": cs.section.name})
+        items.append({
+            "id": cls.id,
+            "name": cls.name,
+            "display_name": cls.display_name or cls.name,
+            "sections": sections,
+        })
+    return {"classes": items}
+
+
+async def get_users(
+    db: AsyncSession,
+    role: str | None = None,
+    school_id: uuid.UUID | None = None,
+    search: str | None = None,
+    class_name: str | None = None,
+    section: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    from src.models.student import StudentEnrollment
+    from src.models.academic import ClassSection, Class, Section
+
     query = select(User).where(User.is_active.is_(True))
     if role:
         query = query.where(User.role == role)
     if school_id:
         query = query.where(User.school_id == school_id)
+    if search:
+        pattern = f"%{search}%"
+        query = query.where(
+            (User.full_name.ilike(pattern)) | (User.email.ilike(pattern))
+        )
+    if (class_name or section) and school_id:
+        query = query.where(User.role == "student")
+        enrollment_query = select(StudentEnrollment.student_id).join(
+            ClassSection, StudentEnrollment.class_section_id == ClassSection.id
+        ).join(Class, ClassSection.class_id == Class.id)
+        if class_name:
+            enrollment_query = enrollment_query.where(Class.name == class_name)
+        if section:
+            enrollment_query = enrollment_query.join(
+                Section, ClassSection.section_id == Section.id
+            ).where(Section.name == section)
+        enrollment_query = enrollment_query.where(ClassSection.school_id == school_id)
+        student_ids = (await db.execute(enrollment_query)).scalars().all()
+        query = query.where(User.student_id.in_(student_ids))
+
     query = query.order_by(User.full_name)
+
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size)
 
     result = await db.execute(query)
     users = result.scalars().all()
 
+    student_user_ids = [u.student_id for u in users if u.role == "student" and u.student_id]
+    roll_map = {}
+    if student_user_ids:
+        enrollment_result = await db.execute(
+            select(StudentEnrollment).where(
+                StudentEnrollment.student_id.in_(student_user_ids)
+            ).order_by(StudentEnrollment.created_at.desc())
+        )
+        for e in enrollment_result.scalars().all():
+            if e.student_id not in roll_map:
+                roll_map[e.student_id] = e.roll_number
+
     items = []
     for u in users:
         school_name = u.school.name if u.school else None
+        roll_number = roll_map.get(u.student_id) if u.role == "student" else None
         items.append({
             "id": u.id, "email": u.email, "full_name": u.full_name,
             "role": u.role, "phone": u.phone, "is_active": u.is_active,
             "is_locked": u.is_locked, "failed_login_attempts": u.failed_login_attempts,
             "school_name": school_name, "last_login_at": u.last_login_at,
+            "roll_number": roll_number,
         })
-    return {"users": items, "total": len(items)}
+
+    total_pages = math.ceil(total / page_size) if total > 0 else 1
+    return {"users": items, "total": total, "page": page, "page_size": page_size, "total_pages": total_pages}
 
 
 async def hard_delete_school(db: AsyncSession, school_id: uuid.UUID) -> dict:

@@ -165,6 +165,7 @@ class GradeScale(BaseModel):
     min_percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     max_percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     grade_point: Mapped[Decimal | None] = mapped_column(Numeric(3, 1), default=None)
+    is_pass: Mapped[bool] = mapped_column(Boolean, default=True)
     description: Mapped[str | None] = mapped_column(Text, default=None)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 

@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Database
+    IS_LOCAL: bool = False
+    LOCAL_DATABASE_URL: str = "mysql+aiomysql://root:password@localhost:3306/school_erp"
     MYSQL_HOST: str = "localhost"
     MYSQL_PORT: int = 3306
     MYSQL_USER: str = "root"
@@ -24,6 +26,8 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def DATABASE_URL(self) -> str:
+        if self.IS_LOCAL:
+            return self.LOCAL_DATABASE_URL
         return (
             f"mysql+aiomysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}"
             f"@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DB}?charset=utf8mb4"

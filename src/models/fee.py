@@ -31,7 +31,8 @@ class FeeStructure(BaseModel):
             "academic_year_id",
             "class_section_id",
             "fee_type",
-            name="uq_fee_structures_year_class_type",
+            "student_type",
+            name="uq_fee_structures_year_class_type_stype",
         ),
         Index("idx_fee_structures_class", "class_section_id", "academic_year_id"),
         Index("idx_fee_structures_year", "school_id", "academic_year_id"),
@@ -49,6 +50,9 @@ class FeeStructure(BaseModel):
     fee_type: Mapped[str] = mapped_column(String(50), nullable=False)
     fee_category: Mapped[str] = mapped_column(
         String(20), nullable=False, default="academic"
+    )
+    student_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="all"
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     frequency: Mapped[str] = mapped_column(String(30), nullable=False)

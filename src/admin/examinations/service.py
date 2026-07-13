@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, or_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import AccessDenied, NotFound, ValidationError
@@ -115,6 +115,14 @@ def _compute_grade(percentage: float, scales: list[GradeScale]) -> str | None:
     return None
 
 
+def _compute_grade_is_pass(percentage: float, scales: list[GradeScale]) -> bool | None:
+    """Determine pass/fail from grade system based on percentage."""
+    for scale in sorted(scales, key=lambda s: s.min_percentage, reverse=True):
+        if float(scale.min_percentage) <= percentage <= float(scale.max_percentage):
+            return scale.is_pass if scale.is_pass is not None else True
+    return None
+
+
 def _compute_ranks(results: list[ExamResult]) -> None:
     """Compute ranks for results in-place (only for present students with marks)."""
     scorable = [r for r in results if r.marks_obtained is not None and r.attendance == "Present"]
@@ -164,7 +172,16 @@ async def list_exams(
     if exam_type:
         query = query.where(Exam.exam_type == exam_type)
     if status:
-        query = query.where(Exam.status == status)
+        from datetime import date as date_type
+        today = date_type.today()
+        if status == "completed":
+            query = query.where(or_(Exam.date < today, Exam.date.is_(None)))
+        elif status == "ongoing":
+            query = query.where(Exam.date == today)
+        elif status == "upcoming":
+            query = query.where(Exam.date > today)
+        else:
+            query = query.where(Exam.status == status)
     if class_name or section:
         query = query.join(ClassSection, Exam.class_section_id == ClassSection.id)
         if class_name:
@@ -264,6 +281,9 @@ async def list_exams(
         })
 
     # Summary counts
+    from datetime import date as date_type
+    today = date_type.today()
+
     all_exams_result = await db.execute(
         select(Exam.status, func.count(Exam.id)).where(
             Exam.school_id == school_id,
@@ -274,14 +294,42 @@ async def list_exams(
     status_counts = dict(all_exams_result.all())
     published_count = status_counts.get("Published", 0)
     draft_count = status_counts.get("Draft", 0)
-    upcoming_count = status_counts.get("Scheduled", 0)
     total_exams = sum(status_counts.values())
+
+    # Date-based counts (NULL date treated as completed)
+    completed_result = await db.execute(
+        select(func.count(Exam.id)).where(
+            Exam.school_id == school_id, Exam.academic_year_id == ay.id,
+            Exam.is_active.is_(True),
+            or_(Exam.date < today, Exam.date.is_(None)),
+        )
+    )
+    completed_count = completed_result.scalar() or 0
+
+    ongoing_result = await db.execute(
+        select(func.count(Exam.id)).where(
+            Exam.school_id == school_id, Exam.academic_year_id == ay.id,
+            Exam.is_active.is_(True), Exam.date == today,
+        )
+    )
+    ongoing_count = ongoing_result.scalar() or 0
+
+    upcoming_result = await db.execute(
+        select(func.count(Exam.id)).where(
+            Exam.school_id == school_id, Exam.academic_year_id == ay.id,
+            Exam.is_active.is_(True), Exam.date > today,
+        )
+    )
+    upcoming_count = upcoming_result.scalar() or 0
 
     paginated = paginate(items, total, pagination)
     paginated["summary"] = {
+        "total": total_exams,
         "total_exams": total_exams,
         "published": published_count,
         "upcoming": upcoming_count,
+        "ongoing": ongoing_count,
+        "completed": completed_count,
         "draft": draft_count,
         "average_pass_rate": 0,
     }
@@ -683,6 +731,8 @@ async def enter_results(
             grade = _compute_grade(pct, scales)
             if passing_marks is not None:
                 is_pass = entry.marks_obtained >= passing_marks
+            elif scales:
+                is_pass = _compute_grade_is_pass(pct, scales)
 
         if exam_result:
             exam_result.marks_obtained = Decimal(str(entry.marks_obtained)) if entry.marks_obtained is not None else None
@@ -815,6 +865,8 @@ async def bulk_upload_results(
             grade = _compute_grade(pct, scales)
             if passing_marks is not None:
                 is_pass = marks_obtained >= passing_marks
+            elif scales:
+                is_pass = _compute_grade_is_pass(pct, scales)
 
         # Upsert
         existing = await db.execute(
@@ -921,6 +973,8 @@ async def update_result(
         exam_result.grade = _compute_grade(pct, scales)
         if passing_marks is not None:
             exam_result.is_pass = float(exam_result.marks_obtained) >= passing_marks
+        elif scales:
+            exam_result.is_pass = _compute_grade_is_pass(pct, scales)
     else:
         exam_result.grade = None
         exam_result.is_pass = None
@@ -1037,6 +1091,7 @@ async def get_grade_system(
                 "min_percentage": float(s.min_percentage),
                 "max_percentage": float(s.max_percentage),
                 "grade_point": float(s.grade_point) if s.grade_point else None,
+                "is_pass": s.is_pass if s.is_pass is not None else True,
                 "description": s.description,
             }
             for s in sorted(grade_system.scales, key=lambda x: x.sort_order)
@@ -1097,6 +1152,7 @@ async def update_grade_system(
             min_percentage=Decimal(str(g.min_percentage)),
             max_percentage=Decimal(str(g.max_percentage)),
             grade_point=Decimal(str(g.grade_point)) if g.grade_point is not None else None,
+            is_pass=g.is_pass if g.is_pass is not None else True,
             description=g.description,
             sort_order=idx,
         )
@@ -1114,6 +1170,7 @@ async def update_grade_system(
                 "min_percentage": float(s.min_percentage),
                 "max_percentage": float(s.max_percentage),
                 "grade_point": float(s.grade_point) if s.grade_point else None,
+                "is_pass": s.is_pass if s.is_pass is not None else True,
                 "description": s.description,
             }
             for s in sorted(grade_system.scales, key=lambda x: x.sort_order)

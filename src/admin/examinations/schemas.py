@@ -83,6 +83,7 @@ class GradeScaleItem(BaseModel):
     min_percentage: float
     max_percentage: float
     grade_point: float | None = None
+    is_pass: bool = True
     description: str | None = None
 
 
@@ -143,9 +144,12 @@ class ExamListItem(BaseModel):
 class ExamListSummary(BaseModel):
     """Summary stats for exam list."""
 
+    total: int = 0
     total_exams: int
     published: int
     upcoming: int
+    ongoing: int = 0
+    completed: int = 0
     draft: int
     average_pass_rate: float
 
@@ -358,6 +362,7 @@ class GradeScaleResponse(BaseModel):
     min_percentage: float
     max_percentage: float
     grade_point: float | None = None
+    is_pass: bool = True
     description: str | None = None
 
 

@@ -114,6 +114,7 @@ async def get_teacher_availability(
             TimetableSlot.school_id == school_id,
             TimetableSlot.period_config_id == period_config_id,
             TimetableSlot.day_of_week == day,
+            TimetableSlot.is_active.is_(True),
         )
     )
     slots = result.scalars().all()
@@ -149,6 +150,7 @@ async def _check_teacher_conflict(
         TimetableSlot.staff_id == staff_id,
         TimetableSlot.period_config_id == period_config_id,
         TimetableSlot.day_of_week == day_of_week,
+        TimetableSlot.is_active.is_(True),
     )
     if exclude_slot_id:
         query = query.where(TimetableSlot.id != exclude_slot_id)
