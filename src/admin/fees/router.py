@@ -39,6 +39,19 @@ from src.core.dependencies import PaginationDep, SessionDep
 router = APIRouter(prefix="/admin/fees", tags=["Admin Fees"])
 
 
+@router.get("/daily-collection")
+async def get_daily_collection(
+    db: SessionDep,
+    school: SchoolDep,
+    user: AdminUser,
+    payment_date: date = Query(default=None),
+) -> dict:
+    """Get all fee payments for a specific date."""
+    target_date = payment_date or date.today()
+    result = await service.get_daily_collection(db, school.id, target_date)
+    return result
+
+
 @router.get("", response_model=StudentFeeListResponse)
 async def list_fee_records(
     db: SessionDep,

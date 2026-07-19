@@ -66,6 +66,52 @@ def _compute_overdue_days(due_date: date) -> int:
     return 0
 
 
+async def get_daily_collection(
+    db: AsyncSession, school_id: uuid.UUID, payment_date: date
+) -> dict:
+    """Get all payments collected on a specific date."""
+    results = await db.execute(
+        select(FeePayment, FeeRecord, Student)
+        .join(FeeRecord, FeePayment.fee_record_id == FeeRecord.id)
+        .join(Student, FeeRecord.student_id == Student.id)
+        .where(
+            FeePayment.school_id == school_id,
+            FeePayment.payment_date == payment_date,
+            FeePayment.is_active.is_(True),
+        )
+        .order_by(FeePayment.created_at.desc())
+    )
+    rows = results.all()
+
+    payments = []
+    total_collected = Decimal("0")
+    method_totals: dict[str, Decimal] = {}
+    for payment, fee_record, student in rows:
+        total_collected += payment.amount
+        method = payment.payment_method or "Cash"
+        method_totals[method] = method_totals.get(method, Decimal("0")) + payment.amount
+        payments.append({
+            "id": payment.id,
+            "student_id": student.id,
+            "student_name": student.full_name,
+            "roll_number": student.admission_number,
+            "class_name": fee_record.class_name if hasattr(fee_record, "class_name") else None,
+            "fee_type": fee_record.fee_type,
+            "amount": float(payment.amount),
+            "payment_method": method,
+            "reference": payment.reference,
+            "payment_date": payment.payment_date,
+        })
+
+    return {
+        "date": payment_date,
+        "total_collected": float(total_collected),
+        "total_payments": len(payments),
+        "method_breakdown": {k: float(v) for k, v in method_totals.items()},
+        "payments": payments,
+    }
+
+
 async def list_fee_records(
     db: AsyncSession,
     school_id: uuid.UUID,

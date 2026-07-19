@@ -9,6 +9,7 @@ from decimal import Decimal
 from fastapi import HTTPException
 from sqlalchemy import and_, or_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.core.exceptions import AccessDenied, NotFound, ValidationError
 from src.core.pagination import PaginationParams, paginate
@@ -1333,6 +1334,7 @@ async def get_report_card(
     query = (
         select(ExamResult)
         .join(Exam, ExamResult.exam_id == Exam.id)
+        .options(selectinload(ExamResult.exam).selectinload(Exam.subject))
         .where(
             ExamResult.student_id == student_id,
             ExamResult.school_id == school_id,

@@ -1194,6 +1194,7 @@ async def get_exam_results(
             ExamResult.student_id == student_id,
             ExamResult.school_id == school_id,
             Exam.academic_year_id == current_ay.id,
+            Exam.is_active.is_(True),
             ExamResult.is_active.is_(True),
         )
         .order_by(Exam.name, Exam.date)

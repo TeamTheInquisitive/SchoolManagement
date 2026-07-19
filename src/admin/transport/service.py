@@ -1415,17 +1415,18 @@ async def assign_students_to_route(
     count = 0
 
     for sid in student_ids:
-        # Check if already assigned (including soft-deleted)
+        student_uuid = uuid.UUID(sid) if isinstance(sid, str) else sid
+        # Check if already assigned (including soft-deleted records)
         existing = await db.execute(
             select(StudentTransport).where(
                 StudentTransport.school_id == school_id,
-                StudentTransport.student_id == uuid.UUID(sid),
+                StudentTransport.student_id == student_uuid,
                 StudentTransport.academic_year_id == ay_id,
             )
         )
         ex = existing.scalar_one_or_none()
         if ex:
-            # Reactivate if soft-deleted, update route
+            # Reactivate and update route (handles soft-deleted or already active)
             ex.route_id = route_id
             ex.pickup_point = pickup
             ex.drop_point = drop
@@ -1435,7 +1436,7 @@ async def assign_students_to_route(
         else:
             db.add(StudentTransport(
                 school_id=school_id,
-                student_id=uuid.UUID(sid),
+                student_id=student_uuid,
                 route_id=route_id,
                 academic_year_id=ay_id,
                 pickup_point=pickup,
@@ -1452,7 +1453,7 @@ async def assign_students_to_route(
 async def remove_student_from_route(
     db: AsyncSession, school_id: uuid.UUID, route_id: uuid.UUID, student_id: uuid.UUID
 ) -> dict:
-    """Remove a student from a route."""
+    """Remove a student from a route (hard delete to allow clean re-assignment)."""
     ay_result = await db.execute(
         select(AcademicYear.id).where(
             AcademicYear.school_id == school_id,
@@ -1462,12 +1463,12 @@ async def remove_student_from_route(
     )
     ay_id = ay_result.scalar_one_or_none()
 
+    # Find record regardless of is_active status to ensure clean removal
     result = await db.execute(
         select(StudentTransport).where(
             StudentTransport.school_id == school_id,
             StudentTransport.route_id == route_id,
             StudentTransport.student_id == student_id,
-            StudentTransport.is_active.is_(True),
         )
     )
     record = result.scalar_one_or_none()
