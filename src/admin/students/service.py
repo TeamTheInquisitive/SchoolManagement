@@ -1691,7 +1691,7 @@ async def get_fee_history(
 
     return {
         "summary": {"total_fees": total_fees, "total_paid": total_paid, "total_due": total_fees - total_paid},
-        "fee_structure": [{"component": r.fee_type, "amount": float(r.total_amount), "concession": float(r.concession_amount or 0), "original_amount": float(r.total_amount) + float(r.concession_amount or 0), "frequency": r.fee_category, "status": r.status, "paid": float(r.paid or 0), "pending": float(r.pending or 0)} for r in records],
+        "fee_structure": [{"component": r.fee_type, "amount": float(r.total_amount), "concession": float(r.concession_amount or 0), "original_amount": float(r.total_amount) + float(r.concession_amount or 0), "frequency": r.fee_category, "status": r.status, "paid": float(r.paid or 0), "pending": float(r.pending or 0), "due_date": r.due_date} for r in records],
         "payments": payments,
     }
 

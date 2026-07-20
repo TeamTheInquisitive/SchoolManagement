@@ -45,10 +45,13 @@ async def get_daily_collection(
     school: SchoolDep,
     user: AdminUser,
     payment_date: date = Query(default=None),
+    from_date: date = Query(default=None),
+    to_date: date = Query(default=None),
 ) -> dict:
-    """Get all fee payments for a specific date."""
-    target_date = payment_date or date.today()
-    result = await service.get_daily_collection(db, school.id, target_date)
+    """Get all fee payments for a specific date or date range."""
+    start = from_date or payment_date or date.today()
+    end = to_date or payment_date or date.today()
+    result = await service.get_daily_collection(db, school.id, start, end)
     return result
 
 

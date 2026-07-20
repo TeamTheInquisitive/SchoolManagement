@@ -67,21 +67,45 @@ def _compute_overdue_days(due_date: date) -> int:
 
 
 async def get_daily_collection(
-    db: AsyncSession, school_id: uuid.UUID, payment_date: date
+    db: AsyncSession, school_id: uuid.UUID, from_date: date, to_date: date | None = None
 ) -> dict:
-    """Get all payments collected on a specific date."""
-    results = await db.execute(
+    """Get all payments collected on a specific date or date range."""
+    end_date = to_date or from_date
+    query = (
         select(FeePayment, FeeRecord, Student)
         .join(FeeRecord, FeePayment.fee_record_id == FeeRecord.id)
         .join(Student, FeeRecord.student_id == Student.id)
         .where(
             FeePayment.school_id == school_id,
-            FeePayment.payment_date == payment_date,
+            FeePayment.payment_date >= from_date,
+            FeePayment.payment_date <= end_date,
             FeePayment.is_active.is_(True),
         )
-        .order_by(FeePayment.created_at.desc())
+        .order_by(FeePayment.payment_date.desc(), FeePayment.created_at.desc())
     )
+    results = await db.execute(query)
     rows = results.all()
+
+    # Batch-fetch class info for all students in the result set
+    student_ids = list({student.id for _, _, student in rows})
+    class_info_map: dict[uuid.UUID, tuple[str, str]] = {}
+    if student_ids:
+        from sqlalchemy.orm import selectinload
+        enrollments_result = await db.execute(
+            select(StudentEnrollment)
+            .options(selectinload(StudentEnrollment.class_section))
+            .where(
+                StudentEnrollment.student_id.in_(student_ids),
+                StudentEnrollment.school_id == school_id,
+                StudentEnrollment.is_active.is_(True),
+            )
+        )
+        for enrollment in enrollments_result.scalars().all():
+            cs = enrollment.class_section
+            if cs:
+                cls_name = cs.class_.name if cs.class_ else ""
+                sec_name = cs.section.name if cs.section else ""
+                class_info_map[enrollment.student_id] = (cls_name, sec_name)
 
     payments = []
     total_collected = Decimal("0")
@@ -90,12 +114,14 @@ async def get_daily_collection(
         total_collected += payment.amount
         method = payment.payment_method or "Cash"
         method_totals[method] = method_totals.get(method, Decimal("0")) + payment.amount
+        cls_name, sec_name = class_info_map.get(student.id, ("", ""))
         payments.append({
             "id": payment.id,
             "student_id": student.id,
             "student_name": student.full_name,
             "roll_number": student.admission_number,
-            "class_name": fee_record.class_name if hasattr(fee_record, "class_name") else None,
+            "class_name": cls_name,
+            "section": sec_name,
             "fee_type": fee_record.fee_type,
             "amount": float(payment.amount),
             "payment_method": method,
@@ -104,7 +130,8 @@ async def get_daily_collection(
         })
 
     return {
-        "date": payment_date,
+        "from_date": from_date,
+        "to_date": end_date,
         "total_collected": float(total_collected),
         "total_payments": len(payments),
         "method_breakdown": {k: float(v) for k, v in method_totals.items()},
